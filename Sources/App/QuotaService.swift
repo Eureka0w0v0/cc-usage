@@ -1,5 +1,4 @@
 import Foundation
-import Combine
 
 // cc-usage-widget 官方订阅额度层：照搬 cc-switch `src-tauri/src/services/subscription.rs`
 // 的 Claude 分支，读取 Claude Code 的 OAuth 凭据 → 调 Anthropic 官方用量端点
@@ -53,7 +52,6 @@ struct QuotaTier: Identifiable, Sendable {
 
 /// 凭据/查询状态，驱动徽标降级显示（作为 Result 的 Failure，需符合 Error）
 enum QuotaStatus: Error, Equatable, Sendable {
-    case ok               // 成功拿到 tiers
     case noCredential     // Keychain / 文件都读不到凭据
     case expired          // token 过期或鉴权失败(401/403)
     case failed(String)   // 网络 / 解析等其它错误
@@ -135,155 +133,38 @@ actor QuotaCache {
     }
 }
 
-// MARK: - 服务
+// MARK: - 额度查询入口（菜单栏 PanelModel 与 embed 桥接 get_quota 共用）
 
-@MainActor
-final class QuotaService: ObservableObject {
-    /// 官方返回的全部窗口（按名字查用）
-    @Published private(set) var tiers: [QuotaTier] = []
-    @Published private(set) var status: QuotaStatus = .noCredential
-    @Published private(set) var lastUpdated: Date?
-    /// 套餐标签（来自凭据 subscriptionType）
-    @Published private(set) var planLabel: String?
-
-    private var timer: Timer?
-    private var started = false
-    private var inFlight = false
-
-    /// 5 小时会话窗口
-    var fiveHour: QuotaTier? { tiers.first { $0.name == "five_hour" } }
-    /// 每周窗口
-    var weekly: QuotaTier? { tiers.first { $0.name == "seven_day" } }
-
-    /// 启动：立即查一次，然后每 interval 秒触发一次刷新。
-    /// 实际是否命中官方接口由 `QuotaCache` 的 5 分钟节流窗口决定（对齐 cc-switch），
-    /// 因此即便 interval 较小也不会频繁打接口；默认 300s 与 cc-switch REFETCH_INTERVAL 对齐。
-    func start(intervalSeconds: TimeInterval = 300) {
-        guard !started else { return }
-        started = true
-        refreshNow()
-        let t = Timer(timeInterval: intervalSeconds, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshNow() }
-        }
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
-    }
-
-    func stop() {
-        timer?.invalidate()
-        timer = nil
-        started = false
-    }
-
-    /// 手动触发一次刷新（非阻塞）。
-    func refreshNow() {
-        Task { await self.refresh() }
-    }
-
-    /// 读凭据 → 调 API → 更新状态。全程不抛错，失败即优雅降级。
-    func refresh() async {
-        guard !inFlight else { return }
-        inFlight = true
-        defer { inFlight = false }
-
-        // 0) 缓存优先：节流窗口内复用进程共享缓存，不打官方接口（对齐 cc-switch staleTime）。
-        //    与 get_quota 桥接共享同一份 QuotaCache，两条读取路径合计 ≤1 次/5min 命中官方接口。
-        let cached = await QuotaCache.shared.peek()
-        if cached.throttled {
-            if !cached.tiers.isEmpty {
-                tiers = cached.tiers
-                planLabel = cached.tiers.first?.planLabel
-                status = .ok
-                lastUpdated = cached.at
-            }
-            return
-        }
-
-        // 1) 读凭据：spawn `security` / 读文件属阻塞操作，放后台线程，避免卡主线程
+/// 纯静态命名空间：两条读取路径都经同一份 `QuotaCache`（5 分钟节流 + 在途去重 +
+/// stale-if-error）——这正是「菜单栏与面板的额度数字永远一致」的机制所在。
+/// 读不到凭据 / 请求失败一律返回上次成功值（首次失败为空数组，前端徽标显示 "—"）。
+enum QuotaService {
+    /// 真实查询：读凭据 → 调官方 /api/oauth/usage → 给每个 tier 附上套餐标签。
+    /// 失败/无凭据返回 nil（由 QuotaCache 保留上次成功值）。
+    private static func fetchFromAPI() async -> [QuotaTier]? {
+        // 读凭据属阻塞操作（spawn security / 读文件），放后台线程
         let credResult = await Task.detached(priority: .utility) {
             ClaudeCredentialReader.read()
         }.value
+        guard case .success(let cred) = credResult else { return nil }
 
-        let cred: ClaudeCredential
-        switch credResult {
-        case .failure(let st):
-            status = st
-            tiers = []
-            planLabel = nil
-            return
-        case .success(let c):
-            cred = c
-        }
-        planLabel = cred.subscriptionType
-
-        // 2) 调官方端点。即便本地时间戳判定过期也照样尝试——token 可能仍有效
-        //    （对齐 cc-switch：Expired 时仍 query，成功就用）。
-        let apiResult = await ClaudeUsageAPI.query(token: cred.accessToken)
-        switch apiResult {
-        case .success(var fetched):
-            // 把套餐标签塞进每个 tier，方便 UI 直接取用
-            for i in fetched.indices { fetched[i].planLabel = cred.subscriptionType }
-            tiers = fetched
-            status = .ok
-            lastUpdated = Date()
-            await QuotaCache.shared.store(fetched)   // 写穿共享缓存，供 get_quota 桥接复用
-        case .failure(let st):
-            status = st
-            // 凭据级问题（无凭据 / 过期）→ 清空，徽标显示 "—"。
-            // 仅传输层抖动（.failed）→ 保留上次成功数据，避免频繁闪 "—"。
-            if case .failed = st {
-                // 保留 tiers
-            } else {
-                tiers = []
-            }
-        }
-    }
-}
-
-// MARK: - Bridge 复用入口（供 PanelWebView 的 get_quota 调用）
-
-extension QuotaService {
-    /// 一次性查询：读凭据 → 调官方 /api/oauth/usage → 给每个 tier 附上套餐标签。
-    /// 纯静态、`nonisolated`：不触碰 @Published 状态，不影响 MainWindowView 对 QuotaService 的既有接口。
-    /// 读不到凭据 / 请求失败一律降级为空数组（前端徽标显示 "—"）。
-    nonisolated static func fetchTiersForBridge() async -> [QuotaTier] {
-        // 缓存优先（对齐 cc-switch：staleTime / UsageCache 语义）：节流窗口内直接返回上次
-        // 快照，绝不打官方接口；窗口外才真正读凭据 + 调 API。失败 / 429 / 无凭据 → 保留上次
-        // 成功数据（stale-if-error），前端徽标不空成 "—"。
-        await QuotaCache.shared.read {
-            // 读凭据属阻塞操作（spawn security / 读文件），放后台线程
-            let credResult = await Task.detached(priority: .utility) {
-                ClaudeCredentialReader.read()
-            }.value
-            guard case .success(let cred) = credResult else { return nil }
-
-            switch await ClaudeUsageAPI.query(token: cred.accessToken) {
-            case .success(var tiers):
-                for i in tiers.indices { tiers[i].planLabel = cred.subscriptionType }
-                return tiers
-            case .failure:
-                return nil
-            }
+        switch await ClaudeUsageAPI.query(token: cred.accessToken) {
+        case .success(var tiers):
+            for i in tiers.indices { tiers[i].planLabel = cred.subscriptionType }
+            return tiers
+        case .failure:
+            return nil
         }
     }
 
-    /// 强制版（忽略 5 分钟节流），供菜单栏勾选「额度」时立即取一次用。
-    /// 与 `fetchTiersForBridge` 同样的读凭据 + 调 API，只是走 `QuotaCache.forceRefresh`。
-    nonisolated static func forceTiersForBridge() async -> [QuotaTier] {
-        await QuotaCache.shared.forceRefresh {
-            let credResult = await Task.detached(priority: .utility) {
-                ClaudeCredentialReader.read()
-            }.value
-            guard case .success(let cred) = credResult else { return nil }
+    /// 缓存优先取额度（定时刷新用）：节流窗口内只读共享缓存，绝不打官方接口。
+    static func fetchTiersForBridge() async -> [QuotaTier] {
+        await QuotaCache.shared.read { await fetchFromAPI() }
+    }
 
-            switch await ClaudeUsageAPI.query(token: cred.accessToken) {
-            case .success(var tiers):
-                for i in tiers.indices { tiers[i].planLabel = cred.subscriptionType }
-                return tiers
-            case .failure:
-                return nil
-            }
-        }
+    /// 强制取一次（忽略 5 分钟节流）：仅供低频用户交互（勾选额度码片）调用。
+    static func forceTiersForBridge() async -> [QuotaTier] {
+        await QuotaCache.shared.forceRefresh { await fetchFromAPI() }
     }
 }
 

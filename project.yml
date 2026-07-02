@@ -25,10 +25,7 @@ targets:
     sources:
       - path: Sources/App
         excludes:
-          - "web/**"
           - "web-panel/**"
-      - path: Sources/App/web
-        buildPhase: resources
       - path: Sources/App/web-panel
         buildPhase: resources
       - Sources/Shared

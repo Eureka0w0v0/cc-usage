@@ -9,20 +9,15 @@
 /* Begin PBXBuildFile section */
 		02EC6FAF4D8399AC5EB17794 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
 		1007263746872BD9A3AC7D49 /* UsageWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		185AECFC08F04C8B3FB140D5 /* chart.html in Resources */ = {isa = PBXBuildFile; fileRef = BBBA98F8589E9A21EB4A07C1 /* chart.html */; };
 		1C8B58897031EB0BE70B1FC9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
 		213C0F0038E91DFADFA61B44 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = C843DC8A24FE2FC77A32C289 /* Sample.swift */; };
 		28CBB792D9B92A327E575772 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = FE46559B13C9C8A264B5681B /* libsqlite3.tbd */; };
 		30D0267489B6604D1EDBBFDE /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
-		432866D9072956946699A0BB /* react.js in Resources */ = {isa = PBXBuildFile; fileRef = AE3BB0E7469BC6428E8E1148 /* react.js */; };
-		4798563BD98B4809C788D05D /* prop-types.js in Resources */ = {isa = PBXBuildFile; fileRef = C852F79AB76FB33719F0D067 /* prop-types.js */; };
 		4D4D7C0D1F59343D57277E53 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = C843DC8A24FE2FC77A32C289 /* Sample.swift */; };
 		60B00681B5B422EF73D89690 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D5177768EABBA97BE2A6C7 /* Formatting.swift */; };
 		630F3E568A5660DC08F0CD38 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		641603E9BC751BD6E97CA710 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D5177768EABBA97BE2A6C7 /* Formatting.swift */; };
-		6C13D7BEC7FF0C0388027482 /* react-dom.js in Resources */ = {isa = PBXBuildFile; fileRef = 210C65767B834E4119DD1385 /* react-dom.js */; };
 		6F3F114D755ECABD55C6ADBE /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 7240EDA4C546F2792A21A93D /* AppIcon.icns */; };
-		6F9A894EBC2AE0691EE7A83B /* PanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C39C88E4AA9253D1BE2CFA /* PanelView.swift */; };
 		703ECAAEFA27163EDB117D05 /* CCUsageApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B788D2D872F106E2F2EC0A22 /* CCUsageApp.swift */; };
 		77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D584EE6E87C0844CE987F0 /* QuotaService.swift */; };
 		791E3496D6FC87AAB229FB0C /* WindowDrag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316F79F14E6A53F1CA747517 /* WindowDrag.swift */; };
@@ -32,13 +27,10 @@
 		B690D5FE64B100264FED2361 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = 0FA0E5873AE44221C5F8E764 /* index.html */; };
 		BBF3D589661BD58666A648E8 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		C70015AAF3C690F4DC7595CF /* Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DD9369BFCFD21C643B35A08 /* Dashboard.swift */; };
-		CA1620DBC00D2833EECBADC4 /* recharts.js in Resources */ = {isa = PBXBuildFile; fileRef = 6858D058A4ADED9875F1502A /* recharts.js */; };
 		CC32B07C89892E0DCBBD0587 /* WidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B3E5D981FBFF4D027390E89 /* WidgetViews.swift */; };
-		D49F7FCA96D9D23259B735AA /* DateRangePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6292D8EC5C6CB32E029E0D1F /* DateRangePicker.swift */; };
 		DA72E63B29AE992A43BA0E77 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = FE46559B13C9C8A264B5681B /* libsqlite3.tbd */; };
 		DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */; };
 		EA76484909B3172F0696D31D /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
-		FBE66FDFA965D0B7CFA24167 /* ChartWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A22D107C44B39F447FDEA1 /* ChartWebView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,28 +61,20 @@
 		015B95E0A6E30643E43E6880 /* CCUsageWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCUsageWidgetBundle.swift; sourceTree = "<group>"; };
 		0FA0E5873AE44221C5F8E764 /* index.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
 		1DD9369BFCFD21C643B35A08 /* Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dashboard.swift; sourceTree = "<group>"; };
-		210C65767B834E4119DD1385 /* react-dom.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "react-dom.js"; sourceTree = "<group>"; };
 		316F79F14E6A53F1CA747517 /* WindowDrag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowDrag.swift; sourceTree = "<group>"; };
 		3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOverlay.swift; sourceTree = "<group>"; };
 		45E808353F9922E4E141F092 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		4DABE7E9FF3FE398191AD203 /* Widget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Widget.entitlements; sourceTree = "<group>"; };
-		50A22D107C44B39F447FDEA1 /* ChartWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartWebView.swift; sourceTree = "<group>"; };
 		53421EF89E45311FE29CC6BF /* TrendChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendChart.swift; sourceTree = "<group>"; };
-		6292D8EC5C6CB32E029E0D1F /* DateRangePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateRangePicker.swift; sourceTree = "<group>"; };
-		6858D058A4ADED9875F1502A /* recharts.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = recharts.js; sourceTree = "<group>"; };
 		6B3E5D981FBFF4D027390E89 /* WidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetViews.swift; sourceTree = "<group>"; };
 		7240EDA4C546F2792A21A93D /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		8C5BE3E29F7962BDE35FD65B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		A2C39C88E4AA9253D1BE2CFA /* PanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelView.swift; sourceTree = "<group>"; };
-		AE3BB0E7469BC6428E8E1148 /* react.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = react.js; sourceTree = "<group>"; };
 		B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B788D2D872F106E2F2EC0A22 /* CCUsageApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCUsageApp.swift; sourceTree = "<group>"; };
 		B9BD9FF5731326FD2CED9258 /* UsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStore.swift; sourceTree = "<group>"; };
-		BBBA98F8589E9A21EB4A07C1 /* chart.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = chart.html; sourceTree = "<group>"; };
 		C0D5177768EABBA97BE2A6C7 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		C4D584EE6E87C0844CE987F0 /* QuotaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaService.swift; sourceTree = "<group>"; };
 		C843DC8A24FE2FC77A32C289 /* Sample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sample.swift; sourceTree = "<group>"; };
-		C852F79AB76FB33719F0D067 /* prop-types.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "prop-types.js"; sourceTree = "<group>"; };
 		CE330C4F84DEDFFC2BB8CE6C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelWebView.swift; sourceTree = "<group>"; };
 		DC3977B07E56C3EEC6F0A704 /* CCUsageWidget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CCUsageWidget.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -148,18 +132,6 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
-		2BD72BC23C297856BD88C9FB /* web */ = {
-			isa = PBXGroup;
-			children = (
-				BBBA98F8589E9A21EB4A07C1 /* chart.html */,
-				C852F79AB76FB33719F0D067 /* prop-types.js */,
-				210C65767B834E4119DD1385 /* react-dom.js */,
-				AE3BB0E7469BC6428E8E1148 /* react.js */,
-				6858D058A4ADED9875F1502A /* recharts.js */,
-			);
-			path = web;
-			sourceTree = "<group>";
-		};
 		324405122F664EC2F1A70A12 = {
 			isa = PBXGroup;
 			children = (
@@ -175,15 +147,11 @@
 				45E808353F9922E4E141F092 /* App.entitlements */,
 				7240EDA4C546F2792A21A93D /* AppIcon.icns */,
 				B788D2D872F106E2F2EC0A22 /* CCUsageApp.swift */,
-				50A22D107C44B39F447FDEA1 /* ChartWebView.swift */,
 				1DD9369BFCFD21C643B35A08 /* Dashboard.swift */,
-				6292D8EC5C6CB32E029E0D1F /* DateRangePicker.swift */,
 				8C5BE3E29F7962BDE35FD65B /* Info.plist */,
-				A2C39C88E4AA9253D1BE2CFA /* PanelView.swift */,
 				D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */,
 				C4D584EE6E87C0844CE987F0 /* QuotaService.swift */,
 				316F79F14E6A53F1CA747517 /* WindowDrag.swift */,
-				2BD72BC23C297856BD88C9FB /* web */,
 				A9B3DF82940407AAF28F36A8 /* web-panel */,
 			);
 			path = App;
@@ -303,12 +271,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6F3F114D755ECABD55C6ADBE /* AppIcon.icns in Resources */,
-				185AECFC08F04C8B3FB140D5 /* chart.html in Resources */,
 				B690D5FE64B100264FED2361 /* index.html in Resources */,
-				4798563BD98B4809C788D05D /* prop-types.js in Resources */,
-				6C13D7BEC7FF0C0388027482 /* react-dom.js in Resources */,
-				432866D9072956946699A0BB /* react.js in Resources */,
-				CA1620DBC00D2833EECBADC4 /* recharts.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -335,11 +298,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				703ECAAEFA27163EDB117D05 /* CCUsageApp.swift in Sources */,
-				FBE66FDFA965D0B7CFA24167 /* ChartWebView.swift in Sources */,
 				C70015AAF3C690F4DC7595CF /* Dashboard.swift in Sources */,
-				D49F7FCA96D9D23259B735AA /* DateRangePicker.swift in Sources */,
 				641603E9BC751BD6E97CA710 /* Formatting.swift in Sources */,
-				6F9A894EBC2AE0691EE7A83B /* PanelView.swift in Sources */,
 				DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */,
 				77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */,
 				213C0F0038E91DFADFA61B44 /* Sample.swift in Sources */,

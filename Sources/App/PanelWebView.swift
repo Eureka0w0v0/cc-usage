@@ -136,11 +136,13 @@ struct PanelWebView: NSViewRepresentable {
             // ── 面板设置持久化（embed 用）：UserDefaults，键加 "embed." 前缀。
             // refreshIntervalMs 额外写穿 PanelModel → 菜单栏与面板同一个刷新节奏，
             // 修复「面板选 5s 重开回 30s」与「菜单栏/面板更新时间不一致」。
+            // 键名不走 str()——它会把 "all" 归一成 nil(那是筛选参数的语义),
+            // 设置键/值必须原样透传。
             case "get_setting":
-                guard let key = str(args["key"]) else { return NSNull() }
+                guard let key = args["key"] as? String, !key.isEmpty else { return NSNull() }
                 return UserDefaults.standard.object(forKey: "embed.\(key)") ?? NSNull()
             case "set_setting":
-                guard let key = str(args["key"]) else { return NSNull() }
+                guard let key = args["key"] as? String, !key.isEmpty else { return NSNull() }
                 let value = args["value"]
                 if value == nil || value is NSNull {
                     UserDefaults.standard.removeObject(forKey: "embed.\(key)")

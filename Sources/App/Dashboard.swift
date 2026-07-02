@@ -61,8 +61,6 @@ final class PanelModel: ObservableObject {
     @Published var error: String?
     @Published var apps: [String] = []
     @Published var models: [String] = []
-    @Published var fiveHour: UsageSummary?   // 近 5 小时滚动窗口
-    @Published var weekly: UsageSummary?     // 近 7 天滚动窗口
 
     // 菜单栏专用汇总（始终「全部来源/模型」，不随主窗口的来源/模型筛选变化）：今日 / 本周 / 本月。
     // 口径 = store.rangeSummary（logs + rollups 两表合并），与 cc-switch 对应区间数字一致。
@@ -119,13 +117,6 @@ final class PanelModel: ObservableObject {
     @Published var range: DateRangePreset = .today { didSet { reload() } }
     @Published var intervalSeconds: Int = 5 { didSet { restartTimer() } }
 
-    // 可选刷新间隔（秒），0 = 关闭
-    static let intervals = [1, 3, 5, 10, 30, 60, 0]
-
-    // 限流额度（token）——用于 5H / Week 百分比。请按你的套餐真实额度调整。
-    static let fiveHourLimitTokens: Int64 = 100_000_000    // 5 小时窗口额度（占位，待你给真实值）
-    static let weeklyLimitTokens: Int64 = 1_000_000_000    // 每周额度（占位，待你给真实值）
-
     private var timer: AnyCancellable?
     private let store = UsageStore()
     private var started = false
@@ -161,9 +152,6 @@ final class PanelModel: ObservableObject {
         let now = Int64(Date().timeIntervalSince1970)
         do {
             snap = try store.snapshot(filter: UsageFilter(start: s, end: e, appType: appType, model: model))
-            // 常驻窗口：跟随来源/模型筛选，时间窗固定
-            fiveHour = try? store.rangeSummary(UsageFilter(start: now - 5 * 3600, end: now, appType: appType, model: model))
-            weekly = try? store.rangeSummary(UsageFilter(start: now - 7 * 86400, end: now, appType: appType, model: model))
 
             // 菜单栏专用：今日（本日零点，与面板 Today 一致）+ 近 7 天 / 近 30 天（滚动窗口），全部来源。
             // 用滚动窗口而非日历「本周/本月」——否则月初时「本周」会跨回上月、反比「本月」多，违反「月≥周≥日」直觉。
@@ -183,118 +171,20 @@ final class PanelModel: ObservableObject {
                 }
             }
             error = nil
-            WidgetCenter.shared.reloadAllTimelines()
+            reloadWidgetsThrottled()
         } catch {
             self.error = "\(error)"
         }
     }
-}
 
-// MARK: - 顶部工具栏
-
-struct Toolbar: View {
-    @ObservedObject var model: PanelModel
-    @ObservedObject var quota: QuotaService
-
-    var body: some View {
-        HStack(spacing: 10) {
-            SourceSegmented(model: model)
-
-            Menu {
-                Button("All Sources") { model.appType = nil }
-                ForEach(model.apps, id: \.self) { a in Button(a.capitalized) { model.appType = a } }
-            } label: { pill(nil, model.appType?.capitalized ?? "All Sources") }
-
-            Menu {
-                Button("All Models") { model.model = nil }
-                ForEach(model.models, id: \.self) { m in Button(m) { model.model = m } }
-            } label: { pill(nil, model.model ?? "All Models") }
-
-            Menu {
-                ForEach(PanelModel.intervals, id: \.self) { s in
-                    Button(s == 0 ? "关闭" : "\(s)s") { model.intervalSeconds = s }
-                }
-            } label: { pill("arrow.triangle.2.circlepath", model.intervalSeconds == 0 ? "关闭" : "\(model.intervalSeconds)s") }
-
-            Menu {
-                ForEach(DateRangePreset.allCases) { p in Button(p.rawValue) { model.range = p } }
-            } label: { pill("calendar", model.range.rawValue) }
-
-            Spacer()
-
-            WindowBadge(label: "5H", tier: quota.fiveHour)
-            WindowBadge(label: "Week", tier: quota.weekly)
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden)
-    }
-
-    private func pill(_ icon: String?, _ text: String) -> some View {
-        HStack(spacing: 6) {
-            if let icon { Image(systemName: icon).font(.system(size: 12)).foregroundStyle(Theme.textDim) }
-            Text(text).font(.system(size: 13)).foregroundStyle(Theme.textMain).lineLimit(1)
-            Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.textDim)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.04))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.08), lineWidth: 1))
-        )
-        .fixedSize()
-    }
-}
-
-/// 常驻用量窗口徽标：5H  87%  + 迷你进度条，按官方 utilization 阈值配色。
-/// 数据源为 QuotaService 的真实额度（而非 token/占位额度）；tier == nil 时优雅降级显示 "—"。
-struct WindowBadge: View {
-    let label: String
-    let tier: QuotaTier?
-
-    /// 有真实数据时的已用百分比
-    private var percent: Int? { tier.map { Int($0.utilization.rounded()) } }
-    private var fraction: Double {
-        guard let u = tier?.utilization else { return 0 }
-        return min(1, max(0, u / 100))
-    }
-    /// 阈值配色，对齐 cc-switch SubscriptionQuotaFooter.utilizationColor
-    /// （≥90 红 / ≥70 橙 / 否则 绿）；无数据用 textDim。
-    private var color: Color {
-        guard let p = percent else { return Theme.textDim }
-        switch p {
-        case 90...: return Theme.cost      // 红
-        case 70...: return Theme.amber     // 橙
-        default:    return Theme.emerald   // 绿
-        }
-    }
-
-    /// 悬停提示：窗口含义 + 已用% + 重置倒计时 + 套餐
-    private var helpText: String {
-        guard let tier, let p = percent else {
-            return "\(label)：暂无数据（未登录 Claude 或查询失败）"
-        }
-        var parts = ["\(label) 已用 \(p)%"]
-        if let cd = tier.countdown { parts.append("重置于 \(cd)") }
-        if let plan = tier.planLabel, !plan.isEmpty { parts.append(plan) }
-        return parts.joined(separator: " · ")
-    }
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Text(label).font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.textDim)
-            Text(percent.map { "\($0)%" } ?? "—")
-                .font(.system(size: 12, weight: .semibold)).monospacedDigit()
-                .foregroundStyle(color)
-            Capsule().fill(Theme.track.opacity(0.6)).frame(width: 30, height: 4)
-                .overlay(alignment: .leading) {
-                    Capsule().fill(color).frame(width: 30 * fraction, height: 4)
-                }
-        }
-        .padding(.horizontal, 10).padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 8).fill(Theme.card.opacity(0.6))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.track.opacity(0.5), lineWidth: 1))
-        )
-        .fixedSize()
-        .help(helpText)
+    // WidgetKit 有系统刷新预算，跟着 reload() 每 5s 打一次会被系统直接限流忽略；
+    // 桌面小组件自身的时间线是 15 分钟，这里 5 分钟提醒一次绰绰有余。
+    private var lastWidgetReload: Date?
+    private func reloadWidgetsThrottled() {
+        let now = Date()
+        if let last = lastWidgetReload, now.timeIntervalSince(last) < 5 * 60 { return }
+        lastWidgetReload = now
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }
 
@@ -313,79 +203,6 @@ struct MainWindowView: View {
         }
         .onAppear {
             model.start()            // 仍驱动菜单栏 / MenuBarPanel（额度前端自查，无需原生 QuotaService）
-        }
-    }
-}
-
-/// 来源(app)分段选择器：All + 各 app 图标
-struct SourceSegmented: View {
-    @ObservedObject var model: PanelModel
-    var body: some View {
-        HStack(spacing: 2) {
-            seg(nil, "square.grid.2x2.fill", Theme.textDim)
-            ForEach(model.apps, id: \.self) { a in seg(a, icon(a), color(a)) }
-        }
-        .padding(3)
-        .background(
-            RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.04))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.08), lineWidth: 1))
-        )
-    }
-    private func seg(_ app: String?, _ sym: String, _ tint: Color) -> some View {
-        let selected = model.appType == app
-        return Button { model.appType = app } label: {
-            Image(systemName: sym).font(.system(size: 14))
-                .foregroundStyle(selected ? Theme.textMain : tint)
-                .frame(width: 32, height: 26)
-                .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.white.opacity(0.12) : .clear))
-        }
-        .buttonStyle(.plain)
-    }
-    private func icon(_ app: String) -> String {
-        switch app {
-        case "claude": return "asterisk"
-        case "codex", "openai": return "circle.dashed"
-        case "gemini": return "sparkles"
-        case "opencode", "openclaw": return "square.fill"
-        default: return "cube.fill"
-        }
-    }
-    private func color(_ app: String) -> Color {
-        switch app {
-        case "claude": return Theme.creation
-        case "gemini": return Theme.hit
-        default: return Theme.textDim
-        }
-    }
-}
-
-// MARK: - 仪表盘（工具栏 + 面板）
-
-struct DashboardView: View {
-    @ObservedObject var model: PanelModel
-    @StateObject private var quota = QuotaService()   // 官方订阅额度（真实 utilization%）
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Toolbar(model: model, quota: quota)
-                .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 2)
-
-            if let snap = model.snap {
-                PanelView(snap: snap, rangeLabel: model.range.rawValue, interactive: true)
-            } else if let e = model.error {
-                VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-                    Text("读取 cc-switch 数据失败").foregroundStyle(Theme.textMain)
-                    Text(e).font(.caption2).foregroundStyle(Theme.textDim)
-                }.frame(maxHeight: .infinity)
-            } else {
-                ProgressView().controlSize(.large).frame(maxHeight: .infinity)
-            }
-        }
-        .background(Theme.bg)
-        .onAppear {
-            model.start()
-            quota.start()
         }
     }
 }
@@ -501,7 +318,8 @@ struct MenuBarPanel: View {
                     }
                 } label: { Text("Open Main Window") }
                 Spacer()
-                Text("Every \(model.intervalSeconds)s").font(.caption2).foregroundStyle(Theme.textDim)
+                Text(model.intervalSeconds == 0 ? "Auto-refresh off" : "Every \(model.intervalSeconds)s")
+                    .font(.caption2).foregroundStyle(Theme.textDim)
             }
         }
         .padding(14)

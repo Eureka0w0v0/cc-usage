@@ -40,23 +40,3 @@ SOFTWARE.
 
 The compiled `web-panel` bundle additionally embeds cc-switch's frontend dependencies (React, Recharts, TanStack Query, i18next, Tailwind CSS, framer-motion, lucide-react, etc.), each under their respective MIT/ISC licenses; see cc-switch's `package.json` for the full dependency list.
 编译产物 `web-panel` 同时内嵌了 cc-switch 的前端依赖(React、Recharts、TanStack Query、i18next、Tailwind CSS、framer-motion、lucide-react 等),均为 MIT/ISC 许可,完整清单见 cc-switch 的 `package.json`。
-
----
-
-## React / ReactDOM 18.3.1 (UMD)
-
-- Files: `Sources/App/web/react.js`, `Sources/App/web/react-dom.js`
-- Copyright (c) Meta Platforms, Inc. and affiliates.
-- License: MIT — <https://github.com/facebook/react/blob/main/LICENSE>
-
-## prop-types 15.8.1
-
-- File: `Sources/App/web/prop-types.js`
-- Copyright (c) 2013-present, Facebook, Inc.
-- License: MIT — <https://github.com/facebook/prop-types/blob/main/LICENSE>
-
-## Recharts 2.12.7 (UMD)
-
-- File: `Sources/App/web/recharts.js`
-- Copyright (c) 2015-present recharts
-- License: MIT — <https://github.com/recharts/recharts/blob/master/LICENSE>
