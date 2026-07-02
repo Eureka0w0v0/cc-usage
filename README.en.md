@@ -33,14 +33,15 @@ The Usage dashboard in [cc-switch](https://github.com/farion1231/cc-switch) is g
 - 📊 **The real dashboard, 1:1**: the main window runs cc-switch's actual frontend build — Usage Hero, genuine Recharts trend chart (hover tooltips identical to upstream), source/model filters, date ranges, and the Request Logs / Provider Stats / Model Stats tabs
 - 🔄 **5-second live refresh**: choose 5/10/30/60s or off; the choice persists, and the menu bar and main window share one refresh cadence so they never disagree
 - 🔋 **Official subscription quota**: queries Anthropic's `/api/oauth/usage` with your local Claude Code OAuth credentials, throttled to once per 5 minutes with an in-process shared cache (no 429s); shown from the very first paint
+- 🔌 **Live even with cc-switch closed**: a built-in read-only overlay incrementally parses Claude Code session logs and prices them with cc-switch's own pricing table; when cc-switch imports those rows later the overlay drains via exact request-id dedup — verified seamless handoff, zero double counting
 - 🪟 **Well-behaved windowing**: a single unique main window; closing it keeps the menu bar resident
 
 ## Prerequisites (read this)
 
 > [!IMPORTANT]
 > 1. **macOS 14 (Sonoma) or later**;
-> 2. [cc-switch](https://github.com/farion1231/cc-switch) (≥ 3.16 recommended) installed and **kept running**.
->    cc-switch parses each CLI's session logs into the local database `~/.cc-switch/cc-switch.db`; this app **only reads that database and collects nothing itself** — if cc-switch isn't running, the numbers won't move;
+> 2. [cc-switch](https://github.com/farion1231/cc-switch) (≥ 3.16 recommended) installed — it owns the local database, history and pricing table; this app reads its database **read-only**.
+>    **cc-switch does NOT need to be running**: while it's closed, the app incrementally parses Claude Code's session logs (`~/.claude/projects`) itself and overlays the not-yet-imported usage in real time; when cc-switch comes back and imports those rows, the overlay deduplicates by request id and hands off seamlessly with no double counting (importing **new** Codex / Gemini usage still requires cc-switch to run);
 > 3. The quota chips/badges require a Claude Code login on this machine (OAuth credentials are read from the Keychain / `~/.claude/.credentials.json`).
 
 ## Install
@@ -84,14 +85,17 @@ bash scripts/build.sh   # generate project → Release build → install to /App
 │        │                                │ invoke(cmd, args)      │
 │        ▼                                ▼                        │
 │  ┌──────────────────── Swift data layer ────────────────────┐    │
-│  │ UsageStore  → read-only ~/.cc-switch/cc-switch.db (SQLite)│    │
-│  │ QuotaCache  → official /api/oauth/usage, 5-min throttle   │    │
+│  │ UsageStore     → read-only ~/.cc-switch/cc-switch.db      │    │
+│  │ SessionOverlay → reads ~/.claude/projects session JSONL   │    │
+│  │                  (rows cc-switch hasn't imported yet)     │    │
+│  │ QuotaCache     → official /api/oauth/usage, 5-min throttle│    │
 │  └───────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────┘
-                 ▲ data writer: cc-switch itself (must be running)
+     ▲ the only database writer is cc-switch (history + Codex/Gemini)
 ```
 
 - The main window is not a re-implementation: cc-switch's frontend source plus a thin `invoke` bridge (`embed/`) is compiled by Vite into a single-file `index.html` running in a WKWebView. Tauri `invoke` calls from the frontend are intercepted in Swift and answered straight from the local SQLite database — aggregation semantics faithfully reimplement cc-switch's `usage_stats.rs`;
+- While cc-switch is closed, `SessionOverlay` resumes from the line offsets cc-switch recorded in `session_log_sync` and read-only parses the session JSONL tails, mirroring its importer (`session_usage.rs`) rule by rule — parsing, dedup and pricing alike. The pending rows are merged into every query in memory and drain to zero via exact `request_id` dedup once cc-switch imports them: nothing is ever written, nothing is ever counted twice;
 - Subscription quota uses your local Claude Code OAuth credentials; results live in one in-process shared cache read by both the menu bar and the panel, which is why the two always agree.
 
 ## Rebuilding the panel frontend (optional)

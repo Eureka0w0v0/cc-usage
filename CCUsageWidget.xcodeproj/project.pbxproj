@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02EC6FAF4D8399AC5EB17794 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
 		1007263746872BD9A3AC7D49 /* UsageWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		185AECFC08F04C8B3FB140D5 /* chart.html in Resources */ = {isa = PBXBuildFile; fileRef = BBBA98F8589E9A21EB4A07C1 /* chart.html */; };
 		1C8B58897031EB0BE70B1FC9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
@@ -27,6 +28,7 @@
 		791E3496D6FC87AAB229FB0C /* WindowDrag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316F79F14E6A53F1CA747517 /* WindowDrag.swift */; };
 		A61F23745122D8A4D9FC74BA /* CCUsageWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015B95E0A6E30643E43E6880 /* CCUsageWidgetBundle.swift */; };
 		A8E7F6A79EEE15E8B809545A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
+		B3AAFCB633407D12F38BE394 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
 		B690D5FE64B100264FED2361 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = 0FA0E5873AE44221C5F8E764 /* index.html */; };
 		BBF3D589661BD58666A648E8 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		C70015AAF3C690F4DC7595CF /* Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DD9369BFCFD21C643B35A08 /* Dashboard.swift */; };
@@ -69,6 +71,7 @@
 		1DD9369BFCFD21C643B35A08 /* Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dashboard.swift; sourceTree = "<group>"; };
 		210C65767B834E4119DD1385 /* react-dom.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "react-dom.js"; sourceTree = "<group>"; };
 		316F79F14E6A53F1CA747517 /* WindowDrag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowDrag.swift; sourceTree = "<group>"; };
+		3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOverlay.swift; sourceTree = "<group>"; };
 		45E808353F9922E4E141F092 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		4DABE7E9FF3FE398191AD203 /* Widget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Widget.entitlements; sourceTree = "<group>"; };
 		50A22D107C44B39F447FDEA1 /* ChartWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartWebView.swift; sourceTree = "<group>"; };
@@ -137,6 +140,7 @@
 			children = (
 				C0D5177768EABBA97BE2A6C7 /* Formatting.swift */,
 				C843DC8A24FE2FC77A32C289 /* Sample.swift */,
+				3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */,
 				E20D62ABBAC169F3225CD479 /* Theme.swift */,
 				53421EF89E45311FE29CC6BF /* TrendChart.swift */,
 				B9BD9FF5731326FD2CED9258 /* UsageStore.swift */,
@@ -318,6 +322,7 @@
 				A61F23745122D8A4D9FC74BA /* CCUsageWidgetBundle.swift in Sources */,
 				60B00681B5B422EF73D89690 /* Formatting.swift in Sources */,
 				4D4D7C0D1F59343D57277E53 /* Sample.swift in Sources */,
+				02EC6FAF4D8399AC5EB17794 /* SessionOverlay.swift in Sources */,
 				1C8B58897031EB0BE70B1FC9 /* Theme.swift in Sources */,
 				30D0267489B6604D1EDBBFDE /* TrendChart.swift in Sources */,
 				630F3E568A5660DC08F0CD38 /* UsageStore.swift in Sources */,
@@ -338,6 +343,7 @@
 				DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */,
 				77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */,
 				213C0F0038E91DFADFA61B44 /* Sample.swift in Sources */,
+				B3AAFCB633407D12F38BE394 /* SessionOverlay.swift in Sources */,
 				A8E7F6A79EEE15E8B809545A /* Theme.swift in Sources */,
 				EA76484909B3172F0696D31D /* TrendChart.swift in Sources */,
 				BBF3D589661BD58666A648E8 /* UsageStore.swift in Sources */,
@@ -407,7 +413,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -428,7 +434,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -523,7 +529,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -538,7 +544,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -33,14 +33,15 @@
 - 📊 **1:1 真面板**:主窗口直接运行 cc-switch 前端构建产物——Usage Hero、真 Recharts 趋势图(悬停提示与原版一致)、来源/模型筛选、日期范围、Request Logs / Provider Stats / Model Stats 三个标签页
 - 🔄 **5 秒实时刷新**:间隔可选 5/10/30/60 秒或关闭,选择持久化;菜单栏与主窗口共享同一个刷新节奏,数字永远一致
 - 🔋 **官方订阅额度**:读取本机 Claude Code 的 OAuth 凭据查询官方 `/api/oauth/usage`,5 分钟节流 + 进程内共享缓存,绝不打爆接口(429);首屏即显,无需等待
+- 🔌 **cc-switch 关闭也照常实时**:内置只读「未入库增量」叠加层,直接增量解析 Claude Code 会话日志并按 cc-switch 的价格表现场定价;cc-switch 补录入库时自动去重收敛,实测数字无缝交接
 - 🪟 **克制的窗口行为**:主窗口全局唯一,关掉后菜单栏继续常驻
 
 ## 前置条件(必读)
 
 > [!IMPORTANT]
 > 1. **macOS 14 (Sonoma) 及以上**;
-> 2. 已安装并**保持运行** [cc-switch](https://github.com/farion1231/cc-switch)(建议 ≥ 3.16)。
->    数据由 cc-switch 解析各 CLI 的会话日志写入本地数据库 `~/.cc-switch/cc-switch.db`,**本应用只读这个库、自己不采集数据**——cc-switch 没在运行时,数字不会更新;
+> 2. 已安装 [cc-switch](https://github.com/farion1231/cc-switch)(建议 ≥ 3.16)——历史数据、价格表与数据库都由它建立维护,本应用对其库**只读**;
+>    **cc-switch 不需要保持运行**:它关闭时,应用会直接增量解析 Claude Code 的会话日志(`~/.claude/projects`),把尚未入库的用量实时叠加显示,等 cc-switch 回来补录时按 request_id 精确去重、无缝交接不双算(Codex / Gemini 的**新增**用量仍需 cc-switch 运行导入);
 > 3. 额度徽标(5H/Week)需要本机登录过 Claude Code(从 Keychain / `~/.claude/.credentials.json` 读取 OAuth 凭据)。
 
 ## 安装
@@ -83,15 +84,18 @@ bash scripts/build.sh   # 生成工程 → Release 构建 → 安装到 /Applica
 │        │                        (embed/ 桥接入口编译产物)         │
 │        │                                │ invoke(cmd, args)      │
 │        ▼                                ▼                        │
-│  ┌──────────────────── Swift 数据层 ────────────────────┐        │
-│  │ UsageStore  → 只读 ~/.cc-switch/cc-switch.db (SQLite) │        │
-│  │ QuotaCache  → 官方 /api/oauth/usage,5 分钟节流        │        │
-│  └──────────────────────────────────────────────────────┘        │
+│  ┌──────────────────── Swift 数据层 ─────────────────────┐        │
+│  │ UsageStore     → 只读 ~/.cc-switch/cc-switch.db        │        │
+│  │ SessionOverlay → 直读 ~/.claude/projects 会话 JSONL     │        │
+│  │                  (cc-switch 尚未入库的增量,内存叠加)   │        │
+│  │ QuotaCache     → 官方 /api/oauth/usage,5 分钟节流      │        │
+│  └───────────────────────────────────────────────────────┘        │
 └──────────────────────────────────────────────────────────────────┘
-                    ▲ 数据写入方:cc-switch 本体(需保持运行)
+        ▲ 库的写入方始终只有 cc-switch(历史归档 + Codex/Gemini 导入)
 ```
 
 - 主窗口不是仿制界面,而是把 cc-switch 的前端源码加一层 `invoke` 桥接(`embed/`)后用 Vite 编译成单文件 `index.html`,跑在 WKWebView 里;前端发出的 Tauri `invoke` 调用被 Swift 拦下,直接查本地 SQLite 返回——统计口径逐条复刻 cc-switch 的 `usage_stats.rs`;
+- cc-switch 不在运行时,`SessionOverlay` 按 cc-switch 记录的行偏移(`session_log_sync`)只读续解析会话 JSONL,解析与定价规则逐条对齐其导入器(`session_usage.rs`);这些「未入库增量」在内存里并进所有查询,cc-switch 回来入库时按 `request_id` 精确去重、自动收敛为零——全程不写库,绝无双算;
 - 订阅额度走你本机的 Claude Code OAuth 凭据,查询结果在进程内共享缓存,菜单栏与面板读同一份,所以两边永远一致。
 
 ## 重建面板前端(可选)

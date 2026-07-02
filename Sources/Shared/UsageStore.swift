@@ -175,6 +175,46 @@ public final class UsageStore {
         return handle
     }
 
+    // MARK: - 未入库增量叠加（SessionOverlay）
+    //
+    // cc-switch 不在运行时,新用量只存在于会话 JSONL 里(session_log_sync 行偏移
+    // 之后)。SessionOverlay 只读解析这批行,这里把它们合并进各查询结果,让
+    // 菜单栏/面板在 cc-switch 关闭时照样实时。cc-switch 入库后 overlay 自动清空,
+    // 数字无缝交接(request_id 精确去重),不双算。
+
+    /// 取符合过滤条件的未入库增量行。app 恒为 claude;overlay 行 pricing_model
+    /// 为空 → 有效计价模型回落 model,与库内 session 行口径一致。
+    private func overlayRows(_ db: OpaquePointer, start: Int64?, end: Int64?,
+                             appType: String?, model: String?) -> [OverlayRow] {
+        if let at = appType, at != "claude" { return [] }
+        var rows = SessionOverlay.shared.pendingRows(db: db)
+        if let s = start { rows = rows.filter { $0.createdAt >= s } }
+        if let e = end { rows = rows.filter { $0.createdAt <= e } }
+        if let m = model { rows = rows.filter { $0.model == m } }
+        return rows
+    }
+
+    /// LogQueryFilter 版(Tabs 用):多两个维度——provider 名与状态码。
+    /// overlay 行的 provider 展示名恒为 "Claude (Session)",状态码恒 200。
+    private func overlayLogRows(_ db: OpaquePointer, _ f: LogQueryFilter) -> [OverlayRow] {
+        if let pn = f.providerName, pn != "Claude (Session)" { return [] }
+        if let sc = f.statusCode, sc != 200 { return [] }
+        return overlayRows(db, start: f.start, end: f.end, appType: f.appType, model: f.model)
+    }
+
+    /// 把增量行累加进汇总(claude 的 fresh_input = input,无 cache 扣减)。
+    private func addOverlay(_ s: inout UsageSummary, _ rows: [OverlayRow]) {
+        guard !rows.isEmpty else { return }
+        s.requests += rows.count
+        for r in rows {
+            s.input += r.input
+            s.output += r.output
+            s.creation += r.cacheCreation
+            s.hit += r.cacheRead
+            s.cost += r.totalCost
+        }
+    }
+
     // MARK: - rollup 日期边界（对齐 usage_stats.rs::compute_rollup_date_bounds）
     //
     // rollups 只纳入「完全落在区间内的整本地日」：区间起点非本地零点 → 从次日起；
@@ -256,6 +296,8 @@ public final class UsageStore {
             s.creation = sqlite3_column_int64(stmt, 4)
             s.hit      = sqlite3_column_int64(stmt, 5)
         }
+        // 未入库增量:所有汇总路径(Hero/菜单栏/累计/数据源)都经此函数,一处叠加全局生效
+        addOverlay(&s, overlayRows(db, start: f.start, end: f.end, appType: f.appType, model: f.model))
         return s
     }
 
@@ -391,6 +433,17 @@ public final class UsageStore {
             if s.requests == 0 && s.tokensProcessed == 0 { continue }
             out.append((appType: app, summary: s))
         }
+        // 未入库增量并入 claude 桶(不存在则新建)
+        let ov = overlayRows(db, start: filter.start, end: filter.end, appType: nil, model: filter.model)
+        if !ov.isEmpty {
+            if let i = out.firstIndex(where: { $0.appType == "claude" }) {
+                addOverlay(&out[i].summary, ov)
+            } else {
+                var s = UsageSummary()
+                addOverlay(&s, ov)
+                out.append((appType: "claude", summary: s))
+            }
+        }
         out.sort { $0.summary.tokensProcessed > $1.summary.tokensProcessed }
         return out
     }
@@ -442,6 +495,18 @@ public final class UsageStore {
             buckets[idx].hit      = sqlite3_column_int64(stmt, 4)
             buckets[idx].cost     = sqlite3_column_double(stmt, 5)
             buckets[idx].requestCount = Int(sqlite3_column_int64(stmt, 6))
+        }
+        // 未入库增量落进对应小时桶(越界钳到末桶,与 DB 行同规则)
+        for r in overlayRows(db, start: start, end: end, appType: f.appType, model: f.model) {
+            var idx = Int((r.createdAt - start) / bucketSeconds)
+            if idx < 0 { continue }
+            if idx >= count { idx = count - 1 }
+            buckets[idx].input    += r.input
+            buckets[idx].output   += r.output
+            buckets[idx].creation += r.cacheCreation
+            buckets[idx].hit      += r.cacheRead
+            buckets[idx].cost     += r.totalCost
+            buckets[idx].requestCount += 1
         }
         return buckets
     }
@@ -538,6 +603,19 @@ public final class UsageStore {
         fmt.locale = Locale(identifier: "en_US_POSIX")
         fmt.dateFormat = "yyyy-MM-dd"
 
+        // 未入库增量按本地日并入(与 logs 的 date(...,'localtime') 分组同口径)
+        for r in overlayRows(db, start: startTs, end: endTs, appType: f.appType, model: f.model) {
+            let d = fmt.string(from: Date(timeIntervalSince1970: TimeInterval(r.createdAt)))
+            var a = map[d] ?? Acc()
+            a.req += 1
+            a.input += r.input
+            a.output += r.output
+            a.creation += r.cacheCreation
+            a.hit += r.cacheRead
+            a.cost += r.totalCost
+            map[d] = a
+        }
+
         let startDay = cal.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(startTs)))
         let endDay = cal.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(endTs)))
         let dayCount = max(1, (cal.dateComponents([.day], from: startDay, to: endDay).day ?? 0) + 1)
@@ -563,14 +641,23 @@ public final class UsageStore {
     }
 
     private func lastEventTs(_ db: OpaquePointer) -> Int64? {
+        var dbTs: Int64? = nil
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT MAX(created_at) FROM proxy_request_logs", -1, &stmt, nil) == SQLITE_OK
-        else { return nil }
-        defer { sqlite3_finalize(stmt) }
-        if sqlite3_step(stmt) == SQLITE_ROW, sqlite3_column_type(stmt, 0) != SQLITE_NULL {
-            return sqlite3_column_int64(stmt, 0)
+        if sqlite3_prepare_v2(db, "SELECT MAX(created_at) FROM proxy_request_logs", -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW, sqlite3_column_type(stmt, 0) != SQLITE_NULL {
+                dbTs = sqlite3_column_int64(stmt, 0)
+            }
+            sqlite3_finalize(stmt)
         }
-        return nil
+        // 「最后活动」把未入库增量也算上(cc-switch 关闭时菜单栏的 "刚刚" 才是真的)
+        let ovTs = overlayRows(db, start: nil, end: nil, appType: nil, model: nil)
+            .map(\.createdAt).max()
+        switch (dbTs, ovTs) {
+        case (let a?, let b?): return max(a, b)
+        case (let a?, nil):    return a
+        case (nil, let b?):    return b
+        default:               return nil
+        }
     }
 
     /// 按过滤条件生成快照（区间汇总 + 累计 + 走势）。区间 ≤24h 走小时桶，否则天桶
@@ -796,6 +883,32 @@ public final class UsageStore {
                 dataSource: colTextOpt(stmt, 24)
             ))
         }
+        // 未入库增量:计入总数;并入第 0 页并按时间倒序重排(增量行都是最新的,
+        // 页可能略超 pageSize,前端列表照常渲染)。字段口径与 cc-switch 入库值一致。
+        let ov = overlayLogRows(db, f).sorted { $0.createdAt > $1.createdAt }
+        if !ov.isEmpty {
+            total += ov.count
+            if page == 0 {
+                let fmt6 = { (v: Double) in String(format: "%.6f", v) }
+                let ovRows = ov.map { r in
+                    RequestLogRow(
+                        requestId: r.requestId, providerId: "_session",
+                        providerName: "Claude (Session)", appType: "claude",
+                        model: r.model, requestModel: r.model, pricingModel: nil,
+                        costMultiplier: "1.0",
+                        inputTokens: r.input, outputTokens: r.output,
+                        cacheReadTokens: r.cacheRead, cacheCreationTokens: r.cacheCreation,
+                        inputCostUsd: fmt6(r.inputCost), outputCostUsd: fmt6(r.outputCost),
+                        cacheReadCostUsd: fmt6(r.cacheReadCost), cacheCreationCostUsd: fmt6(r.cacheCreationCost),
+                        totalCostUsd: fmt6(r.totalCost),
+                        isStreaming: true, latencyMs: 0, firstTokenMs: nil, durationMs: nil,
+                        statusCode: 200, errorMessage: nil, createdAt: r.createdAt,
+                        dataSource: "session_log"
+                    )
+                }
+                rows = (ovRows + rows).sorted { $0.createdAt > $1.createdAt }
+            }
+        }
         return RequestLogPage(rows: rows, total: total)
     }
 
@@ -840,6 +953,28 @@ public final class UsageStore {
                 avgLatencyMs: sqlite3_column_int64(stmt, 6)
             ))
         }
+        // 未入库增量并入 "Claude (Session)"(overlay 行恒 200/latency 0,按计数折算均值)
+        let ov = overlayLogRows(db, f)
+        if !ov.isEmpty {
+            let toks = ov.reduce(Int64(0)) { $0 + $1.input + $1.output }
+            let cost = ov.reduce(0.0) { $0 + $1.totalCost }
+            let n = Int64(ov.count)
+            if let i = out.firstIndex(where: { $0.providerId == "_session" }) {
+                let oldN = out[i].requestCount
+                let newN = oldN + n
+                out[i].successRate = newN > 0
+                    ? (out[i].successRate * Double(oldN) + 100.0 * Double(n)) / Double(newN) : 100
+                out[i].avgLatencyMs = newN > 0 ? out[i].avgLatencyMs * oldN / newN : 0
+                out[i].requestCount = newN
+                out[i].totalTokens += toks
+                out[i].totalCost += cost
+            } else {
+                out.append(ProviderStatRow(providerId: "_session", providerName: "Claude (Session)",
+                                           requestCount: n, totalTokens: toks, totalCost: cost,
+                                           successRate: 100, avgLatencyMs: 0))
+            }
+            out.sort { $0.totalCost > $1.totalCost }
+        }
         return out
     }
 
@@ -879,6 +1014,32 @@ public final class UsageStore {
                 totalCost: totalCost,
                 avgCostPerRequest: avg
             ))
+        }
+        // 未入库增量按模型并入(total_tokens 口径 = fresh_input + output,与 SQL 一致)
+        let ov = overlayLogRows(db, f)
+        if !ov.isEmpty {
+            var byModel: [String: (req: Int64, toks: Int64, cost: Double)] = [:]
+            for r in ov {
+                var a = byModel[r.model] ?? (0, 0, 0)
+                a.req += 1
+                a.toks += r.input + r.output
+                a.cost += r.totalCost
+                byModel[r.model] = a
+            }
+            for (m, a) in byModel {
+                if let i = out.firstIndex(where: { $0.model == m }) {
+                    out[i].requestCount += a.req
+                    out[i].totalTokens += a.toks
+                    out[i].totalCost += a.cost
+                    out[i].avgCostPerRequest = out[i].requestCount > 0
+                        ? out[i].totalCost / Double(out[i].requestCount) : 0
+                } else {
+                    out.append(ModelStatRow(model: m, requestCount: a.req, totalTokens: a.toks,
+                                            totalCost: a.cost,
+                                            avgCostPerRequest: a.req > 0 ? a.cost / Double(a.req) : 0))
+                }
+            }
+            out.sort { $0.totalCost > $1.totalCost }
         }
         return out
     }
