@@ -237,6 +237,12 @@ struct MenuBarLabel: View {
 
     private var isEmpty: Bool { segments.isEmpty && !model.mbAnyQuotaOn }
 
+    /// 状态项宽度锁：只增不减（本次运行内）。SwiftUI MenuBarExtra 的已知毛病——
+    /// label 运行中变窄（如取消勾选码片）时，状态项会被系统整个隐藏，变宽才恢复。
+    /// 锁住最大已见宽度后，取消勾选只是右侧留白、绝不收窄 → 不再触发隐藏；
+    /// 重启后按当前勾选恢复精确宽度。
+    @State private var lockedWidth: CGFloat = 0
+
     var body: some View {
         // 菜单栏 label = bolt 兄弟 Image + 单个 Text（实测唯一可靠组合：兄弟 Image 能显示、
         // 单个 Text 不被截断；而多个并列 Text 会被截、SF Symbol 塞进 Text 又渲染成空白）。
@@ -244,6 +250,14 @@ struct MenuBarLabel: View {
             Image(systemName: "bolt.fill")
             Text(labelString)
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { lockedWidth = max(lockedWidth, geo.size.width) }
+                    .onChange(of: geo.size.width) { _, w in lockedWidth = max(lockedWidth, w) }
+            }
+        )
+        .frame(minWidth: lockedWidth, alignment: .leading)
         .onAppear { model.start() }
     }
 
