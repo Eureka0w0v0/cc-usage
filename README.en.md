@@ -75,23 +75,29 @@ bash scripts/build.sh   # generate project → Release build → install to /App
 
 ## How it works
 
-```
-┌────────────────────────── CC Usage.app ──────────────────────────┐
-│                                                                  │
-│  Menu bar chips + panel (SwiftUI)     Main window (WKWebView)    │
-│        │                                │                        │
-│        │                        cc-switch real-frontend bundle   │
-│        │                        (built with the embed/ bridge)   │
-│        │                                │ invoke(cmd, args)      │
-│        ▼                                ▼                        │
-│  ┌──────────────────── Swift data layer ────────────────────┐    │
-│  │ UsageStore     → read-only ~/.cc-switch/cc-switch.db      │    │
-│  │ SessionOverlay → reads ~/.claude/projects session JSONL   │    │
-│  │                  (rows cc-switch hasn't imported yet)     │    │
-│  │ QuotaCache     → official /api/oauth/usage, 5-min throttle│    │
-│  └───────────────────────────────────────────────────────────┘    │
-└──────────────────────────────────────────────────────────────────┘
-     ▲ the only database writer is cc-switch (history + Codex/Gemini)
+```mermaid
+flowchart TB
+    subgraph app["CC Usage.app"]
+        menubar["Menu bar chips + panel<br/>(SwiftUI)"]
+        panel["Main window (WKWebView)<br/>cc-switch real-frontend bundle<br/>invoke(cmd, args) bridge"]
+        subgraph layer["Swift data layer"]
+            UsageStore["UsageStore<br/>read-only SQLite"]
+            SessionOverlay["SessionOverlay<br/>pending rows · in-memory overlay"]
+            QuotaCache["QuotaCache<br/>5-min throttle + in-flight dedup"]
+        end
+        menubar --> layer
+        panel --> layer
+    end
+    db[("~/.cc-switch/cc-switch.db")]
+    jsonl[("~/.claude/projects<br/>session JSONL")]
+    api(["api.anthropic.com<br/>/api/oauth/usage"])
+    ccswitch["cc-switch itself<br/>(history + Codex/Gemini import)"]
+
+    UsageStore -->|"read-only"| db
+    SessionOverlay -->|"read-only tail parsing"| jsonl
+    QuotaCache -->|"OAuth credentials"| api
+    jsonl -->|"parsed while running"| ccswitch
+    ccswitch -->|"the only writer"| db
 ```
 
 - The main window is not a re-implementation: cc-switch's frontend source plus a thin `invoke` bridge (`embed/`) is compiled by Vite into a single-file `index.html` running in a WKWebView. Tauri `invoke` calls from the frontend are intercepted in Swift and answered straight from the local SQLite database — aggregation semantics faithfully reimplement cc-switch's `usage_stats.rs`;

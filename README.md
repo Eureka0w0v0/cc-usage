@@ -75,23 +75,29 @@ bash scripts/build.sh   # 生成工程 → Release 构建 → 安装到 /Applica
 
 ## 工作原理
 
-```
-┌────────────────────────── CC Usage.app ──────────────────────────┐
-│                                                                  │
-│  菜单栏码片 + 弹窗 (SwiftUI)          主窗口 (WKWebView)          │
-│        │                                │                        │
-│        │                        cc-switch 真前端单文件 bundle     │
-│        │                        (embed/ 桥接入口编译产物)         │
-│        │                                │ invoke(cmd, args)      │
-│        ▼                                ▼                        │
-│  ┌──────────────────── Swift 数据层 ─────────────────────┐        │
-│  │ UsageStore     → 只读 ~/.cc-switch/cc-switch.db        │        │
-│  │ SessionOverlay → 直读 ~/.claude/projects 会话 JSONL     │        │
-│  │                  (cc-switch 尚未入库的增量,内存叠加)   │        │
-│  │ QuotaCache     → 官方 /api/oauth/usage,5 分钟节流      │        │
-│  └───────────────────────────────────────────────────────┘        │
-└──────────────────────────────────────────────────────────────────┘
-        ▲ 库的写入方始终只有 cc-switch(历史归档 + Codex/Gemini 导入)
+```mermaid
+flowchart TB
+    subgraph app["CC Usage.app"]
+        menubar["菜单栏码片 + 弹窗<br/>(SwiftUI)"]
+        panel["主窗口(WKWebView)<br/>cc-switch 真前端单文件 bundle<br/>invoke(cmd, args) 桥接"]
+        subgraph layer["Swift 数据层"]
+            UsageStore["UsageStore<br/>只读 SQLite"]
+            SessionOverlay["SessionOverlay<br/>未入库增量 · 内存叠加"]
+            QuotaCache["QuotaCache<br/>5 分钟节流 + 在途去重"]
+        end
+        menubar --> layer
+        panel --> layer
+    end
+    db[("~/.cc-switch/cc-switch.db")]
+    jsonl[("~/.claude/projects<br/>会话 JSONL")]
+    api(["api.anthropic.com<br/>/api/oauth/usage"])
+    ccswitch["cc-switch 本体<br/>(历史归档 + Codex/Gemini 导入)"]
+
+    UsageStore -->|"只读"| db
+    SessionOverlay -->|"只读尾部增量"| jsonl
+    QuotaCache -->|"OAuth 凭据"| api
+    jsonl -->|"运行时解析"| ccswitch
+    ccswitch -->|"唯一写入方"| db
 ```
 
 - 主窗口不是仿制界面,而是把 cc-switch 的前端源码加一层 `invoke` 桥接(`embed/`)后用 Vite 编译成单文件 `index.html`,跑在 WKWebView 里;前端发出的 Tauri `invoke` 调用被 Swift 拦下,直接查本地 SQLite 返回——统计口径逐条复刻 cc-switch 的 `usage_stats.rs`;
