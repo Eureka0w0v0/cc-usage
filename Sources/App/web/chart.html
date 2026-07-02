@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: transparent; overflow: hidden;
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; }
+  #root { width: 100%; height: 100%; }
+  /* Tooltip：对齐 cc-switch rounded-lg border bg-background/95 p-3 shadow-lg */
+  .tt { border-radius: 8px; border: 1px solid rgb(58,58,64);
+        background: rgba(29,29,32,0.95); padding: 12px;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+        backdrop-filter: blur(12px); }
+  .tt-label { margin: 0 0 8px 0; font-weight: 500; font-size: 14px; color: #FAFAFA; }
+  .tt-row { display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 1.43; }
+  .tt-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .tt-name { font-weight: 500; }
+  #err { display:none; position:fixed; left:8px; top:8px; right:8px; color:#f43f5e;
+         font-size:11px; white-space:pre-wrap; z-index:99; }
+  /* 图例颜色跟随线色（recharts 默认即如此） */
+  .recharts-legend-item-text { font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="err"></div>
+<script>
+  window.onerror = function(m, s, l, c, e){
+    var d = document.getElementById('err');
+    if (d){ d.style.display='block'; d.textContent = 'JS ERROR: ' + m + (e&&e.stack?'\n'+e.stack:''); }
+    return false;
+  };
+</script>
+<script src="react.js"></script>
+<script src="react-dom.js"></script>
+<script src="prop-types.js"></script>
+<script src="recharts.js"></script>
+<script>
+function showErr(msg){ var d=document.getElementById('err'); if(d){ d.style.display='block'; d.textContent = msg; } }
+(function(){
+ try {
+  var R = window.Recharts;
+  var h = window.React.createElement;
+  if (!R) { window.onerror('Recharts 未加载'); return; }
+  var AreaChart = R.AreaChart, Area = R.Area, XAxis = R.XAxis, YAxis = R.YAxis,
+      CartesianGrid = R.CartesianGrid, Tooltip = R.Tooltip,
+      ResponsiveContainer = R.ResponsiveContainer, Legend = R.Legend;
+
+  var muted = 'rgb(161,161,170)';   // --muted-foreground
+  var grid  = 'rgb(58,58,64)';      // --border
+
+  function fmtInt(v){ return (v==null?0:v).toLocaleString('en-US'); }
+  function fmtUsd(v,d){ return '$' + (v==null?0:v).toFixed(d); }
+
+  // 与 UsageTrendChart.tsx 的 CustomTooltip 一致
+  function CustomTooltip(props){
+    if (props.active && props.payload && props.payload.length){
+      return h('div', { className:'tt' },
+        h('p', { className:'tt-label' }, props.label),
+        props.payload.map(function(entry, i){
+          return h('div', { key:i, className:'tt-row', style:{ color: entry.color } },
+            h('div', { className:'tt-dot', style:{ backgroundColor: entry.color } }),
+            h('span', { className:'tt-name' }, entry.name + ':'),
+            h('span', null, entry.dataKey === 'cost' ? fmtUsd(entry.value, 6) : fmtInt(entry.value))
+          );
+        })
+      );
+    }
+    return null;
+  }
+
+  function grad(id, color){
+    return h('linearGradient', { id:id, x1:'0', y1:'0', x2:'0', y2:'1' },
+      h('stop', { offset:'5%',  stopColor:color, stopOpacity:0.2 }),
+      h('stop', { offset:'95%', stopColor:color, stopOpacity:0 }));
+  }
+
+  function area(axis, key, name, color, fillId, dash){
+    var props = { yAxisId:axis, type:'monotone', dataKey:key, name:name,
+      stroke:color, strokeWidth:2, isAnimationActive:false };
+    if (fillId){ props.fillOpacity = 1; props.fill = 'url(#' + fillId + ')'; }
+    else { props.fill = 'none'; }
+    if (dash){ props.strokeDasharray = dash; }
+    return h(Area, props);
+  }
+
+  function Chart(data){
+    return h(ResponsiveContainer, { width:'100%', height:'100%' },
+      h(AreaChart, { data:data, margin:{ top:10, right:10, left:0, bottom:0 } },
+        h('defs', null,
+          grad('colorInput','#3b82f6'), grad('colorOutput','#22c55e'),
+          grad('colorCacheCreation','#f97316'), grad('colorCacheRead','#a855f7')),
+        h(CartesianGrid, { strokeDasharray:'3 3', vertical:false, stroke:grid, opacity:0.4 }),
+        h(XAxis, { dataKey:'label', axisLine:false, tickLine:false,
+          tick:{ fill:muted, fontSize:12 }, dy:10 }),
+        h(YAxis, { yAxisId:'tokens', axisLine:false, tickLine:false,
+          tick:{ fill:muted, fontSize:12 }, tickFormatter:function(v){ return (v/1000).toFixed(0)+'k'; } }),
+        h(YAxis, { yAxisId:'cost', orientation:'right', axisLine:false, tickLine:false,
+          tick:{ fill:muted, fontSize:12 }, tickFormatter:function(v){ return '$'+v; } }),
+        h(Tooltip, { content: h(CustomTooltip) }),
+        // 显式 payload：与 cc-switch(Recharts3 默认排序) 一致的字母序 + "-o-" 线标记
+        h(Legend, { payload: [
+          { value: 'Cache Creation', type: 'line', id: 'cc', color: '#f97316' },
+          { value: 'Cache Hit',      type: 'line', id: 'ch', color: '#a855f7' },
+          { value: 'Cost',           type: 'line', id: 'co', color: '#f43f5e' },
+          { value: 'Input',          type: 'line', id: 'in', color: '#3b82f6' },
+          { value: 'Output',         type: 'line', id: 'ou', color: '#22c55e' }
+        ] }),
+        area('tokens','inputTokens','Input','#3b82f6','colorInput'),
+        area('tokens','outputTokens','Output','#22c55e','colorOutput'),
+        area('tokens','cacheCreationTokens','Cache Creation','#f97316','colorCacheCreation'),
+        area('tokens','cacheReadTokens','Cache Hit','#a855f7','colorCacheRead'),
+        area('cost','cost','Cost','#f43f5e', null, '4 4')
+      )
+    );
+  }
+
+  var root = window.ReactDOM.createRoot(document.getElementById('root'));
+
+  // 把 Swift 传来的原始桶转成 recharts 数据（label 用与源码一致的本地化格式）
+  function toChartData(raw){
+    var arr = raw || [];
+    var hourly = true;
+    if (arr.length >= 2) {
+      var span = new Date(arr[arr.length - 1].dateISO) - new Date(arr[0].dateISO);
+      hourly = span <= 24 * 3600 * 1000;   // ≤24h 走小时:分，否则只显示 MM/DD
+    }
+    return arr.map(function(p){
+      var d = new Date(p.dateISO);
+      var label = hourly
+        ? d.toLocaleString('en-US', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+        : d.toLocaleDateString('en-US', { month:'2-digit', day:'2-digit' });
+      return {
+        label: label,
+        inputTokens: p.inputTokens, outputTokens: p.outputTokens,
+        cacheCreationTokens: p.cacheCreationTokens, cacheReadTokens: p.cacheReadTokens,
+        cost: p.cost
+      };
+    });
+  }
+
+  function doRender(raw){
+    try { root.render(Chart(toChartData(raw))); }
+    catch(e){ showErr('RENDER ERROR: ' + (e&&e.message) + '\n' + (e&&e.stack)); }
+  }
+  // 悬停期间暂停重绘：5s 自动刷新不打断 tooltip，鼠标移开再补最新数据
+  var hovering = false, pending = null, hasPending = false;
+  var rootEl = document.getElementById('root');
+  rootEl.addEventListener('mouseenter', function(){ hovering = true; });
+  rootEl.addEventListener('mouseleave', function(){
+    hovering = false;
+    if (hasPending) { hasPending = false; var d = pending; pending = null; doRender(d); }
+  });
+  window.updateData = function(raw){
+    if (hovering) { pending = raw; hasPending = true; return; }
+    doRender(raw);
+  };
+  doRender([]);
+ } catch(e){
+   showErr('INIT ERROR: ' + (e&&e.message) + '\n' + (e&&e.stack));
+ }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# 构建产物 / 派生数据
+build/
+DerivedData/
+*.xcresult
+
+# 系统 / 用户特定
+.DS_Store
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# 临时
+*.swp
+
+# 内部工作文档（不进公开仓库）
+docs-internal/

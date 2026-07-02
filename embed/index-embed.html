@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CC Usage Panel</title>
+    <script>
+      // 在模块加载前把 i18n 语言锁成英文，并强制深色主题。
+      try {
+        window.localStorage.setItem("language", "en");
+      } catch (e) {}
+      try {
+        document.documentElement.classList.add("dark");
+      } catch (e) {}
+      // 运行期错误上报给原生（可选），便于 WKWebView 里排查。
+      window.addEventListener("error", function (e) {
+        try {
+          var mh =
+            window.webkit &&
+            window.webkit.messageHandlers &&
+            window.webkit.messageHandlers.embedError;
+          if (mh) mh.postMessage(String((e && e.message) || e));
+        } catch (_) {}
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        try {
+          var mh =
+            window.webkit &&
+            window.webkit.messageHandlers &&
+            window.webkit.messageHandlers.embedError;
+          if (mh) mh.postMessage("unhandledrejection: " + String(e && e.reason));
+        } catch (_) {}
+      });
+    </script>
+    <style>
+      /* 背景透明，让原生窗口底色透出（覆盖 index.css 的 body 背景，无 !important 的规则会被这里压过）。 */
+      html,
+      body,
+      #root {
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+      html {
+        color-scheme: dark;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/usage-embed.tsx"></script>
+  </body>
+</html>
