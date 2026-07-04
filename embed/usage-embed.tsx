@@ -20,6 +20,7 @@ import {
   ListFilter,
   Activity,
   BarChart3,
+  Clock,
 } from "lucide-react";
 import {
   QueryClientProvider,
@@ -181,11 +182,12 @@ function QuotaBadge({ label, tier }: { label: string; tier?: QuotaTierData }) {
   const pct = tier ? Math.round(tier.utilization) : null;
   const frac = tier ? Math.min(1, Math.max(0, tier.utilization / 100)) : 0;
   const color = tier ? quotaColor(tier.utilization) : undefined;
+  const countdown = tier ? quotaCountdown(tier.resetsAt) : null;
 
   const title = tier
     ? [
         `${label} · ${pct}%`,
-        quotaCountdown(tier.resetsAt) ? `resets in ${quotaCountdown(tier.resetsAt)}` : null,
+        countdown ? `resets in ${countdown}` : null,
         tier.planLabel || null,
       ]
         .filter(Boolean)
@@ -195,23 +197,31 @@ function QuotaBadge({ label, tier }: { label: string; tier?: QuotaTierData }) {
   return (
     <div
       title={title}
-      className="flex h-9 items-center gap-1.5 rounded-md border border-border/50 bg-background px-2.5 text-xs"
+      className="flex h-9 flex-col justify-center gap-0.5 rounded-md border border-border/50 bg-background px-2.5 text-xs"
     >
-      <span className="font-medium text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          "font-semibold tabular-nums",
-          pct == null && "text-muted-foreground",
-        )}
-        style={color ? { color } : undefined}
-      >
-        {pct == null ? "—" : `${pct}%`}
-      </span>
-      <div className="relative h-1.5 w-8 overflow-hidden rounded-full bg-muted">
-        <div
-          className="absolute inset-y-0 left-0 rounded-full transition-[width]"
-          style={{ width: `${frac * 100}%`, backgroundColor: color ?? "transparent" }}
-        />
+      <div className="flex items-center gap-1.5">
+        <span className="font-medium text-muted-foreground">{label}</span>
+        <span
+          className={cn(
+            "font-semibold tabular-nums",
+            pct == null && "text-muted-foreground",
+          )}
+          style={color ? { color } : undefined}
+        >
+          {pct == null ? "—" : `${pct}%`}
+        </span>
+        <div className="relative h-1.5 w-8 overflow-hidden rounded-full bg-muted">
+          <div
+            className="absolute inset-y-0 left-0 rounded-full transition-[width]"
+            style={{ width: `${frac * 100}%`, backgroundColor: color ?? "transparent" }}
+          />
+        </div>
+      </div>
+      {/* 重置倒计时行（Clock + "2h28m"，样式对齐 cc-switch TierBadge 的 inline 倒计时）。
+          无数据/已重置时占位 "—"，保持徽标高度稳定不跳动。 */}
+      <div className="flex items-center gap-1 text-[10px] leading-none text-muted-foreground/70 tabular-nums">
+        <Clock className="h-2.5 w-2.5 shrink-0" />
+        <span>{countdown ?? "—"}</span>
       </div>
     </div>
   );
@@ -219,6 +229,14 @@ function QuotaBadge({ label, tier }: { label: string; tier?: QuotaTierData }) {
 
 function QuotaBadges({ pollMs }: { pollMs: number }) {
   const tiers = useQuotaTiers(pollMs);
+  // 倒计时行的本地步进：额度数据最慢 5 分钟才轮询一次（面板关闭自动刷新时），
+  // 若只靠轮询重渲染，倒计时会"停走"最多 5 分钟。这里每 30s 强制重渲染一次让
+  // quotaCountdown 重算——纯本地计算，不碰 get_quota、更不碰官方接口。
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
   const fiveHour = tiers.find((t) => t.name === "five_hour");
   const weekly = tiers.find((t) => t.name === "seven_day");
   return (
