@@ -115,17 +115,30 @@ final class PanelModel: ObservableObject {
     @Published var appType: String? { didSet { reload() } }
     @Published var model: String? { didSet { reload() } }
     @Published var range: DateRangePreset = .today { didSet { reload() } }
+    /// 0 = 面板关闭自动刷新（菜单栏仍按 menuBarFallbackSeconds 兜底节奏更新）。
     @Published var intervalSeconds: Int = 5 { didSet { restartTimer() } }
+
+    /// 面板选 off 时菜单栏的兜底节奏：面板可以不刷，常驻的菜单栏数字/额度不能永远冻结。
+    static let menuBarFallbackSeconds = 60
 
     private var timer: AnyCancellable?
     private let store = UsageStore()
     private var started = false
+    private var isReloading = false
+    private var pendingReload = false
 
     func start() {
         guard !started else { return }
         started = true
-        apps = store.distinctAppTypes()
-        models = store.distinctModels()
+        let store = self.store
+        Task { [weak self] in
+            // 首次打库也放后台（与 reload 同理），结果回主线程发布
+            let lists = await Task.detached(priority: .utility) {
+                (store.distinctAppTypes(), store.distinctModels())
+            }.value
+            guard let self else { return }
+            (self.apps, self.models) = lists
+        }
         reload()
         restartTimer()
         if mbAnyQuotaOn { refreshQuotaNow() }   // 启动时若已开启额度码片，立即取一次
@@ -141,39 +154,72 @@ final class PanelModel: ObservableObject {
 
     private func restartTimer() {
         timer?.cancel()
-        guard intervalSeconds > 0 else { return }
-        timer = Timer.publish(every: Double(intervalSeconds), on: .main, in: .common)
+        // 面板选 off 时不再停摆，降到兜底节奏——菜单栏数字/额度码片继续呼吸
+        let period = intervalSeconds > 0 ? intervalSeconds : Self.menuBarFallbackSeconds
+        timer = Timer.publish(every: Double(period), on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.reload() }
     }
 
+    /// 一次后台 reload 的产出（值类型，跨线程安全）。
+    private struct ReloadOutput: Sendable {
+        var snap: UsageSnapshot?
+        var today: UsageSummary?
+        var week: UsageSummary?
+        var month: UsageSummary?
+        var errorText: String?
+    }
+
     func reload() {
+        // 全部 SQL + 会话 JSONL 扫描下放后台：冷启动的 overlay 全量扫可达秒级，
+        // 不能卡主线程。在途时只记一笔待办、完成后立即补一轮——筛选切换不会被吞。
+        if isReloading { pendingReload = true; return }
+        isReloading = true
+
         let (s, e) = range.bounds()
-        let now = Int64(Date().timeIntervalSince1970)
-        do {
-            snap = try store.snapshot(filter: UsageFilter(start: s, end: e, appType: appType, model: model))
+        let filter = UsageFilter(start: s, end: e, appType: appType, model: model)
+        let store = self.store
 
-            // 菜单栏专用：今日（本日零点，与面板 Today 一致）+ 近 7 天 / 近 30 天（滚动窗口），全部来源。
-            // 用滚动窗口而非日历「本周/本月」——否则月初时「本周」会跨回上月、反比「本月」多，违反「月≥周≥日」直觉。
-            let dayStart = Int64(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
-            mbToday = try? store.rangeSummary(UsageFilter(start: dayStart, end: now))
-            mbWeek  = try? store.rangeSummary(UsageFilter(start: now - 7 * 86400, end: now))
-            mbMonth = try? store.rangeSummary(UsageFilter(start: now - 30 * 86400, end: now))
+        Task { [weak self] in
+            let out = await Task.detached(priority: .userInitiated) { () -> ReloadOutput in
+                var o = ReloadOutput()
+                do {
+                    o.snap = try store.snapshot(filter: filter)
+                    // 菜单栏专用：今日（本日零点，与面板 Today 一致）+ 近 7 天 / 近 30 天（滚动窗口），全部来源。
+                    // 用滚动窗口而非日历「本周/本月」——否则月初时「本周」会跨回上月、反比「本月」多，违反「月≥周≥日」直觉。
+                    let now = Int64(Date().timeIntervalSince1970)
+                    let dayStart = Int64(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
+                    o.today = try? store.rangeSummary(UsageFilter(start: dayStart, end: now))
+                    o.week  = try? store.rangeSummary(UsageFilter(start: now - 7 * 86400, end: now))
+                    o.month = try? store.rangeSummary(UsageFilter(start: now - 30 * 86400, end: now))
+                } catch {
+                    o.errorText = "\(error)"
+                }
+                return o
+            }.value
 
-            // 官方额度：仅当有额度码片开启时才查（默认关 → 不读凭据、不联网）。
-            // 走 QuotaCache（5 分钟节流 + stale-if-error），与 embed 的 get_quota 共享同一份缓存。
-            // 仅当有「额度」码片开启时才查（默认关→不读凭据、不联网）。走 QuotaCache 5 分钟节流
-            // + stale-if-error：限流(429)/失败时保留上次值，不会把接口打爆。
-            if mbAnyQuotaOn {
-                Task { [weak self] in
-                    let tiers = await QuotaService.fetchTiersForBridge()
-                    self?.quotaTiers = tiers
+            guard let self else { return }
+            if let err = out.errorText {
+                self.error = err
+            } else {
+                self.snap = out.snap
+                self.mbToday = out.today
+                self.mbWeek = out.week
+                self.mbMonth = out.month
+                self.error = nil
+                self.reloadWidgetsThrottled()
+                // 官方额度：仅当有额度码片开启时才查（默认关 → 不读凭据、不联网）。
+                // 走 QuotaCache（5 分钟节流 + stale-if-error），与 embed 的 get_quota 共享同一份
+                // 缓存；限流(429)/失败时保留上次值，不会把接口打爆。独立 Task：网络耗时不阻塞下轮 reload。
+                if self.mbAnyQuotaOn {
+                    Task { [weak self] in
+                        let tiers = await QuotaService.fetchTiersForBridge()
+                        self?.quotaTiers = tiers
+                    }
                 }
             }
-            error = nil
-            reloadWidgetsThrottled()
-        } catch {
-            self.error = "\(error)"
+            self.isReloading = false
+            if self.pendingReload { self.pendingReload = false; self.reload() }
         }
     }
 
@@ -301,6 +347,15 @@ struct MenuBarPanel: View {
                 TrendChart(buckets: snap.trend, showAxes: false, interactive: false)
                     .frame(height: 80)
             }
+            // 数据层出错时给出可见降级（比如 cc-switch.db 不存在）——否则面板一片空、无从排查
+            if let err = model.error {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2).foregroundStyle(.orange)
+                    Text(err).font(.caption2).foregroundStyle(Theme.textDim)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
             Divider().overlay(Theme.track.opacity(0.5))
 
@@ -332,7 +387,9 @@ struct MenuBarPanel: View {
                     }
                 } label: { Text("Open Main Window") }
                 Spacer()
-                Text(model.intervalSeconds == 0 ? "Auto-refresh off" : "Every \(model.intervalSeconds)s")
+                Text(model.intervalSeconds == 0
+                     ? "Panel refresh off · menu bar \(PanelModel.menuBarFallbackSeconds)s"
+                     : "Every \(model.intervalSeconds)s")
                     .font(.caption2).foregroundStyle(Theme.textDim)
             }
         }

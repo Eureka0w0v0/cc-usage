@@ -50,13 +50,13 @@ public enum Fmt {
         n >= 1000 ? String(format: "%.1fK", Double(n) / 1000) : "\(n)"
     }
 
-    /// "更新于 3 分钟前"
+    /// "3m ago"（UI 统一英文，与面板/菜单栏其余文案一致）
     public static func relative(_ date: Date?, now: Date = Date()) -> String {
         guard let date else { return "—" }
         let s = Int(now.timeIntervalSince(date))
-        if s < 60 { return "刚刚" }
-        if s < 3600 { return "\(s / 60) 分钟前" }
-        if s < 86400 { return "\(s / 3600) 小时前" }
-        return "\(s / 86400) 天前"
+        if s < 60 { return "just now" }
+        if s < 3600 { return "\(s / 60)m ago" }
+        if s < 86400 { return "\(s / 3600)h ago" }
+        return "\(s / 86400)d ago"
     }
 }

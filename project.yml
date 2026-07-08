@@ -52,3 +52,28 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/Widget/Widget.entitlements
     dependencies:
       - sdk: libsqlite3.tbd
+
+  # ── 单元测试（直接把 Sources/Shared 编进来 → 同模块可见 internal，不依赖宿主 App）──
+  # 全部对着临时 sqlite / 临时目录跑，不碰真实 ~/.cc-switch 与 ~/.claude/projects。
+  # 运行: scripts/test.sh
+  CCUsageWidgetTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+      - Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganxing.ccusage.tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - sdk: libsqlite3.tbd
+
+schemes:
+  CCUsageWidgetTests:
+    build:
+      targets:
+        CCUsageWidgetTests: [test]
+    test:
+      targets:
+        - CCUsageWidgetTests

@@ -1,0 +1,38 @@
+# Smoke build + 单元测试：防 PR / 上游同步把编译或口径弄坏。
+# 面板产物（Sources/App/web-panel）已入库，CI 无需重建 embed。
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build app (Release, ad-hoc signed)
+        run: |
+          xcodebuild build -project CCUsageWidget.xcodeproj \
+            -scheme CCUsageWidget -configuration Release \
+            -destination 'platform=macOS' \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO ENABLE_DEBUG_DYLIB=NO \
+            -quiet
+
+      - name: Run unit tests
+        run: |
+          xcodebuild test -project CCUsageWidget.xcodeproj \
+            -scheme CCUsageWidgetTests \
+            -destination 'platform=macOS' \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            -quiet

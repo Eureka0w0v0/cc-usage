@@ -30,7 +30,7 @@ struct SmallView: View {
                 .font(.system(size: 30, weight: .bold, design: .rounded))
                 .foregroundStyle(Theme.textMain)
                 .minimumScaleFactor(0.6).lineLimit(1)
-            Text("今日 tokens").font(.system(size: 10)).foregroundStyle(Theme.textDim)
+            Text("Tokens today").font(.system(size: 10)).foregroundStyle(Theme.textDim)
             HStack(spacing: 6) {
                 Text(Fmt.cost(snap.today.cost)).foregroundStyle(Theme.output)
                 Text("·").foregroundStyle(Theme.textDim)
@@ -55,7 +55,7 @@ struct MediumView: View {
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.textMain)
                     .minimumScaleFactor(0.6).lineLimit(1)
-                Text("今日 tokens").font(.system(size: 10)).foregroundStyle(Theme.textDim)
+                Text("Tokens today").font(.system(size: 10)).foregroundStyle(Theme.textDim)
                 HStack(spacing: 6) {
                     Text(Fmt.cost(snap.today.cost)).foregroundStyle(Theme.output)
                     Text("·").foregroundStyle(Theme.textDim)
@@ -66,10 +66,10 @@ struct MediumView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("今日走势").font(.system(size: 10)).foregroundStyle(Theme.textDim)
+                Text("Today's trend").font(.system(size: 10)).foregroundStyle(Theme.textDim)
                 TrendChart(buckets: snap.trend, showAxes: false)
                     .frame(maxHeight: .infinity)
-                Text("累计 \(Fmt.tokens(snap.cumulative.tokensProcessed)) · \(Fmt.cost(snap.cumulative.cost))")
+                Text("Total \(Fmt.tokens(snap.cumulative.tokensProcessed)) · \(Fmt.cost(snap.cumulative.cost))")
                     .font(.system(size: 9)).foregroundStyle(Theme.textDim)
             }
             .frame(maxWidth: .infinity)
@@ -184,7 +184,7 @@ struct ErrorView: View {
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-            Text("读取 cc-switch 数据失败").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.textMain)
+            Text("Failed to read cc-switch data").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.textMain)
             Text(text).font(.system(size: 8)).foregroundStyle(Theme.textDim).lineLimit(3)
         }
         .padding()

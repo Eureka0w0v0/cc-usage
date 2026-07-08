@@ -1,17 +1,10 @@
 import Foundation
 
 // 命令行验证：跑 UsageStore 对着真实 cc-switch.db，打印数字，人工比对面板。
-// 编译: swiftc Sources/Shared/UsageStore.swift Tools/verify/main.swift -o /tmp/ccverify -lsqlite3
+// 编译: swiftc Sources/Shared/UsageStore.swift Sources/Shared/SessionOverlay.swift \
+//         Sources/Shared/Formatting.swift Tools/verify/main.swift -o /tmp/ccverify -lsqlite3
 
-func fmtTokens(_ n: Int64) -> String {
-    let d = Double(n)
-    switch abs(d) {
-    case 1_000_000_000...: return String(format: "%.2fB", d / 1_000_000_000)
-    case 1_000_000...:     return String(format: "%.2fM", d / 1_000_000)
-    case 1_000...:         return String(format: "%.1fK", d / 1_000)
-    default:               return "\(n)"
-    }
-}
+func fmtTokens(_ n: Int64) -> String { Fmt.tokens(n) }
 
 let store = UsageStore()
 do {

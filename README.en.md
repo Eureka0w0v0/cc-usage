@@ -113,7 +113,20 @@ git clone https://github.com/farion1231/cc-switch ../cc-switch   # or point to y
 CC_SWITCH_DIR=../cc-switch bash scripts/build-embed.sh
 ```
 
-The script copies the bridge files under `embed/` into the cc-switch tree (all additive — no upstream file is modified), builds the single-file panel with pnpm + Vite and writes it back into this repo.
+The script copies the bridge files under `embed/` into the cc-switch tree (all additive — no upstream source file is modified; `pnpm add` does update its package.json/lockfile to pull in the bundling plugin), builds the single-file panel with pnpm + Vite and writes it back into this repo.
+
+> [!NOTE]
+> The bridge layer is verified against a **specific cc-switch commit** (see `CC_SWITCH_REF` in the script). If your checkout is on a different commit the script warns; set `CC_SWITCH_CHECKOUT=1` to switch automatically, or bump `CC_SWITCH_REF` after verifying a newer upstream.
+
+## Development
+
+```bash
+bash scripts/test.sh    # unit tests: pricing candidates / rollup bounds / two-table
+                        # merge without double counting / overlay parsing, etc.
+                        # All run against temp sqlite + temp dirs — real data untouched.
+```
+
+Pushes and PRs trigger a GitHub Actions smoke build + tests (`.github/workflows/build.yml`).
 
 ## Privacy
 

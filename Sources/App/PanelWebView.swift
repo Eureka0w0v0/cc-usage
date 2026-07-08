@@ -9,8 +9,9 @@ struct PanelWebView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
-        config.setValue(true, forKey: "allowUniversalAccessFromFileURLs")
+        // 不开 allowFileAccessFromFileURLs / allowUniversalAccessFromFileURLs（KVC 私有键）：
+        // 面板是单文件 index.html（JS/CSS/字体全内联），数据全走 message handler，
+        // 无 file:// 跨文件/跨源访问需求——少开一扇门，也免私有键在系统更新后悄悄失效。
         // JS: window.webkit.messageHandlers.invoke.postMessage({cmd,args}) → 返回 Promise
         config.userContentController.addScriptMessageHandler(
             context.coordinator, contentWorld: .page, name: "invoke")
@@ -34,6 +35,12 @@ struct PanelWebView: NSViewRepresentable {
 
     final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
         private let store = UsageStore()
+        /// SQL/overlay 扫描全部下放到这条并发队列（UsageStore 每次查询独立连接、线程安全），
+        /// 主线程只收发消息——面板高频刷新不再与 UI 抢主线程。
+        private static let workQueue = DispatchQueue(
+            label: "cc-usage.bridge", qos: .userInitiated, attributes: .concurrent)
+        /// ISO8601DateFormatter 线程安全，静态复用（quotaJSON / trends 每 tick 都在调）。
+        private static let iso = ISO8601DateFormatter()
 
         func userContentController(_ ucc: WKUserContentController,
                                    didReceive message: WKScriptMessage,
@@ -56,18 +63,20 @@ struct PanelWebView: NSViewRepresentable {
                 return
             }
 
-            do {
-                let result = try handle(cmd, args)
-                replyHandler(result, nil)
-            } catch {
-                replyHandler(nil, "\(error)")
+            // 其余命令：后台执行查询，主线程回填（replyHandler 的调用约定）
+            Self.workQueue.async { [self] in
+                do {
+                    let result = try handle(cmd, args)
+                    DispatchQueue.main.async { replyHandler(result, nil) }
+                } catch {
+                    DispatchQueue.main.async { replyHandler(nil, "\(error)") }
+                }
             }
         }
 
         /// [QuotaTier] → 前端可消费、WKWebView 可序列化的 JSON：
         /// [{ name, utilization(0–100), resetsAt: ISO8601?, planLabel? }]。
         private static func quotaJSON(_ tiers: [QuotaTier]) -> [[String: Any]] {
-            let iso = ISO8601DateFormatter()
             return tiers.map { t in
                 [
                     "name": t.name,
@@ -236,9 +245,6 @@ struct PanelWebView: NSViewRepresentable {
 
         // 单个 summary → camelCase dict（对齐 types/usage.ts UsageSummary）
         private func summaryDict(_ s: UsageSummary) -> [String: Any] {
-            let real = s.input + s.output + s.creation + s.hit
-            let denom = Double(s.input + s.creation + s.hit)
-            let hitRate = denom > 0 ? Double(s.hit) / denom : 0
             return [
                 "totalRequests": s.requests,
                 "totalCost": String(format: "%.6f", s.cost),
@@ -247,8 +253,8 @@ struct PanelWebView: NSViewRepresentable {
                 "totalCacheCreationTokens": s.creation,
                 "totalCacheReadTokens": s.hit,
                 "successRate": 100.0,
-                "realTotalTokens": real,
-                "cacheHitRate": hitRate,
+                "realTotalTokens": s.tokensProcessed,
+                "cacheHitRate": s.cacheHitRate,
             ]
         }
 
@@ -262,11 +268,13 @@ struct PanelWebView: NSViewRepresentable {
             }
         }
 
-        // get_usage_trends → DailyStats[]（date rfc3339 + 各 token/cost 字段，camelCase）
+        // get_usage_trends → DailyStats[]（date rfc3339 + 各 token/cost 字段，camelCase）。
+        // 走 trendBuckets 而非 snapshot——后者顺带算的「区间 + 累计」4 次聚合在这条路径全是白算。
         private func trends(start: Int64?, end: Int64?, appType: String?, model: String?) throws -> [[String: Any]] {
-            let snap = try store.snapshot(filter: UsageFilter(start: start, end: end, appType: appType, model: model))
-            let iso = ISO8601DateFormatter()
-            return snap.trend.map { b in
+            let buckets = try store.trendBuckets(
+                filter: UsageFilter(start: start, end: end, appType: appType, model: model))
+            let iso = Self.iso
+            return buckets.map { b in
                 return [
                     "date": iso.string(from: Date(timeIntervalSince1970: TimeInterval(b.startTs))),
                     "requestCount": b.requestCount,

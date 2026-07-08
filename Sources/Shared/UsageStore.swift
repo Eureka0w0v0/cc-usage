@@ -57,8 +57,8 @@ public enum UsageStoreError: Error, CustomStringConvertible {
     case prepare(String)
     public var description: String {
         switch self {
-        case .open(let rc): return "无法打开数据库 (sqlite rc=\(rc))"
-        case .prepare(let sql): return "SQL 准备失败: \(sql)"
+        case .open(let rc): return "cannot open database (sqlite rc=\(rc))"
+        case .prepare(let sql): return "failed to prepare SQL: \(sql)"
         }
     }
 }
@@ -152,7 +152,9 @@ public struct ModelStatRow: Sendable {
 // SQLite 绑定文本时用（拷贝字符串，安全）
 let SQLITE_TRANSIENT_DEST = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-public final class UsageStore {
+/// 线程安全：自身状态只有两个不可变引用（path / overlay），每次查询独立开只读连接，
+/// SessionOverlay 内部有锁——可安全从任意线程调用（后台 reload / 桥接队列都依赖这点）。
+public final class UsageStore: @unchecked Sendable {
     // claude-desktop → claude，口径对齐 cc-switch
     static let foldedApp = "CASE WHEN app_type='claude-desktop' THEN 'claude' ELSE app_type END"
 
@@ -160,7 +162,12 @@ public final class UsageStore {
         (NSHomeDirectory() as NSString).appendingPathComponent(".cc-switch/cc-switch.db")
 
     private let path: String
-    public init(path: String = UsageStore.defaultPath) { self.path = path }
+    private let overlay: SessionOverlay
+    /// overlay 可注入：测试用独立实例（空 projectsDir）隔离真实会话日志，生产默认共享单例。
+    public init(path: String = UsageStore.defaultPath, overlay: SessionOverlay = .shared) {
+        self.path = path
+        self.overlay = overlay
+    }
 
     // 只读打开（mode=ro，尊重 WAL，绝不写库）
     private func openRO() throws -> OpaquePointer {
@@ -187,7 +194,7 @@ public final class UsageStore {
     private func overlayRows(_ db: OpaquePointer, start: Int64?, end: Int64?,
                              appType: String?, model: String?) -> [OverlayRow] {
         if let at = appType, at != "claude" { return [] }
-        var rows = SessionOverlay.shared.pendingRows(db: db)
+        var rows = overlay.pendingRows(db: db)
         if let s = start { rows = rows.filter { $0.createdAt >= s } }
         if let e = end { rows = rows.filter { $0.createdAt <= e } }
         if let m = model { rows = rows.filter { $0.model == m } }
@@ -220,9 +227,10 @@ public final class UsageStore {
     // rollups 只纳入「完全落在区间内的整本地日」：区间起点非本地零点 → 从次日起；
     // 区间终点非本地 23:59 → 到前一日止。边界不足整日的那天由 logs(精确 created_at)覆盖，
     // 避免与 rollups 双算。isEmpty=true 时（start>end）用 "1=0" 让 rollups 部分为空。
-    private struct RollupBounds { var start: String?; var end: String?; var isEmpty: Bool }
+    struct RollupBounds { var start: String?; var end: String?; var isEmpty: Bool }
 
-    private func rollupDateBounds(_ startTs: Int64?, _ endTs: Int64?, _ cal: Calendar) -> RollupBounds {
+    // internal（而非 private）：整日边界对齐是防双算的关键逻辑，单测直接驱动。
+    func rollupDateBounds(_ startTs: Int64?, _ endTs: Int64?, _ cal: Calendar) -> RollupBounds {
         let fmt = DateFormatter()
         fmt.calendar = cal
         fmt.timeZone = cal.timeZone
@@ -485,16 +493,18 @@ public final class UsageStore {
         var buckets = (0..<count).map { i in
             TrendBucket(startTs: start + Int64(i) * bucketSeconds)
         }
+        // 累加而非赋值：GROUP BY 保证桶号唯一，但 created_at 恰等于 end 且区间为整桶宽时
+        // 会产生一个越界桶号、被钳到末桶——若用赋值，末小时的真实聚合会被这条边界行覆盖。
         while sqlite3_step(stmt) == SQLITE_ROW {
             var idx = Int(sqlite3_column_int64(stmt, 0))
             if idx < 0 { continue }
             if idx >= count { idx = count - 1 }
-            buckets[idx].input    = sqlite3_column_int64(stmt, 1)
-            buckets[idx].output   = sqlite3_column_int64(stmt, 2)
-            buckets[idx].creation = sqlite3_column_int64(stmt, 3)
-            buckets[idx].hit      = sqlite3_column_int64(stmt, 4)
-            buckets[idx].cost     = sqlite3_column_double(stmt, 5)
-            buckets[idx].requestCount = Int(sqlite3_column_int64(stmt, 6))
+            buckets[idx].input    += sqlite3_column_int64(stmt, 1)
+            buckets[idx].output   += sqlite3_column_int64(stmt, 2)
+            buckets[idx].creation += sqlite3_column_int64(stmt, 3)
+            buckets[idx].hit      += sqlite3_column_int64(stmt, 4)
+            buckets[idx].cost     += sqlite3_column_double(stmt, 5)
+            buckets[idx].requestCount += Int(sqlite3_column_int64(stmt, 6))
         }
         // 未入库增量落进对应小时桶(越界钳到末桶,与 DB 行同规则)
         for r in overlayRows(db, start: start, end: end, appType: f.appType, model: f.model) {
@@ -660,21 +670,30 @@ public final class UsageStore {
         }
     }
 
-    /// 按过滤条件生成快照（区间汇总 + 累计 + 走势）。区间 ≤24h 走小时桶，否则天桶
+    /// 缺省时间窗填充：start 缺省 = 本地今日零点，end 缺省 = now（snapshot / trendBuckets 共用）。
+    private func resolvedFilter(_ filter: UsageFilter, now: Date, _ cal: Calendar) -> UsageFilter {
+        var f = filter
+        f.start = filter.start ?? Int64(cal.startOfDay(for: now).timeIntervalSince1970)
+        f.end = filter.end ?? Int64(now.timeIntervalSince1970)
+        return f
+    }
+
+    /// 粒度选择：区间 ≤24h 走小时桶，否则天桶
     /// （阈值与前端 UsageTrendChart 的 isHourly = duration<=24h 严格一致，避免粒度错位）。
+    private func trend(_ db: OpaquePointer, _ f: UsageFilter, _ cal: Calendar) throws -> [TrendBucket] {
+        let dur = (f.end ?? 0) - (f.start ?? 0)
+        return dur <= 24 * 3600 ? try trendHourly(db, f) : try trendDaily(db, f, cal)
+    }
+
+    /// 按过滤条件生成快照（区间汇总 + 累计 + 走势）。
     public func snapshot(filter: UsageFilter, now: Date = Date(), calendar: Calendar = .current) throws -> UsageSnapshot {
         let db = try openRO()
         defer { sqlite3_close(db) }
 
-        let nowTs = Int64(now.timeIntervalSince1970)
-        var f = filter
-        f.start = filter.start ?? Int64(calendar.startOfDay(for: now).timeIntervalSince1970)
-        f.end = filter.end ?? nowTs
-        let dur = (f.end ?? nowTs) - (f.start ?? 0)
-
+        let f = resolvedFilter(filter, now: now, calendar)
         let range = try summary(db, f, calendar)
         let cumulative = try summary(db, UsageFilter(appType: filter.appType, model: filter.model), calendar)
-        let tr = dur <= 24 * 3600 ? try trendHourly(db, f) : try trendDaily(db, f, calendar)
+        let tr = try trend(db, f, calendar)
         let lastTs = lastEventTs(db)
 
         return UsageSnapshot(
@@ -686,6 +705,14 @@ public final class UsageStore {
         )
     }
 
+    /// 只算走势（get_usage_trends 桥接用）：面板每个刷新 tick 都会调，snapshot 里顺带的
+    /// 「区间 + 累计」共 4 次聚合在那条路径全是白算——这里跳过。缺省窗口/粒度与 snapshot 一致。
+    public func trendBuckets(filter: UsageFilter, now: Date = Date(), calendar: Calendar = .current) throws -> [TrendBucket] {
+        let db = try openRO()
+        defer { sqlite3_close(db) }
+        return try trend(db, resolvedFilter(filter, now: now, calendar), calendar)
+    }
+
     /// 便捷：默认「今日」快照（widget 用）。
     public func snapshot(now: Date = Date(), calendar: Calendar = .current) throws -> UsageSnapshot {
         let dayStart = Int64(calendar.startOfDay(for: now).timeIntervalSince1970)
@@ -694,10 +721,10 @@ public final class UsageStore {
     }
 
     /// 只算某个时间窗的汇总（不含 trend），用于「近5小时 / 本周」这类常驻指标。两表合并。
-    public func rangeSummary(_ filter: UsageFilter) throws -> UsageSummary {
+    public func rangeSummary(_ filter: UsageFilter, calendar: Calendar = .current) throws -> UsageSummary {
         let db = try openRO()
         defer { sqlite3_close(db) }
-        return try summary(db, filter, Calendar.current)
+        return try summary(db, filter, calendar)
     }
 
     /// 仅 logs 部分的区间汇总（不含 rollups）。用于 get_usage_data_sources——

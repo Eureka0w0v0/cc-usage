@@ -16,8 +16,8 @@ struct CCUsageWidget: Widget {
             UsageWidgetEntryView(entry: entry)
                 .containerBackground(Theme.bg.gradient, for: .widget)
         }
-        .configurationDisplayName("CC 用量")
-        .description("显示 cc-switch 的今日 tokens、花费、命中率与走势。")
+        .configurationDisplayName("CC Usage")
+        .description("Today's tokens, cost, cache hit rate and trend from cc-switch.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
