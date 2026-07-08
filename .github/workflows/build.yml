@@ -9,7 +9,8 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: macos-14
+    # 需要 Xcode 16+：新版 XcodeGen 产出的工程为 objectVersion 77，macos-14 默认 Xcode 15 无法读取
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
