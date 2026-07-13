@@ -155,9 +155,6 @@ let SQLITE_TRANSIENT_DEST = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 /// 线程安全：自身状态只有两个不可变引用（path / overlay），每次查询独立开只读连接，
 /// SessionOverlay 内部有锁——可安全从任意线程调用（后台 reload / 桥接队列都依赖这点）。
 public final class UsageStore: @unchecked Sendable {
-    // claude-desktop → claude，口径对齐 cc-switch
-    static let foldedApp = "CASE WHEN app_type='claude-desktop' THEN 'claude' ELSE app_type END"
-
     public static let defaultPath =
         (NSHomeDirectory() as NSString).appendingPathComponent(".cc-switch/cc-switch.db")
 
@@ -733,29 +730,6 @@ public final class UsageStore: @unchecked Sendable {
         let db = try openRO()
         defer { sqlite3_close(db) }
         return try summaryLogsOnly(db, filter)
-    }
-
-    private func queryStrings(_ sql: String) -> [String] {
-        guard let db = try? openRO() else { return [] }
-        defer { sqlite3_close(db) }
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
-        var out: [String] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            if let c = sqlite3_column_text(stmt, 0) { out.append(String(cString: c)) }
-        }
-        return out
-    }
-
-    /// 库中出现过的来源(app)，已折叠，按用量降序。
-    public func distinctAppTypes() -> [String] {
-        queryStrings("SELECT \(Self.foldedApp) AS a FROM proxy_request_logs WHERE app_type<>'' GROUP BY a ORDER BY COUNT(*) DESC")
-    }
-
-    /// 库中出现过的模型，按用量降序（限 40 个）。
-    public func distinctModels() -> [String] {
-        queryStrings("SELECT model FROM proxy_request_logs WHERE model<>'' GROUP BY model ORDER BY COUNT(*) DESC LIMIT 40")
     }
 
     // MARK: - Tabs 查询（Request Logs / Provider Stats / Model Stats）

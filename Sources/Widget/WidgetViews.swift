@@ -13,7 +13,7 @@ struct UsageWidgetEntryView: View {
             default:            LargeView(snap: snap)
             }
         } else {
-            ErrorView(text: entry.errorText ?? "无数据")
+            ErrorView(text: entry.errorText ?? "No data")
         }
     }
 }
@@ -90,7 +90,7 @@ struct LargeView: View {
                     Text(Fmt.tokens(snap.today.tokensProcessed))
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .foregroundStyle(Theme.textMain)
-                    Text("今日 tokens").font(.system(size: 10)).foregroundStyle(Theme.textDim)
+                    Text("Tokens today").font(.system(size: 10)).foregroundStyle(Theme.textDim)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {

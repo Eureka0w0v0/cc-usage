@@ -33,10 +33,12 @@ struct TrendChart: View {
         Date(timeIntervalSince1970: xStart)...Date(timeIntervalSince1970: xEnd)
     }
 
-    static func xLabel(_ d: Date) -> String {
+    // formatter 静态复用（坐标轴每次重绘逐刻度调用）
+    private static let xLabelFormatter: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "MM/dd, h a"
-        return f.string(from: d)
-    }
+        return f
+    }()
+    static func xLabel(_ d: Date) -> String { xLabelFormatter.string(from: d) }
 
     var body: some View {
         chart
@@ -211,10 +213,13 @@ struct TrendTooltip: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.14), lineWidth: 1))
         )
     }
-    private var timeLabel: String {
-        let d = Date(timeIntervalSince1970: TimeInterval(bucket.startTs))
+    // formatter 静态复用（悬停期间每帧都在渲染 tooltip）
+    private static let timeFormatter: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "MM/dd, hh:mm a"
-        return f.string(from: d)
+        return f
+    }()
+    private var timeLabel: String {
+        Self.timeFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(bucket.startTs)))
     }
     private func row(_ c: Color, _ name: String, _ val: String) -> some View {
         HStack(spacing: 7) {

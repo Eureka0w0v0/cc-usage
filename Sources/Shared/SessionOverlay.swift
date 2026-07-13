@@ -424,14 +424,9 @@ public final class SessionOverlay {
         return 0
     }
 
-    /// RFC3339 → epoch 秒(容忍小数秒)。
+    /// RFC3339 → epoch 秒(容忍小数秒)。解析逻辑与 QuotaService 共用 ISO8601Lenient
+    /// (formatter 静态复用——本函数在冷启动全量扫描时逐行调用,是热路径)。
     static func parseRFC3339(_ s: String) -> Int64? {
-        let cleaned = s.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression)
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        if let d = f.date(from: cleaned) { return Int64(d.timeIntervalSince1970) }
-        let f2 = ISO8601DateFormatter()
-        f2.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f2.date(from: s).map { Int64($0.timeIntervalSince1970) }
+        ISO8601Lenient.date(s).map { Int64($0.timeIntervalSince1970) }
     }
 }

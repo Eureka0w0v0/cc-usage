@@ -17,14 +17,17 @@ public enum Fmt {
         String(format: "%.0fk", Double(n) / 1000)
     }
 
-    /// 千分位分隔，还原「153,980,903」
+    /// 千分位分隔，还原「153,980,903」。formatter 静态复用（tooltip 每悬停帧调 4 次）。
     public static func grouped(_ n: Int64) -> String {
+        groupedFormatter.string(from: NSNumber(value: n)) ?? "\(n)"
+    }
+    private static let groupedFormatter: NumberFormatter = {
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.groupingSeparator = ","
         f.locale = Locale(identifier: "en_US")
-        return f.string(from: NSNumber(value: n)) ?? "\(n)"
-    }
+        return f
+    }()
 
     public static func cost(_ v: Double) -> String {
         if v >= 100 { return String(format: "$%.0f", v) }
@@ -58,5 +61,36 @@ public enum Fmt {
         if s < 3600 { return "\(s / 60)m ago" }
         if s < 86400 { return "\(s / 3600)h ago" }
         return "\(s / 86400)d ago"
+    }
+}
+
+/// 宽容 ISO8601 解析：来源时间串可能带 3/6 位小数秒（ISO8601DateFormatter 的
+/// .withFractionalSeconds 只认 3 位），先剥小数秒按秒级解析，失败再拿原串让
+/// 小数位 formatter 兜底。SessionOverlay(JSONL timestamp) 与 QuotaService(resets_at)
+/// 共用这一份，formatter 静态复用（ISO8601DateFormatter 线程安全）。
+public enum ISO8601Lenient {
+    private static let seconds: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    private static let fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    public static func date(_ s: String) -> Date? {
+        if let d = seconds.date(from: stripFractionalSeconds(s)) { return d }
+        return fractional.date(from: s)
+    }
+
+    /// "…56.123456+00:00" → "…56+00:00"（手写扫描，免去每次调用编译正则）
+    private static func stripFractionalSeconds(_ s: String) -> String {
+        guard let dot = s.firstIndex(of: ".") else { return s }
+        var end = s.index(after: dot)
+        while end < s.endIndex, s[end].isNumber { end = s.index(after: end) }
+        guard end > s.index(after: dot) else { return s }
+        return String(s[..<dot]) + String(s[end...])
     }
 }

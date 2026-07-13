@@ -31,23 +31,6 @@ struct QuotaTier: Identifiable, Sendable {
     var planLabel: String?
 
     var id: String { name }
-
-    /// 剩余时间倒计时文本，如 "2h30m" / "3d12h" / "45m"。
-    /// 对齐 cc-switch SubscriptionQuotaFooter.countdownStr（已重置/无数据返回 nil）。
-    var countdown: String? {
-        guard let resetsAt else { return nil }
-        let diff = resetsAt.timeIntervalSinceNow
-        if diff <= 0 { return nil }
-        let totalMinutes = Int(diff / 60)
-        let hours = totalMinutes / 60
-        let minutes = totalMinutes % 60
-        if hours > 24 {
-            let days = hours / 24
-            return "\(days)d\(hours % 24)h"
-        }
-        if hours > 0 { return "\(hours)h\(minutes)m" }
-        return "\(minutes)m"
-    }
 }
 
 /// 凭据/查询状态，驱动徽标降级显示（作为 Result 的 Failure，需符合 Error）
@@ -98,18 +81,6 @@ actor QuotaCache {
         inflight = nil
         if !result.isEmpty { tiers = result }
         return tiers
-    }
-
-    /// 只读快照 + 是否仍在节流窗口内（供原生 OO 路径短路复用，不触发网络）。
-    func peek() -> (tiers: [QuotaTier], throttled: Bool, at: Date?) {
-        (tiers, throttled, lastAttempt)
-    }
-
-    /// 写穿：任意路径成功查询后回填，供另一条读取路径共享（同时推进节流闸门）。
-    func store(_ newTiers: [QuotaTier]) {
-        lastAttempt = Date()
-        guard !newTiers.isEmpty else { return }
-        tiers = newTiers
     }
 
     /// 缓存优先取额度（`get_quota` 桥接用）：
@@ -170,13 +141,11 @@ enum QuotaService {
 
 // MARK: - 凭据读取（照搬 subscription.rs 的 read_claude_credentials）
 
-/// 解析出的 Claude 凭据
+/// 解析出的 Claude 凭据（expiresAt 不解析——无论本地判过期与否都会尝试调 API，
+/// 过期与否由服务端 401/403 裁决）。
 struct ClaudeCredential: Sendable {
     let accessToken: String
-    let expiresAtMs: Double?
     let subscriptionType: String?
-    /// 本地时间戳是否判定已过期（仅供参考，仍会尝试调 API）
-    let isExpired: Bool
 }
 
 /// 纯 Foundation、可在后台线程执行的凭据读取器。
@@ -234,25 +203,9 @@ enum ClaudeCredentialReader {
             return .failure(.failed("accessToken 为空或缺失"))
         }
 
-        // expiresAt：数字（秒/毫秒）或 ISO 字符串，统一归一到毫秒
-        var expiresMs: Double?
-        if let num = entry["expiresAt"] as? NSNumber {
-            let raw = num.doubleValue
-            expiresMs = raw > 1_000_000_000_000 ? raw : raw * 1000
-        } else if let s = entry["expiresAt"] as? String,
-                  let d = ClaudeUsageAPI.parseISODate(s) {
-            expiresMs = d.timeIntervalSince1970 * 1000
-        }
-
-        let subscriptionType = entry["subscriptionType"] as? String
-        let nowMs = Date().timeIntervalSince1970 * 1000
-        let isExpired = expiresMs.map { $0 < nowMs } ?? false
-
         return .success(ClaudeCredential(
             accessToken: token,
-            expiresAtMs: expiresMs,
-            subscriptionType: subscriptionType,
-            isExpired: isExpired
+            subscriptionType: entry["subscriptionType"] as? String
         ))
     }
 }
@@ -303,7 +256,7 @@ enum ClaudeUsageAPI {
             if nonTierKeys.contains(key) { continue }
             guard let window = value as? [String: Any],
                   let util = window["utilization"] as? NSNumber else { continue }
-            let resetsAt = (window["resets_at"] as? String).flatMap(parseISODate)
+            let resetsAt = (window["resets_at"] as? String).flatMap { ISO8601Lenient.date($0) }
             tiers.append(QuotaTier(
                 name: key,
                 utilization: util.doubleValue,
@@ -312,18 +265,5 @@ enum ClaudeUsageAPI {
             ))
         }
         return .success(tiers)
-    }
-
-    /// 稳健解析 ISO 8601（官方 resets_at 带 6 位微秒 + `+00:00` 偏移，
-    /// ISO8601DateFormatter 对小数位数敏感，先剥掉小数秒——倒计时精度到分钟即可）。
-    static func parseISODate(_ s: String) -> Date? {
-        let cleaned = s.replacingOccurrences(
-            of: #"\.\d+"#, with: "", options: .regularExpression)
-        let f1 = ISO8601DateFormatter()
-        f1.formatOptions = [.withInternetDateTime]
-        if let d = f1.date(from: cleaned) { return d }
-        let f2 = ISO8601DateFormatter()
-        f2.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f2.date(from: s)
     }
 }

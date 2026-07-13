@@ -20,35 +20,6 @@ enum MBKey {
     static let quotaWeek = "mb.quota.week"
 }
 
-// MARK: - 日期范围预设
-
-enum DateRangePreset: String, CaseIterable, Identifiable {
-    case today = "Today"
-    case yesterday = "Yesterday"
-    case last7 = "Last 7 Days"
-    case last30 = "Last 30 Days"
-    case all = "All Time"
-    var id: String { rawValue }
-
-    func bounds(now: Date = Date(), cal: Calendar = .current) -> (Int64?, Int64?) {
-        let nowTs = Int64(now.timeIntervalSince1970)
-        let today0 = cal.startOfDay(for: now)
-        switch self {
-        case .today:
-            return (Int64(today0.timeIntervalSince1970), nowTs)
-        case .yesterday:
-            let y = cal.date(byAdding: .day, value: -1, to: today0)!
-            return (Int64(y.timeIntervalSince1970), Int64(today0.timeIntervalSince1970))
-        case .last7:
-            return (Int64(cal.date(byAdding: .day, value: -7, to: now)!.timeIntervalSince1970), nowTs)
-        case .last30:
-            return (Int64(cal.date(byAdding: .day, value: -30, to: now)!.timeIntervalSince1970), nowTs)
-        case .all:
-            return (nil, nowTs)
-        }
-    }
-}
-
 // MARK: - 视图模型（含每 N 秒自动刷新）
 
 @MainActor
@@ -59,8 +30,6 @@ final class PanelModel: ObservableObject {
 
     @Published var snap: UsageSnapshot?
     @Published var error: String?
-    @Published var apps: [String] = []
-    @Published var models: [String] = []
 
     // 菜单栏专用汇总（始终「全部来源/模型」，不随主窗口的来源/模型筛选变化）：今日 / 本周 / 本月。
     // 口径 = store.rangeSummary（logs + rollups 两表合并），与 cc-switch 对应区间数字一致。
@@ -112,9 +81,6 @@ final class PanelModel: ObservableObject {
         if intervalSeconds != secs { intervalSeconds = secs }
     }
 
-    @Published var appType: String? { didSet { reload() } }
-    @Published var model: String? { didSet { reload() } }
-    @Published var range: DateRangePreset = .today { didSet { reload() } }
     /// 0 = 面板关闭自动刷新（菜单栏仍按 menuBarFallbackSeconds 兜底节奏更新）。
     @Published var intervalSeconds: Int = 5 { didSet { restartTimer() } }
 
@@ -130,15 +96,6 @@ final class PanelModel: ObservableObject {
     func start() {
         guard !started else { return }
         started = true
-        let store = self.store
-        Task { [weak self] in
-            // 首次打库也放后台（与 reload 同理），结果回主线程发布
-            let lists = await Task.detached(priority: .utility) {
-                (store.distinctAppTypes(), store.distinctModels())
-            }.value
-            guard let self else { return }
-            (self.apps, self.models) = lists
-        }
         reload()
         restartTimer()
         if mbAnyQuotaOn { refreshQuotaNow() }   // 启动时若已开启额度码片，立即取一次
@@ -172,24 +129,23 @@ final class PanelModel: ObservableObject {
 
     func reload() {
         // 全部 SQL + 会话 JSONL 扫描下放后台：冷启动的 overlay 全量扫可达秒级，
-        // 不能卡主线程。在途时只记一笔待办、完成后立即补一轮——筛选切换不会被吞。
+        // 不能卡主线程。在途时只记一笔待办、完成后立即补一轮——刷新不会被吞。
         if isReloading { pendingReload = true; return }
         isReloading = true
 
-        let (s, e) = range.bounds()
-        let filter = UsageFilter(start: s, end: e, appType: appType, model: model)
         let store = self.store
 
         Task { [weak self] in
             let out = await Task.detached(priority: .userInitiated) { () -> ReloadOutput in
                 var o = ReloadOutput()
                 do {
-                    o.snap = try store.snapshot(filter: filter)
-                    // 菜单栏专用：今日（本日零点，与面板 Today 一致）+ 近 7 天 / 近 30 天（滚动窗口），全部来源。
+                    // 缺省 filter = 本地今日零点 → now（resolvedFilter），全部来源/模型——
+                    // 与菜单栏「今日」完全同口径，snap.today 直接复用，不再单独多算一次。
+                    o.snap = try store.snapshot(filter: UsageFilter())
+                    o.today = o.snap?.today
+                    // 菜单栏 W/M：近 7 天 / 近 30 天（滚动窗口），全部来源。
                     // 用滚动窗口而非日历「本周/本月」——否则月初时「本周」会跨回上月、反比「本月」多，违反「月≥周≥日」直觉。
                     let now = Int64(Date().timeIntervalSince1970)
-                    let dayStart = Int64(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
-                    o.today = try? store.rangeSummary(UsageFilter(start: dayStart, end: now))
                     o.week  = try? store.rangeSummary(UsageFilter(start: now - 7 * 86400, end: now))
                     o.month = try? store.rangeSummary(UsageFilter(start: now - 30 * 86400, end: now))
                 } catch {
@@ -330,7 +286,7 @@ struct MenuBarPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "bolt.fill").foregroundStyle(Theme.accent)
-                Text("CC Usage · \(model.range.rawValue)").font(.system(size: 13, weight: .semibold))
+                Text("CC Usage · Today").font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.textMain)
                 Spacer()
                 Text(Fmt.relative(model.snap?.lastEventAt)).font(.caption2).foregroundStyle(Theme.textDim)

@@ -22,8 +22,7 @@ struct PanelWebView: NSViewRepresentable {
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.setValue(false, forKey: "drawsBackground")
         wv.underPageBackgroundColor = .clear
-        if let url = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: nil)
-            ?? Bundle.main.url(forResource: "index", withExtension: "html") {
+        if let url = Bundle.main.url(forResource: "index", withExtension: "html") {
             wv.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
         return wv
