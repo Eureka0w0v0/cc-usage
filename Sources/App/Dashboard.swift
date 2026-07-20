@@ -20,6 +20,7 @@ enum MBKey {
     static let quotaWeek = "mb.quota.week"
     static let icon      = "mb.icon"        // 菜单栏 ⚡ 图标开关（默认开）
     static let appChips  = "mb.appChips"    // 按 AI 分组的码片选中集（字符串数组）
+    static let maxSafe   = "mb.maxSafeWidth" // 学到的状态项安全宽度（超过会被挤掉）
 }
 
 /// 菜单栏可分组展示的 AI 来源。All（全部合计）不在此枚举里——它就是 MBKey 那组旧开关。
@@ -80,6 +81,7 @@ final class PanelModel: ObservableObject {
     @Published var mbAppChips: Set<String> {
         didSet {
             UserDefaults.standard.set(Array(mbAppChips).sorted(), forKey: MBKey.appChips)
+            mbWidthCap = nil   // 同 persist：放开重试全宽
             if started { reload() }
         }
     }
@@ -94,8 +96,25 @@ final class PanelModel: ObservableObject {
     /// Codex 限额窗口快照（勾了 codex.quota 才扫描）。
     @Published var mbCodexQuota: [CodexQuota.Window] = []
 
+    /// 菜单栏动态宽度上限：nil = 不限（默认无限长）。仅当检测到状态项被 macOS
+    /// 挤掉（菜单栏空间不足会整个隐藏）时，收缩到最近一次可见宽度并尾部截断 "…"；
+    /// 勾选变化时清零重试全宽。
+    @Published var mbWidthCap: CGFloat? = nil
+    private var mbLastVisibleWidth: CGFloat = 0
+    /// 学到的安全宽度（历史上可见的最大宽度 / 被挤后收敛到的宽度），跨启动持久化。
+    /// 勾选变化时立即按它钳制 → 状态项瞬间截断而不是先消失再恢复。
+    private var mbMaxSafeWidth: CGFloat = 0
+    private var visTimer: AnyCancellable?
+
+    private func setMaxSafe(_ w: CGFloat) {
+        mbMaxSafeWidth = w
+        UserDefaults.standard.set(Double(w), forKey: MBKey.maxSafe)
+    }
     var mbAnyQuotaOn: Bool { mbQuota5H || mbQuotaWeek }
-    private func persist(_ key: String, _ val: Bool) { UserDefaults.standard.set(val, forKey: key) }
+    private func persist(_ key: String, _ val: Bool) {
+        UserDefaults.standard.set(val, forKey: key)
+        mbWidthCap = nil   // 勾选变化：放开重试全宽；超长最多隐身一个巡检周期就压回安全宽度
+    }
 
     func chipOn(_ key: String) -> Bool { mbAppChips.contains(key) }
     /// 设置面板 checkbox 的绑定入口（Set 成员 ↔ Toggle）。
@@ -122,6 +141,8 @@ final class PanelModel: ObservableObject {
         mbQuotaWeek = load(MBKey.quotaWeek, false)
         mbShowIcon  = load(MBKey.icon,      true)
         mbAppChips  = Set(d.stringArray(forKey: MBKey.appChips) ?? [])
+        mbMaxSafeWidth = CGFloat(d.double(forKey: MBKey.maxSafe))
+        mbWidthCap = mbMaxSafeWidth > 80 ? mbMaxSafeWidth : nil   // 启动即按安全宽度钳制
         // embed 面板持久化的刷新间隔（ms，set_setting 写入）：启动时接管为全局节奏，
         // 菜单栏与面板从第一秒起就一致。没存过则维持默认 5s。
         if let ms = d.object(forKey: "embed.refreshIntervalMs") as? Int {
@@ -159,6 +180,57 @@ final class PanelModel: ObservableObject {
         restartTimer()
         if mbAnyQuotaOn { refreshQuotaNow() }   // 启动时若已开启额度码片，立即取一次
         updater.start()
+        // 状态项可见性巡检：被挤掉后 2s 内一步压回安全宽度
+        visTimer = Timer.publish(every: 2, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.checkStatusItemVisibility() }
+        // 屏幕环境变化（接/拔显示器等）：可用空间变了，放开重试全宽
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.mbWidthCap = nil }
+        }
+    }
+
+    /// 状态项可见性巡检：MenuBarExtra 的状态项窗口（NSStatusBarWindow）被 macOS 因
+    /// 菜单栏空间不足挤掉时整个隐藏。检测到隐藏（且菜单栏本身在场，排除全屏误判）就
+    /// 把宽度上限收缩到最近一次可见宽度；仍隐藏则每轮 -40 步进收缩（下限 80）直到回来。
+    private func checkStatusItemVisibility() {
+        guard let win = NSApp.windows.first(where: {
+            String(describing: type(of: $0)).contains("StatusBarWindow")
+        }) else { return }
+        // 菜单栏不在场（他 app 全屏等）时状态项本来就看不见，不能当成被挤掉
+        let menuBarPresent = NSScreen.screens.contains { $0.visibleFrame.maxY < $0.frame.maxY }
+        guard menuBarPresent else { return }
+        // 面板打开期间（用户正在勾选，label 实时变宽）遮挡状态不稳定，收面板后再执行
+        let panelOpen = NSApp.windows.contains {
+            String(describing: type(of: $0)).contains("MenuBarExtraWindow") && $0.isVisible
+        }
+        guard !panelOpen else { return }
+        let width = win.frame.width
+        // 实测（vis.log 2026-07-20）：被挤掉时 isVisible 仍是 true，唯一可靠信号是
+        // occlusionState 不含 .visible；同时窗口会被顶出屏幕左缘（origin.x < 0）。
+        let visible = win.isVisible && win.occlusionState.contains(.visible)
+        if visible {
+            mbLastVisibleWidth = width
+            // 无钳制且完整可见：学到更大的安全宽度
+            if mbWidthCap == nil, width > mbMaxSafeWidth { setMaxSafe(width) }
+        } else {
+            var newCap: CGFloat
+            if mbWidthCap == nil, mbMaxSafeWidth > 80, mbMaxSafeWidth < width {
+                newCap = mbMaxSafeWidth                      // 一步到位：先压到已知安全宽度
+            } else {
+                let base = mbWidthCap ?? width
+                newCap = max(80, base * 0.72)                // 安全宽度也不够：继续 ×0.72 收缩
+                if win.frame.origin.x < 0 {
+                    // 被顶出屏幕左缘：直接扣掉出屏量再留 200pt 菜单余量，加速收敛
+                    newCap = min(newCap, max(80, width + win.frame.origin.x - 200))
+                }
+                setMaxSafe(newCap)                           // 安全宽度跟着现实向下修
+            }
+            if newCap != mbWidthCap { mbWidthCap = newCap }
+        }
     }
 
     /// 立即强制取一次官方额度（绕过 5 分钟节流），用于用户在菜单栏勾选「额度」码片时的即时反馈。
@@ -341,7 +413,8 @@ struct MenuBarLabel: View {
                         .onChange(of: geo.size.width) { _, w in lockedWidth = max(lockedWidth, w) }
                 }
             )
-            .frame(minWidth: lockedWidth, alignment: .leading)
+            .frame(minWidth: min(lockedWidth, model.mbWidthCap ?? .greatestFiniteMagnitude),
+                   alignment: .leading)   // 收缩上限生效时宽度锁让位，否则状态项缩不回来
             .onAppear { model.start() }
     }
 
@@ -387,6 +460,7 @@ struct MenuBarLabel: View {
     }
 
     /// pieces → 单张黑色模板图：⚡（可关）+ [All 文本] + [品牌图标 文本]…，空段兜底 "CC"。
+    /// 默认不限宽；仅当 PanelModel 检测到状态项被挤掉、给出动态上限时才尾部截断 "…"。
     private var composite: NSImage {
         let font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
@@ -415,12 +489,21 @@ struct MenuBarLabel: View {
                 str.append(NSAttributedString(string: p.text, attributes: attrs))
             }
         }
+        // 整串统一截断样式（含 attachment 段），超宽时 TextKit 在尾部画 "…"
+        let para = NSMutableParagraphStyle()
+        para.lineBreakMode = .byTruncatingTail
+        str.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: str.length))
+
         let bounds = str.boundingRect(
             with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin])
-        let img = NSImage(size: NSSize(width: ceil(bounds.width) + 1, height: 18), flipped: false) { rect in
+        // 动态上限（窗口宽 → 图像宽留 ~12pt 状态项内边距余量）
+        let cap = model.mbWidthCap.map { max(60, $0 - 12) } ?? .greatestFiniteMagnitude
+        let width = min(ceil(bounds.width) + 1, cap)
+        let img = NSImage(size: NSSize(width: width, height: 18), flipped: false) { rect in
+            // 高度限一行 → 超宽只会截断，不会折行
             str.draw(with: NSRect(x: 0, y: (rect.height - bounds.height) / 2 - bounds.minY,
-                                  width: bounds.width, height: bounds.height),
+                                  width: rect.width, height: bounds.height),
                      options: [.usesLineFragmentOrigin])
             return true
         }
@@ -579,7 +662,7 @@ struct MenuBarSettingsView: View {
                 row("Quota") { noQuota("No quota API") }
             }
 
-            Text("All = every AI combined. Prefixes: C=Claude, X=Codex, G=Gemini, O=OpenCode; D/W/M = Day/Week/Month. Quota is % used.")
+            Text("All = every AI combined; D/W/M = Day/Week/Month; Quota is % used. Length is unlimited; only if macOS squeezes the item out does it auto-shrink to fit, truncated with ….")
                 .font(.caption2).foregroundStyle(Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
