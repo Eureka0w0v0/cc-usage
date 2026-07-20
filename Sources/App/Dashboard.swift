@@ -87,6 +87,9 @@ final class PanelModel: ObservableObject {
     /// 面板选 off 时菜单栏的兜底节奏：面板可以不刷，常驻的菜单栏数字/额度不能永远冻结。
     static let menuBarFallbackSeconds = 60
 
+    /// GitHub Releases 新版本检查（菜单栏提示行 / 主窗徽标共用，子视图直接观察它）。
+    let updater = UpdateChecker()
+
     private var timer: AnyCancellable?
     private let store = UsageStore()
     private var started = false
@@ -99,6 +102,7 @@ final class PanelModel: ObservableObject {
         reload()
         restartTimer()
         if mbAnyQuotaOn { refreshQuotaNow() }   // 启动时若已开启额度码片，立即取一次
+        updater.start()
     }
 
     /// 立即强制取一次官方额度（绕过 5 分钟节流），用于用户在菜单栏勾选「额度」码片时的即时反馈。
@@ -202,6 +206,10 @@ struct MainWindowView: View {
             WindowDragArea()                          // 顶部留白带原生拖拽区（隐藏标题栏后可拖窗口）
                 .frame(maxWidth: .infinity).frame(height: 46)
                 .ignoresSafeArea(edges: .top)
+            // 新版本徽标：贴在拖拽区右端，不遮 embed 工具栏（工具栏内容从 46pt 以下开始）
+            UpdateNotice(updater: model.updater, compact: true)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 14).padding(.top, 12)
         }
         .onAppear {
             model.start()            // 仍驱动菜单栏 / MenuBarPanel（额度前端自查，无需原生 QuotaService）
@@ -327,6 +335,8 @@ struct MenuBarPanel: View {
                     .onTapGesture { withAnimation { showSettings.toggle() } }
             }
             .tint(Theme.textDim)
+
+            UpdateNotice(updater: model.updater)
 
             HStack {
                 Button {
