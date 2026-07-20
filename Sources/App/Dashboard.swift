@@ -18,6 +18,27 @@ enum MBKey {
     static let costMonth = "mb.cost.month"
     static let quota5H   = "mb.quota.5h"
     static let quotaWeek = "mb.quota.week"
+    static let icon      = "mb.icon"        // 菜单栏 ⚡ 图标开关（默认开）
+    static let appChips  = "mb.appChips"    // 按 AI 分组的码片选中集（字符串数组）
+}
+
+/// 菜单栏可分组展示的 AI 来源。All（全部合计）不在此枚举里——它就是 MBKey 那组旧开关。
+/// 码片 key 格式 "\(rawValue).tokens.today" / "\(rawValue).cost.week" / "codex.quota"。
+enum MBApp: String, CaseIterable {
+    case claude, codex, gemini, opencode
+    var title: String {
+        switch self {
+        case .claude: return "Claude"; case .codex: return "Codex"
+        case .gemini: return "Gemini"; case .opencode: return "OpenCode"
+        }
+    }
+    /// 品牌模板图标（Resources 里的黑色 alpha PNG，菜单栏段前缀与设置分组标题共用）。
+    var iconAsset: String {
+        switch self {
+        case .claude: return "brand-claude"; case .codex: return "brand-openai"
+        case .gemini: return "brand-gemini"; case .opencode: return "brand-opencode"
+        }
+    }
 }
 
 // MARK: - 视图模型（含每 N 秒自动刷新）
@@ -51,9 +72,42 @@ final class PanelModel: ObservableObject {
     @Published var mbCostMonth: Bool { didSet { persist(MBKey.costMonth, mbCostMonth) } }
     @Published var mbQuota5H: Bool   { didSet { persist(MBKey.quota5H,   mbQuota5H);   if mbQuota5H { refreshQuotaNow() } } }
     @Published var mbQuotaWeek: Bool { didSet { persist(MBKey.quotaWeek, mbQuotaWeek); if mbQuotaWeek { refreshQuotaNow() } } }
+    /// 菜单栏 ⚡ 图标开关。全关 + 码片全空时 label 会兜底显示 "CC"，状态项不会隐身。
+    @Published var mbShowIcon: Bool  { didSet { persist(MBKey.icon, mbShowIcon) } }
+
+    /// 按 AI 分组的码片选中集（"claude.tokens.today" / "codex.quota" …）。
+    /// didSet 落盘 + 立即补一轮 reload，让新勾选的数字马上出现。
+    @Published var mbAppChips: Set<String> {
+        didSet {
+            UserDefaults.standard.set(Array(mbAppChips).sorted(), forKey: MBKey.appChips)
+            if started { reload() }
+        }
+    }
+
+    /// 单个 AI 的 D/W/M 汇总（只算勾了码片的 app，reload 时装配）。
+    struct AppPeriods: Sendable {
+        var today: UsageSummary?
+        var week: UsageSummary?
+        var month: UsageSummary?
+    }
+    @Published var mbAppSummaries: [String: AppPeriods] = [:]
+    /// Codex 限额窗口快照（勾了 codex.quota 才扫描）。
+    @Published var mbCodexQuota: [CodexQuota.Window] = []
 
     var mbAnyQuotaOn: Bool { mbQuota5H || mbQuotaWeek }
     private func persist(_ key: String, _ val: Bool) { UserDefaults.standard.set(val, forKey: key) }
+
+    func chipOn(_ key: String) -> Bool { mbAppChips.contains(key) }
+    /// 设置面板 checkbox 的绑定入口（Set 成员 ↔ Toggle）。
+    func chipBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { [weak self] in self?.mbAppChips.contains(key) ?? false },
+            set: { [weak self] on in
+                guard let self else { return }
+                if on { self.mbAppChips.insert(key) } else { self.mbAppChips.remove(key) }
+            }
+        )
+    }
 
     init() {
         let d = UserDefaults.standard
@@ -66,6 +120,8 @@ final class PanelModel: ObservableObject {
         mbCostMonth = load(MBKey.costMonth, false)
         mbQuota5H   = load(MBKey.quota5H,   false)
         mbQuotaWeek = load(MBKey.quotaWeek, false)
+        mbShowIcon  = load(MBKey.icon,      true)
+        mbAppChips  = Set(d.stringArray(forKey: MBKey.appChips) ?? [])
         // embed 面板持久化的刷新间隔（ms，set_setting 写入）：启动时接管为全局节奏，
         // 菜单栏与面板从第一秒起就一致。没存过则维持默认 5s。
         if let ms = d.object(forKey: "embed.refreshIntervalMs") as? Int {
@@ -128,6 +184,8 @@ final class PanelModel: ObservableObject {
         var today: UsageSummary?
         var week: UsageSummary?
         var month: UsageSummary?
+        var appSummaries: [String: AppPeriods] = [:]
+        var codexWindows: [CodexQuota.Window] = []
         var errorText: String?
     }
 
@@ -138,6 +196,7 @@ final class PanelModel: ObservableObject {
         isReloading = true
 
         let store = self.store
+        let chips = mbAppChips   // 值拷贝进后台闭包，避免在途中被设置面板改动
 
         Task { [weak self] in
             let out = await Task.detached(priority: .userInitiated) { () -> ReloadOutput in
@@ -152,6 +211,23 @@ final class PanelModel: ObservableObject {
                     let now = Int64(Date().timeIntervalSince1970)
                     o.week  = try? store.rangeSummary(UsageFilter(start: now - 7 * 86400, end: now))
                     o.month = try? store.rangeSummary(UsageFilter(start: now - 30 * 86400, end: now))
+                    // 按 AI 分组的码片：只查勾了的 (app, 周期)，避免白白多跑 SQL
+                    let dayStart = Int64(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
+                    for app in MBApp.allCases.map(\.rawValue) {
+                        func need(_ p: String) -> Bool {
+                            chips.contains("\(app).tokens.\(p)") || chips.contains("\(app).cost.\(p)")
+                        }
+                        guard need("today") || need("week") || need("month") else { continue }
+                        var s = AppPeriods()
+                        if need("today") { s.today = try? store.rangeSummary(UsageFilter(start: dayStart, end: now, appType: app)) }
+                        if need("week")  { s.week  = try? store.rangeSummary(UsageFilter(start: now - 7 * 86400, end: now, appType: app)) }
+                        if need("month") { s.month = try? store.rangeSummary(UsageFilter(start: now - 30 * 86400, end: now, appType: app)) }
+                        o.appSummaries[app] = s
+                    }
+                    // codex.quota.<窗口标签>（如 codex.quota.5H / codex.quota.30D），任一勾选即扫描
+                    if chips.contains(where: { $0.hasPrefix("codex.quota.") }) {
+                        o.codexWindows = CodexQuota.latest()
+                    }
                 } catch {
                     o.errorText = "\(error)"
                 }
@@ -166,6 +242,8 @@ final class PanelModel: ObservableObject {
                 self.mbToday = out.today
                 self.mbWeek = out.week
                 self.mbMonth = out.month
+                self.mbAppSummaries = out.appSummaries
+                self.mbCodexQuota = out.codexWindows
                 self.error = nil
                 self.reloadWidgetsThrottled()
                 // 官方额度：仅当有额度码片开启时才查（默认关 → 不读凭据、不联网）。
@@ -245,8 +323,6 @@ struct MenuBarLabel: View {
 
     private func tier(_ name: String) -> QuotaTier? { model.quotaTiers.first { $0.name == name } }
 
-    private var isEmpty: Bool { segments.isEmpty && !model.mbAnyQuotaOn }
-
     /// 状态项宽度锁：只增不减（本次运行内）。SwiftUI MenuBarExtra 的已知毛病——
     /// label 运行中变窄（如取消勾选码片）时，状态项会被系统整个隐藏，变宽才恢复。
     /// 锁住最大已见宽度后，取消勾选只是右侧留白、绝不收窄 → 不再触发隐藏；
@@ -254,29 +330,102 @@ struct MenuBarLabel: View {
     @State private var lockedWidth: CGFloat = 0
 
     var body: some View {
-        // 菜单栏 label = bolt 兄弟 Image + 单个 Text（实测唯一可靠组合：兄弟 Image 能显示、
-        // 单个 Text 不被截断；而多个并列 Text 会被截、SF Symbol 塞进 Text 又渲染成空白）。
-        HStack(spacing: 4) {
-            Image(systemName: "bolt.fill")
-            Text(labelString)
-        }
-        .background(
-            GeometryReader { geo in
-                Color.clear
-                    .onAppear { lockedWidth = max(lockedWidth, geo.size.width) }
-                    .onChange(of: geo.size.width) { _, w in lockedWidth = max(lockedWidth, w) }
-            }
-        )
-        .frame(minWidth: lockedWidth, alignment: .leading)
-        .onAppear { model.start() }
+        // 整条 label 合成为单张模板 NSImage。MenuBarExtra label 实测只有「单 Image」
+        // 「Image+单 Text」可靠——多段 Text 会被截断、SF Symbol 塞 Text 渲染空白；
+        // 品牌图标要与文本交错，只能整体合成单图，isTemplate 让明暗/失焦自动着色。
+        Image(nsImage: composite)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { lockedWidth = max(lockedWidth, geo.size.width) }
+                        .onChange(of: geo.size.width) { _, w in lockedWidth = max(lockedWidth, w) }
+                }
+            )
+            .frame(minWidth: lockedWidth, alignment: .leading)
+            .onAppear { model.start() }
     }
 
-    /// 整条内容拼成一个字符串：token 段（D:1M·$0.1）+ 额度段（5H:10% / Week:69%），空格分隔。
-    private var labelString: String {
-        var parts = segments.map { $0.text }
-        if model.mbQuota5H   { parts.append(quotaStr("5H",   "five_hour")) }
-        if model.mbQuotaWeek { parts.append(quotaStr("Week", "seven_day")) }
-        return parts.isEmpty ? "CC" : parts.joined(separator: "  ")
+    /// 一段菜单栏内容：品牌图标 + 该 AI 的文本。All 段无图标（⚡ 就是本应用标识）。
+    private struct Piece { let icon: String?; let text: String }
+
+    private var pieces: [Piece] {
+        var out: [Piece] = []
+        let all = segments.map(\.text).joined(separator: "  ")
+        if !all.isEmpty { out.append(Piece(icon: nil, text: all)) }
+        for app in MBApp.allCases {
+            let a = app.rawValue
+            let sums = model.mbAppSummaries[a]
+            var segs: [String] = []
+            func add(_ letter: String, _ s: UsageSummary?, _ tokKey: String, _ costKey: String) {
+                let tok = model.chipOn(tokKey), cost = model.chipOn(costKey)
+                guard tok || cost, let s else { return }
+                var p: [String] = []
+                if tok  { p.append(Fmt.tokens(s.tokensProcessed)) }
+                if cost { p.append(Fmt.cost(s.cost)) }
+                segs.append("\(letter): \(p.joined(separator: "·"))")
+            }
+            add("D", sums?.today, "\(a).tokens.today", "\(a).cost.today")
+            add("W", sums?.week,  "\(a).tokens.week",  "\(a).cost.week")
+            add("M", sums?.month, "\(a).tokens.month", "\(a).cost.month")
+            // 额度段跟在所属 AI 段内：Claude 走官方接口两档，Codex 走本地快照（窗口自适应）
+            if app == .claude {
+                if model.mbQuota5H   { segs.append(quotaStr("5H", "five_hour")) }
+                if model.mbQuotaWeek { segs.append(quotaStr("W",  "seven_day")) }
+            }
+            if app == .codex {
+                let anyOn = model.mbAppChips.contains { $0.hasPrefix("codex.quota.") }
+                let sel = model.mbCodexQuota.filter { model.chipOn("codex.quota.\($0.label)") }
+                if anyOn && model.mbCodexQuota.isEmpty {
+                    segs.append("—")   // 勾了但没扫到快照（没装 Codex / 会话被清）
+                } else {
+                    segs.append(contentsOf: sel.map { "\($0.label): \(Int($0.usedPercent.rounded()))%" })
+                }
+            }
+            if !segs.isEmpty { out.append(Piece(icon: app.iconAsset, text: segs.joined(separator: " "))) }
+        }
+        return out
+    }
+
+    /// pieces → 单张黑色模板图：⚡（可关）+ [All 文本] + [品牌图标 文本]…，空段兜底 "CC"。
+    private var composite: NSImage {
+        let font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        let str = NSMutableAttributedString()
+        func appendIcon(_ img: NSImage) {
+            let h: CGFloat = 14
+            let w = img.size.height > 0 ? img.size.width / img.size.height * h : h
+            let att = NSTextAttachment()
+            att.image = img
+            att.bounds = CGRect(x: 0, y: (font.capHeight - h) / 2, width: w, height: h)
+            str.append(NSAttributedString(attachment: att))
+            str.append(NSAttributedString(string: " ", attributes: attrs))
+        }
+        if model.mbShowIcon,
+           let bolt = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)?
+               .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold)) {
+            appendIcon(bolt)
+        }
+        let ps = pieces
+        if ps.isEmpty {
+            str.append(NSAttributedString(string: "CC", attributes: attrs))
+        } else {
+            for p in ps {
+                if str.length > 0 { str.append(NSAttributedString(string: "  ", attributes: attrs)) }
+                if let name = p.icon, let img = NSImage(named: name) { appendIcon(img) }
+                str.append(NSAttributedString(string: p.text, attributes: attrs))
+            }
+        }
+        let bounds = str.boundingRect(
+            with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin])
+        let img = NSImage(size: NSSize(width: ceil(bounds.width) + 1, height: 18), flipped: false) { rect in
+            str.draw(with: NSRect(x: 0, y: (rect.height - bounds.height) / 2 - bounds.minY,
+                                  width: bounds.width, height: bounds.height),
+                     options: [.usesLineFragmentOrigin])
+            return true
+        }
+        img.isTemplate = true
+        return img
     }
 
     private func quotaStr(_ label: String, _ name: String) -> String {
@@ -376,26 +525,103 @@ struct MenuBarPanel: View {
     }
 }
 
-/// 菜单栏「显示设置」勾选面板：三组原生 checkbox，绑定 PanelModel 的 @Published 开关
-/// （didSet 落盘 + 勾选额度即刻强制取数）。Tokens/Cost 各含 D·W·M，Quota 含 5H·Week。
+/// 菜单栏「显示设置」：按 AI 分组的手风琴。All = 全部 AI 合计（旧 Tokens/Cost 语义不变），
+/// Claude/Codex/Gemini/OpenCode 各自展开选该 AI 的 Tokens/Cost，有配额数据的 AI 多一行 Quota
+/// （Claude = 官方接口 5H/Week，Codex = 本地会话快照、窗口自适应）。折叠状态持久化，默认只展开 All。
 struct MenuBarSettingsView: View {
     @ObservedObject var model: PanelModel
+    @AppStorage("mb.group.all")      private var expAll = true
+    @AppStorage("mb.group.claude")   private var expClaude = false
+    @AppStorage("mb.group.codex")    private var expCodex = false
+    @AppStorage("mb.group.gemini")   private var expGemini = false
+    @AppStorage("mb.group.opencode") private var expOpencode = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            row("Tokens") {
-                check("Day", $model.mbTokToday); check("Week", $model.mbTokWeek); check("Month", $model.mbTokMonth)
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Show ⚡ icon in menu bar", isOn: $model.mbShowIcon)
+                .toggleStyle(.checkbox).font(.caption).foregroundStyle(Theme.textMain)
+
+            group("All", $expAll) {
+                row("Tokens") {
+                    check("Day", $model.mbTokToday); check("Week", $model.mbTokWeek); check("Month", $model.mbTokMonth)
+                }
+                row("Cost") {
+                    check("Day", $model.mbCostToday); check("Week", $model.mbCostWeek); check("Month", $model.mbCostMonth)
+                }
             }
-            row("Cost") {
-                check("Day", $model.mbCostToday); check("Week", $model.mbCostWeek); check("Month", $model.mbCostMonth)
+            group("Claude", $expClaude, icon: MBApp.claude.iconAsset) {
+                appRows(.claude)
+                row("Quota") { check("5H", $model.mbQuota5H); check("Week", $model.mbQuotaWeek) }
             }
-            row("Quota") {
-                check("5H", $model.mbQuota5H); check("Week", $model.mbQuotaWeek)
+            group("Codex", $expCodex, icon: MBApp.codex.iconAsset) {
+                appRows(.codex)
+                // 逐窗口勾选，交互与 Claude 对齐；窗口从本地快照发现（Plus=5H+Week，Free=30D）
+                row("Quota") {
+                    let windows = CodexQuota.latest()
+                    if windows.isEmpty {
+                        noQuota("No Codex data")
+                    } else {
+                        ForEach(windows, id: \.label) { w in
+                            check(w.label == "W" ? "Week" : w.label,
+                                  model.chipBinding("codex.quota.\(w.label)"))
+                        }
+                    }
+                }
             }
-            Text("Menu bar shows D / W / M = Day / Week / Month. Quota is % used, e.g. 5H:10%.")
+            // Gemini 按天限请求数且不落盘、OpenCode 配额归背后 provider——都没有配额窗口可显示，
+            // Quota 行保留占位并如实标注，五个组结构对齐
+            group("Gemini", $expGemini, icon: MBApp.gemini.iconAsset) {
+                appRows(.gemini)
+                row("Quota") { noQuota("No quota API") }
+            }
+            group("OpenCode", $expOpencode, icon: MBApp.opencode.iconAsset) {
+                appRows(.opencode)
+                row("Quota") { noQuota("No quota API") }
+            }
+
+            Text("All = every AI combined. Prefixes: C=Claude, X=Codex, G=Gemini, O=OpenCode; D/W/M = Day/Week/Month. Quota is % used.")
                 .font(.caption2).foregroundStyle(Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// 单个 AI 的 Tokens/Cost 两行（D/W/M 勾选走 chipBinding，落盘 + 即时补数）。
+    @ViewBuilder private func appRows(_ app: MBApp) -> some View {
+        let a = app.rawValue
+        row("Tokens") {
+            check("Day",   model.chipBinding("\(a).tokens.today"))
+            check("Week",  model.chipBinding("\(a).tokens.week"))
+            check("Month", model.chipBinding("\(a).tokens.month"))
+        }
+        row("Cost") {
+            check("Day",   model.chipBinding("\(a).cost.today"))
+            check("Week",  model.chipBinding("\(a).cost.week"))
+            check("Month", model.chipBinding("\(a).cost.month"))
+        }
+    }
+
+    /// 一个可折叠的 AI 区块：品牌图标 + 标题，整行可点开合（与外层 Menu Bar Display 同交互）。
+    private func group<C: View>(_ title: String, _ expanded: Binding<Bool>, icon: String? = nil,
+                                @ViewBuilder _ content: () -> C) -> some View {
+        let inner = content()   // 立即求值：DisclosureGroup 的内容闭包是逃逸的，参数默认非逃逸
+        return DisclosureGroup(isExpanded: expanded) {
+            VStack(alignment: .leading, spacing: 8) { inner }
+                .padding(.top, 6).padding(.leading, 2)
+        } label: {
+            HStack(spacing: 5) {
+                if let icon, let img = NSImage(named: icon) {
+                    Image(nsImage: img).renderingMode(.template)
+                        .resizable().scaledToFit().frame(width: 13, height: 13)
+                        .foregroundStyle(Theme.textMain)
+                }
+                Text(title)
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.textMain)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation { expanded.wrappedValue.toggle() } }
+        }
+        .tint(Theme.textDim)
     }
 
     private func row<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
@@ -412,5 +638,10 @@ struct MenuBarSettingsView: View {
             .toggleStyle(.checkbox)
             .font(.caption)
             .foregroundStyle(Theme.textMain)
+    }
+
+    /// Quota 行的灰色占位说明（该 AI 无配额数据源时）。
+    private func noQuota(_ text: String) -> some View {
+        Text(text).font(.caption).foregroundStyle(Theme.textDim)
     }
 }
