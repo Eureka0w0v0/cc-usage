@@ -20,7 +20,7 @@ enum MBKey {
     static let quotaWeek = "mb.quota.week"
     static let icon      = "mb.icon"        // 菜单栏 ⚡ 图标开关（默认开）
     static let appChips  = "mb.appChips"    // 按 AI 分组的码片选中集（字符串数组）
-    static let maxSafe   = "mb.maxSafeWidth" // 学到的状态项安全宽度（超过会被挤掉）
+    static let ctxBounds = "mb.ctxBounds"   // 按前台 app 分桶的容量边界 [bundleID: [下界, 上界]]
 }
 
 /// 菜单栏可分组展示的 AI 来源。All（全部合计）不在此枚举里——它就是 MBKey 那组旧开关。
@@ -81,7 +81,7 @@ final class PanelModel: ObservableObject {
     @Published var mbAppChips: Set<String> {
         didSet {
             UserDefaults.standard.set(Array(mbAppChips).sorted(), forKey: MBKey.appChips)
-            mbWidthCap = nil   // 同 persist：放开重试全宽
+            resetWidthGovernor()
             if started { reload() }
         }
     }
@@ -101,19 +101,59 @@ final class PanelModel: ObservableObject {
     /// 勾选变化时清零重试全宽。
     @Published var mbWidthCap: CGFloat? = nil
     private var mbLastVisibleWidth: CGFloat = 0
-    /// 学到的安全宽度（历史上可见的最大宽度 / 被挤后收敛到的宽度），跨启动持久化。
-    /// 勾选变化时立即按它钳制 → 状态项瞬间截断而不是先消失再恢复。
-    private var mbMaxSafeWidth: CGFloat = 0
+    /// 容量夹逼模型：菜单栏真实可用宽度介于 fitW（曾可见的最大宽度=下界）与 sqzW
+    /// （曾被挤的最小宽度=上界）之间。被挤→一步压回 fitW；带上限稳定可见→向 sqzW
+    /// 二分探测夺回空间；两界收敛（差≤60）后停止探测不再闪。
+    /// 容量随前台 app 变（菜单宽度不同），边界按 frontmost bundleID 分桶持久化：
+    /// 每个 app 只校准一次，切 app 立即采用该桶边界——不闪、不用旧上下文的错误截断。
+    /// 注意 label 自然宽度 ≠ 容量：短 label 只抬 fitW，绝不作为"容量就这么大"的证据。
+    private var mbFitWidth: CGFloat = 0
+    private var mbSqueezeWidth: CGFloat = .greatestFiniteMagnitude
+    private var mbCtxKey = "default"     // 当前容量桶 = 前台 app bundleID
     private var visTimer: AnyCancellable?
+    private var hiddenTicks = 0          // 连续不可见计数：≥2 才算真被挤，滤面板开合毛刺
+    private var stableVisibleTicks = 0   // 带上限稳定可见计数：≥3（6s）才发起一次探测
+    private var probing = false          // 探测中：因探测导致的隐藏第一拍就退回，闪 ≤2s
 
-    private func setMaxSafe(_ w: CGFloat) {
-        mbMaxSafeWidth = w
-        UserDefaults.standard.set(Double(w), forKey: MBKey.maxSafe)
+    private func persistCtxBounds() {
+        var dict = UserDefaults.standard.dictionary(forKey: MBKey.ctxBounds) as? [String: [Double]] ?? [:]
+        dict[mbCtxKey] = [Double(mbFitWidth),
+                          mbSqueezeWidth == .greatestFiniteMagnitude ? -1 : Double(mbSqueezeWidth)]
+        UserDefaults.standard.set(dict, forKey: MBKey.ctxBounds)
     }
+    private func setFitWidth(_ w: CGFloat) {
+        mbFitWidth = w
+        persistCtxBounds()
+    }
+    private func setSqueezeWidth(_ w: CGFloat) {
+        mbSqueezeWidth = w
+        persistCtxBounds()
+    }
+    /// 切换容量桶：读入该前台 app 的已知边界；没见过的 app 从零开始（先试全宽校准一次）。
+    private func switchContext(to key: String) {
+        guard key != mbCtxKey else { return }
+        mbCtxKey = key
+        let dict = UserDefaults.standard.dictionary(forKey: MBKey.ctxBounds) as? [String: [Double]] ?? [:]
+        let b = dict[key] ?? []
+        mbFitWidth = b.count > 0 ? CGFloat(b[0]) : 0
+        mbSqueezeWidth = b.count > 1 && b[1] > 0 ? CGFloat(b[1]) : .greatestFiniteMagnitude
+        // 只有真被挤过的上下文才启用截断；从无挤出记录 = 没有"放不下"的证据 → 完整显示。
+        // （下界只是证实过的宽度，不是容量极限；按下界预防性截断会随数字宽度呼吸来回闪）
+        mbWidthCap = mbSqueezeWidth < .greatestFiniteMagnitude && mbFitWidth > 80
+            ? max(80, min(mbFitWidth, mbSqueezeWidth - 40)) : nil
+        resetWidthGovernor()
+        probing = false
+    }
+    /// 勾选变化复位：只清计数，保留上限与两界——变长立即按已知边界截断（不消失），
+    /// 变短由「自然宽度小于上限则清除上限」规则自动放开。
+    private func resetWidthGovernor() {
+        hiddenTicks = 0; stableVisibleTicks = 0
+    }
+
     var mbAnyQuotaOn: Bool { mbQuota5H || mbQuotaWeek }
     private func persist(_ key: String, _ val: Bool) {
         UserDefaults.standard.set(val, forKey: key)
-        mbWidthCap = nil   // 勾选变化：放开重试全宽；超长最多隐身一个巡检周期就压回安全宽度
+        resetWidthGovernor()
     }
 
     func chipOn(_ key: String) -> Bool { mbAppChips.contains(key) }
@@ -141,14 +181,15 @@ final class PanelModel: ObservableObject {
         mbQuotaWeek = load(MBKey.quotaWeek, false)
         mbShowIcon  = load(MBKey.icon,      true)
         mbAppChips  = Set(d.stringArray(forKey: MBKey.appChips) ?? [])
-        mbMaxSafeWidth = CGFloat(d.double(forKey: MBKey.maxSafe))
-        mbWidthCap = mbMaxSafeWidth > 80 ? mbMaxSafeWidth : nil   // 启动即按安全宽度钳制
+        // 启动即采用当前前台 app 的容量桶（防启动消失；没见过则全宽校准）
+        PanelModel.shared = self
+        mbCtxKey = ""   // 置空使 switchContext 必然执行
+        switchContext(to: NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "default")
         // embed 面板持久化的刷新间隔（ms，set_setting 写入）：启动时接管为全局节奏，
         // 菜单栏与面板从第一秒起就一致。没存过则维持默认 5s。
         if let ms = d.object(forKey: "embed.refreshIntervalMs") as? Int {
             intervalSeconds = max(0, ms / 1000)
         }
-        PanelModel.shared = self
     }
 
     /// embed 面板刷新选择器写穿过来的间隔（ms），0 = 关闭自动刷新。
@@ -184,12 +225,32 @@ final class PanelModel: ObservableObject {
         visTimer = Timer.publish(every: 2, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.checkStatusItemVisibility() }
-        // 屏幕环境变化（接/拔显示器等）：可用空间变了，放开重试全宽
+        // 屏幕环境变化（接/拔显示器等）：所有容量桶作废，从当前桶重新夹逼
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.mbWidthCap = nil }
+            Task { @MainActor in
+                guard let self else { return }
+                UserDefaults.standard.removeObject(forKey: MBKey.ctxBounds)
+                self.mbFitWidth = 0
+                self.mbSqueezeWidth = .greatestFiniteMagnitude
+                self.mbWidthCap = nil
+                self.resetWidthGovernor()
+            }
+        }
+        // 前台 app 切换：换到该 app 的容量桶（菜单宽度 app 各异，桶内边界学一次终身有效）
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil, queue: .main
+        ) { [weak self] note in
+            Task { @MainActor in
+                guard let self,
+                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      app.processIdentifier != ProcessInfo.processInfo.processIdentifier
+                else { return }
+                self.switchContext(to: app.bundleIdentifier ?? "default")
+            }
         }
     }
 
@@ -213,23 +274,47 @@ final class PanelModel: ObservableObject {
         // occlusionState 不含 .visible；同时窗口会被顶出屏幕左缘（origin.x < 0）。
         let visible = win.isVisible && win.occlusionState.contains(.visible)
         if visible {
+            hiddenTicks = 0
             mbLastVisibleWidth = width
-            // 无钳制且完整可见：学到更大的安全宽度
-            if mbWidthCap == nil, width > mbMaxSafeWidth { setMaxSafe(width) }
-        } else {
-            var newCap: CGFloat
-            if mbWidthCap == nil, mbMaxSafeWidth > 80, mbMaxSafeWidth < width {
-                newCap = mbMaxSafeWidth                      // 一步到位：先压到已知安全宽度
-            } else {
-                let base = mbWidthCap ?? width
-                newCap = max(80, base * 0.72)                // 安全宽度也不够：继续 ×0.72 收缩
-                if win.frame.origin.x < 0 {
-                    // 被顶出屏幕左缘：直接扣掉出屏量再留 200pt 菜单余量，加速收敛
-                    newCap = min(newCap, max(80, width + win.frame.origin.x - 200))
+            if probing { probing = false }                   // 探测成功
+            if width > mbFitWidth { setFitWidth(width) }     // 任何可见宽度都抬高容量下界
+            if let cap = mbWidthCap {
+                if width + 40 < cap {
+                    // 自然宽度已明显小于上限（40pt 迟滞：数字呼吸不来回触发）：上限失去意义
+                    mbWidthCap = nil
+                    stableVisibleTicks = 0
+                } else if mbSqueezeWidth - cap > 60 {
+                    // 两界未收敛：稳定可见 3 tick 后向上界二分探测一步
+                    stableVisibleTicks += 1
+                    if stableVisibleTicks >= 3 {
+                        probing = true
+                        let target = mbSqueezeWidth == .greatestFiniteMagnitude
+                            ? cap * 2
+                            : min(mbSqueezeWidth - 40, (cap + mbSqueezeWidth) / 2)
+                        mbWidthCap = max(cap + 1, target)
+                        stableVisibleTicks = 0
+                    }
                 }
-                setMaxSafe(newCap)                           // 安全宽度跟着现实向下修
+                // 两界收敛（差≤60）：驻留在边界，不再探测、不再闪
             }
-            if newCap != mbWidthCap { mbWidthCap = newCap }
+        } else {
+            stableVisibleTicks = 0
+            if probing {
+                // 探测导致的隐藏是自己引起的：第一拍立即退回下界并收紧上界，闪 ≤2s
+                probing = false
+                if let cap = mbWidthCap { setSqueezeWidth(min(mbSqueezeWidth, cap)) }
+                mbWidthCap = max(80, min(mbFitWidth, mbSqueezeWidth - 40))
+                hiddenTicks = 0
+                return
+            }
+            hiddenTicks += 1
+            guard hiddenTicks >= 2 else { return }           // 连续 2 tick 才算真被挤，滤瞬态毛刺
+            setSqueezeWidth(min(mbSqueezeWidth, width))      // 这个宽度装不下：上界收紧
+            if mbFitWidth >= mbSqueezeWidth {                // 界翻转（容量变小了）：下界重置
+                setFitWidth(max(80, mbSqueezeWidth * 0.72))
+            }
+            mbWidthCap = max(80, min(mbFitWidth, mbSqueezeWidth - 40))
+            hiddenTicks = 0                                  // 调整后重新计数，给渲染生效留时间
         }
     }
 
