@@ -26,18 +26,22 @@ enum MBKey {
 /// 菜单栏可分组展示的 AI 来源。All（全部合计）不在此枚举里——它就是 MBKey 那组旧开关。
 /// 码片 key 格式 "\(rawValue).tokens.today" / "\(rawValue).cost.week" / "codex.quota"。
 enum MBApp: String, CaseIterable {
-    case claude, codex, gemini, opencode
+    case claude, codex, gemini, opencode, antigravity
     var title: String {
         switch self {
         case .claude: return "Claude"; case .codex: return "Codex"
         case .gemini: return "Gemini"; case .opencode: return "OpenCode"
+        case .antigravity: return "Antigravity"
         }
     }
+    /// Antigravity 没有本地用量库（Tokens/Cost 无从谈起），只有各模型配额。
+    var hasUsageBuckets: Bool { self != .antigravity }
     /// 品牌模板图标（Resources 里的黑色 alpha PNG，菜单栏段前缀与设置分组标题共用）。
     var iconAsset: String {
         switch self {
         case .claude: return "brand-claude"; case .codex: return "brand-openai"
         case .gemini: return "brand-gemini"; case .opencode: return "brand-opencode"
+        case .antigravity: return "brand-antigravity"
         }
     }
 }
@@ -81,7 +85,8 @@ final class PanelModel: ObservableObject {
     @Published var mbAppChips: Set<String> {
         didSet {
             UserDefaults.standard.set(Array(mbAppChips).sorted(), forKey: MBKey.appChips)
-            resetWidthGovernor()
+            mbWidthCap = nil   // 勾选变化：解除上限，按新内容全宽重估
+            growCeiling = .greatestFiniteMagnitude
             if started { reload() }
         }
     }
@@ -95,65 +100,26 @@ final class PanelModel: ObservableObject {
     @Published var mbAppSummaries: [String: AppPeriods] = [:]
     /// Codex 限额窗口快照（勾了 codex.quota 才扫描）。
     @Published var mbCodexQuota: [CodexQuota.Window] = []
+    /// Antigravity 各模型配额快照（勾了 antigravity.quota.* 才扫描）。
+    @Published var mbAntigravityQuota: [AntigravityQuota.Model] = []
 
-    /// 菜单栏动态宽度上限：nil = 不限（默认无限长）。仅当检测到状态项被 macOS
-    /// 挤掉（菜单栏空间不足会整个隐藏）时，收缩到最近一次可见宽度并尾部截断 "…"；
-    /// 勾选变化时清零重试全宽。
+    /// 菜单栏宽度上限：nil = 全宽（默认）。原则：**有空间就绝不截断**——只在状态项此刻
+    /// 真被 macOS 挤掉时按溢出量精确收缩；内容变短到能放下就立刻解除上限。不做持久化、
+    /// 不做跨 app 记忆（那会用陈旧的窄上限截断新的短内容——正是之前的 bug）。
     @Published var mbWidthCap: CGFloat? = nil
-    private var mbLastVisibleWidth: CGFloat = 0
-    /// 容量夹逼模型：菜单栏真实可用宽度介于 fitW（曾可见的最大宽度=下界）与 sqzW
-    /// （曾被挤的最小宽度=上界）之间。被挤→一步压回 fitW；带上限稳定可见→向 sqzW
-    /// 二分探测夺回空间；两界收敛（差≤60）后停止探测不再闪。
-    /// 容量随前台 app 变（菜单宽度不同），边界按 frontmost bundleID 分桶持久化：
-    /// 每个 app 只校准一次，切 app 立即采用该桶边界——不闪、不用旧上下文的错误截断。
-    /// 注意 label 自然宽度 ≠ 容量：短 label 只抬 fitW，绝不作为"容量就这么大"的证据。
-    private var mbFitWidth: CGFloat = 0
-    private var mbSqueezeWidth: CGFloat = .greatestFiniteMagnitude
-    private var mbCtxKey = "default"     // 当前容量桶 = 前台 app bundleID
+    private var naturalWidth: CGFloat = 0          // 当前内容未截断的自然宽度（composite 每帧回报）
+    private var lastNatural: CGFloat = 0           // 上帧自然宽度，用于识别"内容结构变了"
+    private var growCeiling: CGFloat = .greatestFiniteMagnitude  // 增长天花板 = 上次被挤的宽度，防边界震荡
+    private var hiddenTicks = 0                     // 连续不可见计数：≥2 才算真被挤，滤面板开合毛刺
+    private var growTicks = 0                        // 可见但仍截断的连续计数：≥2 才尝试夺回空间
     private var visTimer: AnyCancellable?
-    private var hiddenTicks = 0          // 连续不可见计数：≥2 才算真被挤，滤面板开合毛刺
-    private var stableVisibleTicks = 0   // 带上限稳定可见计数：≥3（6s）才发起一次探测
-    private var probing = false          // 探测中：因探测导致的隐藏第一拍就退回，闪 ≤2s
 
-    private func persistCtxBounds() {
-        var dict = UserDefaults.standard.dictionary(forKey: MBKey.ctxBounds) as? [String: [Double]] ?? [:]
-        dict[mbCtxKey] = [Double(mbFitWidth),
-                          mbSqueezeWidth == .greatestFiniteMagnitude ? -1 : Double(mbSqueezeWidth)]
-        UserDefaults.standard.set(dict, forKey: MBKey.ctxBounds)
-    }
-    private func setFitWidth(_ w: CGFloat) {
-        mbFitWidth = w
-        persistCtxBounds()
-    }
-    private func setSqueezeWidth(_ w: CGFloat) {
-        mbSqueezeWidth = w
-        persistCtxBounds()
-    }
-    /// 切换容量桶：读入该前台 app 的已知边界；没见过的 app 从零开始（先试全宽校准一次）。
-    private func switchContext(to key: String) {
-        guard key != mbCtxKey else { return }
-        mbCtxKey = key
-        let dict = UserDefaults.standard.dictionary(forKey: MBKey.ctxBounds) as? [String: [Double]] ?? [:]
-        let b = dict[key] ?? []
-        mbFitWidth = b.count > 0 ? CGFloat(b[0]) : 0
-        mbSqueezeWidth = b.count > 1 && b[1] > 0 ? CGFloat(b[1]) : .greatestFiniteMagnitude
-        // 只有真被挤过的上下文才启用截断；从无挤出记录 = 没有"放不下"的证据 → 完整显示。
-        // （下界只是证实过的宽度，不是容量极限；按下界预防性截断会随数字宽度呼吸来回闪）
-        mbWidthCap = mbSqueezeWidth < .greatestFiniteMagnitude && mbFitWidth > 80
-            ? max(80, min(mbFitWidth, mbSqueezeWidth - 40)) : nil
-        resetWidthGovernor()
-        probing = false
-    }
-    /// 勾选变化复位：只清计数，保留上限与两界——变长立即按已知边界截断（不消失），
-    /// 变短由「自然宽度小于上限则清除上限」规则自动放开。
-    private func resetWidthGovernor() {
-        hiddenTicks = 0; stableVisibleTicks = 0
-    }
+    /// composite 渲染时回报自然宽度（普通存储，不触发重绘）。
+    func reportNaturalWidth(_ w: CGFloat) { naturalWidth = w }
 
     var mbAnyQuotaOn: Bool { mbQuota5H || mbQuotaWeek }
     private func persist(_ key: String, _ val: Bool) {
         UserDefaults.standard.set(val, forKey: key)
-        resetWidthGovernor()
     }
 
     func chipOn(_ key: String) -> Bool { mbAppChips.contains(key) }
@@ -181,10 +147,9 @@ final class PanelModel: ObservableObject {
         mbQuotaWeek = load(MBKey.quotaWeek, false)
         mbShowIcon  = load(MBKey.icon,      true)
         mbAppChips  = Set(d.stringArray(forKey: MBKey.appChips) ?? [])
-        // 启动即采用当前前台 app 的容量桶（防启动消失；没见过则全宽校准）
         PanelModel.shared = self
-        mbCtxKey = ""   // 置空使 switchContext 必然执行
-        switchContext(to: NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "default")
+        // 迁移：清掉旧版按 app 分桶持久化的容量记忆（陈旧窄上限会错误截断，已改为纯反应式）
+        d.removeObject(forKey: MBKey.ctxBounds)
         // embed 面板持久化的刷新间隔（ms，set_setting 写入）：启动时接管为全局节奏，
         // 菜单栏与面板从第一秒起就一致。没存过则维持默认 5s。
         if let ms = d.object(forKey: "embed.refreshIntervalMs") as? Int {
@@ -220,101 +185,72 @@ final class PanelModel: ObservableObject {
         reload()
         restartTimer()
         if mbAnyQuotaOn { refreshQuotaNow() }   // 启动时若已开启额度码片，立即取一次
+        if mbAppChips.contains(where: { $0.hasPrefix("antigravity.quota.") }) { refreshAntigravityNow() }
         updater.start()
         // 状态项可见性巡检：被挤掉后 2s 内一步压回安全宽度
-        visTimer = Timer.publish(every: 2, on: .main, in: .common)
+        visTimer = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.checkStatusItemVisibility() }
-        // 屏幕环境变化（接/拔显示器等）：所有容量桶作废，从当前桶重新夹逼
+        // 屏幕/前台 app 变化：可用空间可能变了，解除上限重新按全宽评估（有空间就别截断）
+        let clearCap: @Sendable () -> Void = { [weak self] in
+            Task { @MainActor in
+                self?.mbWidthCap = nil
+                self?.growCeiling = .greatestFiniteMagnitude
+            }
+        }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                UserDefaults.standard.removeObject(forKey: MBKey.ctxBounds)
-                self.mbFitWidth = 0
-                self.mbSqueezeWidth = .greatestFiniteMagnitude
-                self.mbWidthCap = nil
-                self.resetWidthGovernor()
-            }
-        }
-        // 前台 app 切换：换到该 app 的容量桶（菜单宽度 app 各异，桶内边界学一次终身有效）
+            object: nil, queue: .main) { _ in clearCap() }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
-            object: nil, queue: .main
-        ) { [weak self] note in
-            Task { @MainActor in
-                guard let self,
-                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                      app.processIdentifier != ProcessInfo.processInfo.processIdentifier
-                else { return }
-                self.switchContext(to: app.bundleIdentifier ?? "default")
-            }
-        }
+            object: nil, queue: .main) { _ in clearCap() }
     }
 
-    /// 状态项可见性巡检：MenuBarExtra 的状态项窗口（NSStatusBarWindow）被 macOS 因
-    /// 菜单栏空间不足挤掉时整个隐藏。检测到隐藏（且菜单栏本身在场，排除全屏误判）就
-    /// 把宽度上限收缩到最近一次可见宽度；仍隐藏则每轮 -40 步进收缩（下限 80）直到回来。
+    /// 状态项可见性巡检（纯反应式，无持久化、无跨 app 记忆）：
+    /// - 内容结构变了（自然宽度突变）→ 解除增长天花板，允许重新扩张（修"内容变短仍被旧上限截断"）；
+    /// - 被真正挤掉 → 按溢出量（窗口被顶出屏幕左缘的量）精确收缩，一步到位；
+    /// - 可见且自然宽度已 ≤ 上限 → 上限多余，立刻解除（全宽显示，有空间绝不截断）；
+    /// - 可见但仍截断 → 每 2 拍向天花板方向夺回空间，越界再被挤会精确收回，快速收敛不震荡。
     private func checkStatusItemVisibility() {
         guard let win = NSApp.windows.first(where: {
             String(describing: type(of: $0)).contains("StatusBarWindow")
         }) else { return }
-        // 菜单栏不在场（他 app 全屏等）时状态项本来就看不见，不能当成被挤掉
         let menuBarPresent = NSScreen.screens.contains { $0.visibleFrame.maxY < $0.frame.maxY }
-        guard menuBarPresent else { return }
-        // 面板打开期间（用户正在勾选，label 实时变宽）遮挡状态不稳定，收面板后再执行
+        guard menuBarPresent else { return }   // 全屏等菜单栏不在场时不误判为被挤
         let panelOpen = NSApp.windows.contains {
             String(describing: type(of: $0)).contains("MenuBarExtraWindow") && $0.isVisible
         }
-        guard !panelOpen else { return }
-        let width = win.frame.width
-        // 实测（vis.log 2026-07-20）：被挤掉时 isVisible 仍是 true，唯一可靠信号是
-        // occlusionState 不含 .visible；同时窗口会被顶出屏幕左缘（origin.x < 0）。
-        let visible = win.isVisible && win.occlusionState.contains(.visible)
+        guard !panelOpen else { return }       // 面板开着时遮挡状态不稳，跳过
+
+        // 内容结构突变（增删码片/AI 段，宽度跳变 >30pt）→ 允许重新扩张，不受旧挤出宽度束缚
+        if abs(naturalWidth - lastNatural) > 30 { growCeiling = .greatestFiniteMagnitude }
+        lastNatural = naturalWidth
+
+        // 被挤信号：occlusionState 不含 .visible（实测 isVisible 恒 true，不可用）
+        let visible = win.occlusionState.contains(.visible)
         if visible {
             hiddenTicks = 0
-            mbLastVisibleWidth = width
-            if probing { probing = false }                   // 探测成功
-            if width > mbFitWidth { setFitWidth(width) }     // 任何可见宽度都抬高容量下界
-            if let cap = mbWidthCap {
-                if width + 40 < cap {
-                    // 自然宽度已明显小于上限（40pt 迟滞：数字呼吸不来回触发）：上限失去意义
-                    mbWidthCap = nil
-                    stableVisibleTicks = 0
-                } else if mbSqueezeWidth - cap > 60 {
-                    // 两界未收敛：稳定可见 3 tick 后向上界二分探测一步
-                    stableVisibleTicks += 1
-                    if stableVisibleTicks >= 3 {
-                        probing = true
-                        let target = mbSqueezeWidth == .greatestFiniteMagnitude
-                            ? cap * 2
-                            : min(mbSqueezeWidth - 40, (cap + mbSqueezeWidth) / 2)
-                        mbWidthCap = max(cap + 1, target)
-                        stableVisibleTicks = 0
-                    }
+            guard let cap = mbWidthCap else { return }        // 全宽显示中，无需动作
+            if naturalWidth <= cap + 6 {                      // 内容已能全放下 → 上限多余，解除
+                mbWidthCap = nil; growTicks = 0
+            } else {                                          // 仍截断 → 慢慢夺回空间
+                growTicks += 1
+                if growTicks >= 2 {
+                    let target = min(naturalWidth, min(cap + 100, growCeiling))
+                    if target > cap + 1 { mbWidthCap = target }
+                    growTicks = 0
                 }
-                // 两界收敛（差≤60）：驻留在边界，不再探测、不再闪
             }
         } else {
-            stableVisibleTicks = 0
-            if probing {
-                // 探测导致的隐藏是自己引起的：第一拍立即退回下界并收紧上界，闪 ≤2s
-                probing = false
-                if let cap = mbWidthCap { setSqueezeWidth(min(mbSqueezeWidth, cap)) }
-                mbWidthCap = max(80, min(mbFitWidth, mbSqueezeWidth - 40))
-                hiddenTicks = 0
-                return
-            }
+            growTicks = 0
             hiddenTicks += 1
-            guard hiddenTicks >= 2 else { return }           // 连续 2 tick 才算真被挤，滤瞬态毛刺
-            setSqueezeWidth(min(mbSqueezeWidth, width))      // 这个宽度装不下：上界收紧
-            if mbFitWidth >= mbSqueezeWidth {                // 界翻转（容量变小了）：下界重置
-                setFitWidth(max(80, mbSqueezeWidth * 0.72))
-            }
-            mbWidthCap = max(80, min(mbFitWidth, mbSqueezeWidth - 40))
-            hiddenTicks = 0                                  // 调整后重新计数，给渲染生效留时间
+            guard hiddenTicks >= 2 else { return }            // 连续 2 拍才算真被挤，滤面板开合毛刺
+            let overflow = win.frame.origin.x < 0 ? -win.frame.origin.x + 24 : 48
+            let cur = mbWidthCap ?? win.frame.width
+            let newCap = max(80, cur - overflow)
+            growCeiling = newCap                              // 别再涨回刚被挤的宽度，防边界震荡
+            mbWidthCap = newCap
+            hiddenTicks = 0                                   // 收缩后重新计数，给渲染生效留时间
         }
     }
 
@@ -323,6 +259,21 @@ final class PanelModel: ObservableObject {
         Task { [weak self] in
             let tiers = await QuotaService.forceTiersForBridge()
             self?.quotaTiers = tiers
+        }
+    }
+
+    /// 联网取 Antigravity 各模型实时配额（30s actor 内节流）。设置面板展开或勾选时触发。
+    private var antigravityFetching = false
+    func refreshAntigravityNow() {
+        guard !antigravityFetching else { return }
+        antigravityFetching = true
+        Task { [weak self] in
+            let models = await AntigravityQuota.shared.latest()
+            await MainActor.run {
+                guard let self else { return }
+                self.mbAntigravityQuota = models
+                self.antigravityFetching = false
+            }
         }
     }
 
@@ -402,6 +353,11 @@ final class PanelModel: ObservableObject {
                 self.mbAppSummaries = out.appSummaries
                 self.mbCodexQuota = out.codexWindows
                 self.error = nil
+                // Antigravity 走联网查询（OAuth + Google API），独立 Task 不阻塞 reload；
+                // 有勾选或设置面板需要列表时才发起。
+                if self.mbAppChips.contains(where: { $0.hasPrefix("antigravity.quota.") }) {
+                    self.refreshAntigravityNow()
+                }
                 self.reloadWidgetsThrottled()
                 // 官方额度：仅当有额度码片开启时才查（默认关 → 不读凭据、不联网）。
                 // 走 QuotaCache（5 分钟节流 + stale-if-error），与 embed 的 get_quota 共享同一份
@@ -484,22 +440,11 @@ struct MenuBarLabel: View {
     /// label 运行中变窄（如取消勾选码片）时，状态项会被系统整个隐藏，变宽才恢复。
     /// 锁住最大已见宽度后，取消勾选只是右侧留白、绝不收窄 → 不再触发隐藏；
     /// 重启后按当前勾选恢复精确宽度。
-    @State private var lockedWidth: CGFloat = 0
-
     var body: some View {
-        // 整条 label 合成为单张模板 NSImage。MenuBarExtra label 实测只有「单 Image」
-        // 「Image+单 Text」可靠——多段 Text 会被截断、SF Symbol 塞 Text 渲染空白；
-        // 品牌图标要与文本交错，只能整体合成单图，isTemplate 让明暗/失焦自动着色。
+        // 整条 label 合成为单张模板 NSImage（其自身宽度即上限，收缩由 composite 内截断实现）。
+        // MenuBarExtra label 实测只有「单 Image」可靠——多段 Text 会被截断、SF Symbol 塞 Text
+        // 渲染空白；品牌图标要与文本交错，只能整体合成单图，isTemplate 让明暗/失焦自动着色。
         Image(nsImage: composite)
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear { lockedWidth = max(lockedWidth, geo.size.width) }
-                        .onChange(of: geo.size.width) { _, w in lockedWidth = max(lockedWidth, w) }
-                }
-            )
-            .frame(minWidth: min(lockedWidth, model.mbWidthCap ?? .greatestFiniteMagnitude),
-                   alignment: .leading)   // 收缩上限生效时宽度锁让位，否则状态项缩不回来
             .onAppear { model.start() }
     }
 
@@ -537,6 +482,17 @@ struct MenuBarLabel: View {
                     segs.append("—")   // 勾了但没扫到快照（没装 Codex / 会话被清）
                 } else {
                     segs.append(contentsOf: sel.map { "\($0.label): \(Int($0.usedPercent.rounded()))%" })
+                }
+            }
+            if app == .antigravity {
+                // 按家族折叠：同家族共用配额，避免菜单栏 "Flash 10% Flash 10%…" 重复
+                let pools = AntigravityQuota.pools(model.mbAntigravityQuota)
+                let anyOn = model.mbAppChips.contains { $0.hasPrefix("antigravity.quota.") }
+                let sel = pools.filter { model.chipOn("antigravity.quota.\($0.family)") }
+                if anyOn && pools.isEmpty {
+                    segs.append("—")   // 勾了但没查到（没装 Antigravity / 未登录 / 网络失败）
+                } else {
+                    segs.append(contentsOf: sel.map { "\($0.family): \(Int($0.usedPercent.rounded()))%" })
                 }
             }
             if !segs.isEmpty { out.append(Piece(icon: app.iconAsset, text: segs.joined(separator: " "))) }
@@ -582,9 +538,11 @@ struct MenuBarLabel: View {
         let bounds = str.boundingRect(
             with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin])
+        let natural = ceil(bounds.width) + 1
+        model.reportNaturalWidth(natural)   // 回报未截断的自然宽度，供 governor 判断
         // 动态上限（窗口宽 → 图像宽留 ~12pt 状态项内边距余量）
         let cap = model.mbWidthCap.map { max(60, $0 - 12) } ?? .greatestFiniteMagnitude
-        let width = min(ceil(bounds.width) + 1, cap)
+        let width = min(natural, cap)
         let img = NSImage(size: NSSize(width: width, height: 18), flipped: false) { rect in
             // 高度限一行 → 超宽只会截断，不会折行
             str.draw(with: NSRect(x: 0, y: (rect.height - bounds.height) / 2 - bounds.minY,
@@ -703,6 +661,7 @@ struct MenuBarSettingsView: View {
     @AppStorage("mb.group.codex")    private var expCodex = false
     @AppStorage("mb.group.gemini")   private var expGemini = false
     @AppStorage("mb.group.opencode") private var expOpencode = false
+    @AppStorage("mb.group.antigravity") private var expAntigravity = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -745,6 +704,26 @@ struct MenuBarSettingsView: View {
             group("OpenCode", $expOpencode, icon: MBApp.opencode.iconAsset) {
                 appRows(.opencode)
                 row("Quota") { noQuota("No quota API") }
+            }
+            // Antigravity 各模型实时配额（联网查询，无本地用量库），逐模型勾选、显示已用 %
+            group("Antigravity", $expAntigravity, icon: MBApp.antigravity.iconAsset) {
+                let pools = AntigravityQuota.pools(model.mbAntigravityQuota)
+                if pools.isEmpty {
+                    row("Quota") { noQuota("No Antigravity data") }
+                } else {
+                    // 按家族折叠：同家族共用配额，一个勾选即可，勾选后菜单栏显示已用 %
+                    row("Quota") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(pools) { p in
+                                check("\(p.family) · \(Int(p.usedPercent.rounded()))%",
+                                      model.chipBinding("antigravity.quota.\(p.family)"))
+                            }
+                        }
+                    }
+                }
+            }
+            .onChange(of: expAntigravity) { _, on in
+                if on { model.refreshAntigravityNow() }   // 展开分组即联网拉取模型列表
             }
 
             Text("All = every AI combined; D/W/M = Day/Week/Month; Quota is % used. Length is unlimited; only if macOS squeezes the item out does it auto-shrink to fit, truncated with ….")

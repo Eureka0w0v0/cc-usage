@@ -32,6 +32,7 @@
 		77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D584EE6E87C0844CE987F0 /* QuotaService.swift */; };
 		791E3496D6FC87AAB229FB0C /* WindowDrag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316F79F14E6A53F1CA747517 /* WindowDrag.swift */; };
 		8489854C9B2CFB5F223BCDF5 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B630AB07F7C1A6EB7B7A1D56 /* UpdateChecker.swift */; };
+		90C0B88B080D42446840B0E1 /* AntigravityQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */; };
 		A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */ = {isa = PBXBuildFile; fileRef = 7C5506EFDDB250B8217B59FD /* brand-gemini.png */; };
 		A61F23745122D8A4D9FC74BA /* CCUsageWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015B95E0A6E30643E43E6880 /* CCUsageWidgetBundle.swift */; };
 		A8E7F6A79EEE15E8B809545A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
@@ -49,6 +50,7 @@
 		DA72E63B29AE992A43BA0E77 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = FE46559B13C9C8A264B5681B /* libsqlite3.tbd */; };
 		DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */; };
 		EA76484909B3172F0696D31D /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
+		F0A03A972CAADA8218FA9636 /* brand-antigravity.png in Resources */ = {isa = PBXBuildFile; fileRef = AB7BF81703006F6E8E06425B /* brand-antigravity.png */; };
 		F6A65301583E710CE61822B6 /* RollupBoundsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C6399E4E6DDB98439F8769 /* RollupBoundsTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -80,6 +82,7 @@
 		015B95E0A6E30643E43E6880 /* CCUsageWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCUsageWidgetBundle.swift; sourceTree = "<group>"; };
 		09D1E9749B8E07DB4B72929A /* brand-opencode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-opencode.png"; sourceTree = "<group>"; };
 		0FA0E5873AE44221C5F8E764 /* index.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
+		17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityQuota.swift; sourceTree = "<group>"; };
 		1DD9369BFCFD21C643B35A08 /* Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dashboard.swift; sourceTree = "<group>"; };
 		26C266A4921348C72AED88BE /* CCUsageWidgetTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CCUsageWidgetTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		316F79F14E6A53F1CA747517 /* WindowDrag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowDrag.swift; sourceTree = "<group>"; };
@@ -96,6 +99,7 @@
 		7C5506EFDDB250B8217B59FD /* brand-gemini.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-gemini.png"; sourceTree = "<group>"; };
 		8C5BE3E29F7962BDE35FD65B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9AD0BC76597EA7B1CA061A1A /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
+		AB7BF81703006F6E8E06425B /* brand-antigravity.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-antigravity.png"; sourceTree = "<group>"; };
 		B630AB07F7C1A6EB7B7A1D56 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B788D2D872F106E2F2EC0A22 /* CCUsageApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCUsageApp.swift; sourceTree = "<group>"; };
@@ -199,6 +203,7 @@
 		9680ED00D53809DE0C74C695 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */,
 				45E808353F9922E4E141F092 /* App.entitlements */,
 				7240EDA4C546F2792A21A93D /* AppIcon.icns */,
 				B788D2D872F106E2F2EC0A22 /* CCUsageApp.swift */,
@@ -247,6 +252,7 @@
 		FA0228D7DE736851CD495D7C /* BrandIcons */ = {
 			isa = PBXGroup;
 			children = (
+				AB7BF81703006F6E8E06425B /* brand-antigravity.png */,
 				CAA25E78D961070EDBD05FBD /* brand-claude.png */,
 				7C5506EFDDB250B8217B59FD /* brand-gemini.png */,
 				E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */,
@@ -362,6 +368,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6F3F114D755ECABD55C6ADBE /* AppIcon.icns in Resources */,
+				F0A03A972CAADA8218FA9636 /* brand-antigravity.png in Resources */,
 				B37D66ED135407352107CDAE /* brand-claude.png in Resources */,
 				A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */,
 				4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */,
@@ -392,6 +399,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				90C0B88B080D42446840B0E1 /* AntigravityQuota.swift in Sources */,
 				703ECAAEFA27163EDB117D05 /* CCUsageApp.swift in Sources */,
 				2FB870100920324A6F8DB6F1 /* CodexQuota.swift in Sources */,
 				C70015AAF3C690F4DC7595CF /* Dashboard.swift in Sources */,
@@ -521,7 +529,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -542,7 +550,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -637,7 +645,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -652,7 +660,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
