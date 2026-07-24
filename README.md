@@ -29,7 +29,8 @@
 
 ## 功能
 
-- ⚡ **菜单栏码片自由组合**:今日 / 近 7 天 / 近 30 天的 Tokens 与花费(D/W/M),外加 5H / Week 官方额度百分比,想看哪个勾哪个
+- ⚡ **菜单栏码片自由组合**:今日 / 近 7 天 / 近 30 天的 Tokens 与花费(D/W/M),外加 5H / Week 官方额度百分比,想看哪个勾哪个;支持按 AI 分组(Claude / Codex / Gemini / OpenCode / Grok / Antigravity)
+- 🧩 **Grok 分组**:可勾选 `grokbuild` 用量 Tokens/Cost;xAI **无公开 remaining/utilization 查询接口**,Quota 行与 Gemini/OpenCode 一样标注 `No quota API`(不做伪造百分比)
 - 📊 **1:1 真面板**:主窗口直接运行 cc-switch 前端构建产物——Usage Hero、真 Recharts 趋势图(悬停提示与原版一致)、来源/模型筛选、日期范围、Request Logs / Provider Stats / Model Stats 三个标签页
 - 🔄 **5 秒实时刷新**:间隔可选 5/10/30/60 秒或关闭,选择持久化;菜单栏与主窗口共享同一个刷新节奏,数字永远一致
 - 🔋 **官方订阅额度**:读取本机 Claude Code 的 OAuth 凭据查询官方 `/api/oauth/usage`,5 分钟节流 + 进程内共享缓存,绝不打爆接口(429);首屏即显,无需等待
@@ -39,6 +40,7 @@
 ## 前置条件(必读)
 
 > [!IMPORTANT]
+>
 > 1. **macOS 14 (Sonoma) 及以上**;
 > 2. 已安装 [cc-switch](https://github.com/farion1231/cc-switch)(建议 ≥ 3.16)——历史数据、价格表与数据库都由它建立维护,本应用对其库**只读**;
 >    **cc-switch 不需要保持运行**:它关闭时,应用会直接增量解析 Claude Code 的会话日志(`~/.claude/projects`),把尚未入库的用量实时叠加显示,等 cc-switch 回来补录时按 request_id 精确去重、无缝交接不双算(Codex / Gemini 的**新增**用量仍需 cc-switch 运行导入);

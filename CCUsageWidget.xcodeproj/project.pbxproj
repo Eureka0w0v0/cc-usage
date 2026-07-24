@@ -8,9 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		02EC6FAF4D8399AC5EB17794 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
+		095C61E167A7253744FED7A8 /* ModelPricing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */; };
+		0DB32A66B84D5E260ECB71C5 /* brand-grok.png in Resources */ = {isa = PBXBuildFile; fileRef = 3B12A88A474853068E9E3317 /* brand-grok.png */; };
 		1007263746872BD9A3AC7D49 /* UsageWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		1635BCDD5D777AB253C584AC /* UsageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA8DAFF3CCEE62A47CCC0700 /* UsageStoreTests.swift */; };
 		1C8B58897031EB0BE70B1FC9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
+		1EB76A1AAF9DEB820C81DC05 /* ModelPricingFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */; };
 		213C0F0038E91DFADFA61B44 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = C843DC8A24FE2FC77A32C289 /* Sample.swift */; };
 		28CBB792D9B92A327E575772 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = FE46559B13C9C8A264B5681B /* libsqlite3.tbd */; };
 		2FB870100920324A6F8DB6F1 /* CodexQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36764B37F900CFF7A2CD31CB /* CodexQuota.swift */; };
@@ -19,6 +22,7 @@
 		4B6DFD55433EA15C86FE9B19 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		4D4D7C0D1F59343D57277E53 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = C843DC8A24FE2FC77A32C289 /* Sample.swift */; };
 		5313ACB4FD9AD929ED4F434C /* SessionOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B7579031ABBBFE04A53F94 /* SessionOverlayTests.swift */; };
+		59EB4F7EB26C0A9D3CAEC104 /* ModelPricing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */; };
 		60B00681B5B422EF73D89690 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D5177768EABBA97BE2A6C7 /* Formatting.swift */; };
 		630F3E568A5660DC08F0CD38 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		641603E9BC751BD6E97CA710 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D5177768EABBA97BE2A6C7 /* Formatting.swift */; };
@@ -49,6 +53,7 @@
 		D467AB086C4AC71B7300F1C2 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
 		DA72E63B29AE992A43BA0E77 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = FE46559B13C9C8A264B5681B /* libsqlite3.tbd */; };
 		DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */; };
+		E5DE774E75BA5998B16892CF /* ModelPricing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */; };
 		EA76484909B3172F0696D31D /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
 		F0A03A972CAADA8218FA9636 /* brand-antigravity.png in Resources */ = {isa = PBXBuildFile; fileRef = AB7BF81703006F6E8E06425B /* brand-antigravity.png */; };
 		F6A65301583E710CE61822B6 /* RollupBoundsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C6399E4E6DDB98439F8769 /* RollupBoundsTests.swift */; };
@@ -88,6 +93,7 @@
 		316F79F14E6A53F1CA747517 /* WindowDrag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowDrag.swift; sourceTree = "<group>"; };
 		31C6399E4E6DDB98439F8769 /* RollupBoundsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RollupBoundsTests.swift; sourceTree = "<group>"; };
 		36764B37F900CFF7A2CD31CB /* CodexQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexQuota.swift; sourceTree = "<group>"; };
+		3B12A88A474853068E9E3317 /* brand-grok.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-grok.png"; sourceTree = "<group>"; };
 		3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOverlay.swift; sourceTree = "<group>"; };
 		45E808353F9922E4E141F092 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		4A79728DAD95A349D54CBC66 /* PricingCandidatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingCandidatesTests.swift; sourceTree = "<group>"; };
@@ -98,7 +104,9 @@
 		7240EDA4C546F2792A21A93D /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		7C5506EFDDB250B8217B59FD /* brand-gemini.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-gemini.png"; sourceTree = "<group>"; };
 		8C5BE3E29F7962BDE35FD65B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPricing.swift; sourceTree = "<group>"; };
 		9AD0BC76597EA7B1CA061A1A /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
+		A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPricingFallbackTests.swift; sourceTree = "<group>"; };
 		AB7BF81703006F6E8E06425B /* brand-antigravity.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-antigravity.png"; sourceTree = "<group>"; };
 		B630AB07F7C1A6EB7B7A1D56 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -168,6 +176,7 @@
 			isa = PBXGroup;
 			children = (
 				C0D5177768EABBA97BE2A6C7 /* Formatting.swift */,
+				97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */,
 				C843DC8A24FE2FC77A32C289 /* Sample.swift */,
 				3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */,
 				E20D62ABBAC169F3225CD479 /* Theme.swift */,
@@ -181,6 +190,7 @@
 			isa = PBXGroup;
 			children = (
 				E1AB14D881996E7BEEB26551 /* FormattingTests.swift */,
+				A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */,
 				4A79728DAD95A349D54CBC66 /* PricingCandidatesTests.swift */,
 				31C6399E4E6DDB98439F8769 /* RollupBoundsTests.swift */,
 				58B7579031ABBBFE04A53F94 /* SessionOverlayTests.swift */,
@@ -255,6 +265,7 @@
 				AB7BF81703006F6E8E06425B /* brand-antigravity.png */,
 				CAA25E78D961070EDBD05FBD /* brand-claude.png */,
 				7C5506EFDDB250B8217B59FD /* brand-gemini.png */,
+				3B12A88A474853068E9E3317 /* brand-grok.png */,
 				E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */,
 				09D1E9749B8E07DB4B72929A /* brand-opencode.png */,
 			);
@@ -371,6 +382,7 @@
 				F0A03A972CAADA8218FA9636 /* brand-antigravity.png in Resources */,
 				B37D66ED135407352107CDAE /* brand-claude.png in Resources */,
 				A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */,
+				0DB32A66B84D5E260ECB71C5 /* brand-grok.png in Resources */,
 				4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */,
 				71893AB2B92CBF17DDB60DEF /* brand-opencode.png in Resources */,
 				B690D5FE64B100264FED2361 /* index.html in Resources */,
@@ -386,6 +398,7 @@
 			files = (
 				A61F23745122D8A4D9FC74BA /* CCUsageWidgetBundle.swift in Sources */,
 				60B00681B5B422EF73D89690 /* Formatting.swift in Sources */,
+				095C61E167A7253744FED7A8 /* ModelPricing.swift in Sources */,
 				4D4D7C0D1F59343D57277E53 /* Sample.swift in Sources */,
 				02EC6FAF4D8399AC5EB17794 /* SessionOverlay.swift in Sources */,
 				1C8B58897031EB0BE70B1FC9 /* Theme.swift in Sources */,
@@ -404,6 +417,7 @@
 				2FB870100920324A6F8DB6F1 /* CodexQuota.swift in Sources */,
 				C70015AAF3C690F4DC7595CF /* Dashboard.swift in Sources */,
 				641603E9BC751BD6E97CA710 /* Formatting.swift in Sources */,
+				E5DE774E75BA5998B16892CF /* ModelPricing.swift in Sources */,
 				DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */,
 				77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */,
 				213C0F0038E91DFADFA61B44 /* Sample.swift in Sources */,
@@ -422,6 +436,8 @@
 			files = (
 				D0CED0E83C8A971F5437B63C /* Formatting.swift in Sources */,
 				68B805CE1560AC2AF4047FC6 /* FormattingTests.swift in Sources */,
+				59EB4F7EB26C0A9D3CAEC104 /* ModelPricing.swift in Sources */,
+				1EB76A1AAF9DEB820C81DC05 /* ModelPricingFallbackTests.swift in Sources */,
 				CCBC5F29DF2F3BE14EF8DAE4 /* PricingCandidatesTests.swift in Sources */,
 				F6A65301583E710CE61822B6 /* RollupBoundsTests.swift in Sources */,
 				7768945481BA8CEC1034946D /* Sample.swift in Sources */,

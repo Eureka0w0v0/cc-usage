@@ -336,6 +336,12 @@ public final class SessionOverlay {
                 return pricingExact[hit]
             }
         }
+        // db 没有该模型(上游 seed 尚未跟进新模型)→ 回落内置表。库里已有的定价
+        // 永远优先，所以用户在 cc-switch 改过的价不会被这里覆盖。
+        if let b = ModelPricing.lookup(modelId) {
+            return Pricing(input: b.input, output: b.output,
+                           cacheRead: b.cacheRead, cacheCreation: b.cacheCreation)
+        }
         return nil
     }
 

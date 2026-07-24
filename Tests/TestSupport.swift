@@ -29,7 +29,8 @@ enum Fixture {
       status_code INTEGER DEFAULT 200,
       error_message TEXT,
       created_at INTEGER DEFAULT 0,
-      data_source TEXT DEFAULT 'session_log'
+      data_source TEXT DEFAULT 'session_log',
+      input_token_semantics INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE usage_daily_rollups(
       date TEXT,
@@ -41,7 +42,8 @@ enum Fixture {
       output_tokens INTEGER DEFAULT 0,
       cache_read_tokens INTEGER DEFAULT 0,
       cache_creation_tokens INTEGER DEFAULT 0,
-      total_cost_usd TEXT DEFAULT '0'
+      total_cost_usd TEXT DEFAULT '0',
+      input_token_semantics INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE providers(id TEXT, name TEXT, app_type TEXT);
     CREATE TABLE session_log_sync(
@@ -81,6 +83,16 @@ enum Fixture {
         return path
     }
 
+    /// schema <13 旧库：两表都没有 input_token_semantics 列（验证降级路径）。
+    static func makeLegacyDB(_ name: String) throws -> String {
+        let path = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("ccusage-test-\(name)-\(UUID().uuidString).db")
+        let legacy = schema.replacingOccurrences(
+            of: ",\n      input_token_semantics INTEGER NOT NULL DEFAULT 0", with: "")
+        try exec(path, legacy)
+        return path
+    }
+
     static func exec(_ path: String, _ sql: String) throws {
         var db: OpaquePointer?
         guard sqlite3_open(path, &db) == SQLITE_OK, let handle = db else {
@@ -101,14 +113,17 @@ enum Fixture {
                           cacheRead: Int64 = 0, cacheCreation: Int64 = 0,
                           cost: Double = 0, createdAt: Int64,
                           dataSource: String = "session_log",
-                          status: Int = 200, providerId: String = "_session") throws {
+                          status: Int = 200, providerId: String = "_session",
+                          semantics: Int64? = nil) throws {
+        let semCols = semantics.map { _ in ", input_token_semantics" } ?? ""
+        let semVals = semantics.map { ", \($0)" } ?? ""
         try exec(path, """
         INSERT INTO proxy_request_logs(request_id, provider_id, app_type, model,
           input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-          total_cost_usd, status_code, created_at, data_source)
+          total_cost_usd, status_code, created_at, data_source\(semCols))
         VALUES('\(id)','\(providerId)','\(app)','\(model)',
           \(input),\(output),\(cacheRead),\(cacheCreation),
-          '\(cost)',\(status),\(createdAt),'\(dataSource)');
+          '\(cost)',\(status),\(createdAt),'\(dataSource)'\(semVals));
         """)
     }
 
@@ -116,12 +131,14 @@ enum Fixture {
                              app: String = "claude", model: String = "claude-sonnet-5",
                              requests: Int64 = 1, input: Int64 = 0, output: Int64 = 0,
                              cacheRead: Int64 = 0, cacheCreation: Int64 = 0,
-                             cost: Double = 0) throws {
+                             cost: Double = 0, semantics: Int64? = nil) throws {
+        let semCols = semantics.map { _ in ", input_token_semantics" } ?? ""
+        let semVals = semantics.map { ", \($0)" } ?? ""
         try exec(path, """
         INSERT INTO usage_daily_rollups(date, app_type, model, request_count,
-          input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, total_cost_usd)
+          input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, total_cost_usd\(semCols))
         VALUES('\(date)','\(app)','\(model)',\(requests),
-          \(input),\(output),\(cacheRead),\(cacheCreation),'\(cost)');
+          \(input),\(output),\(cacheRead),\(cacheCreation),'\(cost)'\(semVals));
         """)
     }
 

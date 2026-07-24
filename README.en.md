@@ -29,7 +29,8 @@ The Usage dashboard in [cc-switch](https://github.com/farion1231/cc-switch) is g
 
 ## Features
 
-- ⚡ **Composable menu bar chips**: Tokens & cost for today / last 7 days / last 30 days (D/W/M), plus official 5H / Weekly quota percentages — pick any combination
+- ⚡ **Composable menu bar chips**: Tokens & cost for today / last 7 days / last 30 days (D/W/M), plus official 5H / Weekly quota percentages — pick any combination; per-AI groups (Claude / Codex / Gemini / OpenCode / Grok / Antigravity)
+- 🧩 **Grok group**: Tokens/Cost chips for `grokbuild` usage; xAI has **no public remaining/utilization API**, so Quota shows `No quota API` like Gemini/OpenCode (no fabricated percentages)
 - 📊 **The real dashboard, 1:1**: the main window runs cc-switch's actual frontend build — Usage Hero, genuine Recharts trend chart (hover tooltips identical to upstream), source/model filters, date ranges, and the Request Logs / Provider Stats / Model Stats tabs
 - 🔄 **5-second live refresh**: choose 5/10/30/60s or off; the choice persists, and the menu bar and main window share one refresh cadence so they never disagree
 - 🔋 **Official subscription quota**: queries Anthropic's `/api/oauth/usage` with your local Claude Code OAuth credentials, throttled to once per 5 minutes with an in-process shared cache (no 429s); shown from the very first paint
@@ -39,6 +40,7 @@ The Usage dashboard in [cc-switch](https://github.com/farion1231/cc-switch) is g
 ## Prerequisites (read this)
 
 > [!IMPORTANT]
+>
 > 1. **macOS 14 (Sonoma) or later**;
 > 2. [cc-switch](https://github.com/farion1231/cc-switch) (≥ 3.16 recommended) installed — it owns the local database, history and pricing table; this app reads its database **read-only**.
 >    **cc-switch does NOT need to be running**: while it's closed, the app incrementally parses Claude Code's session logs (`~/.claude/projects`) itself and overlays the not-yet-imported usage in real time; when cc-switch comes back and imports those rows, the overlay deduplicates by request id and hands off seamlessly with no double counting (importing **new** Codex / Gemini usage still requires cc-switch to run);

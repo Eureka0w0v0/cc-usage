@@ -6,7 +6,9 @@ import SQLite3
 // get_daily_trends）——「近期明细」proxy_request_logs 与「历史日聚合」usage_daily_rollups
 // 两表合并：
 //   Tokens Processed = fresh_input + output + cache_creation + cache_read
-//   fresh_input      = codex/gemini 的 input 含 cache_read → 减去；其余原样（sql_helpers.rs）
+//   fresh_input      = 按行 input_token_semantics 归一（sql_helpers.rs v13）：legacy 行
+//                      codex 系减 cache_read，total 行再减 cache_creation，fresh 行原样；
+//                      旧库（schema <13，无该列）沿用旧口径：codex/gemini 减 cache_read
 //   Cache Hit Rate   = cache_read / (fresh_input + cache_creation + cache_read)
 //   summary(区间)    = logs 部分(created_at∈区间) + rollups 部分(r.date∈边界对齐后的整日区间)
 //   trend ≤24h       = 小时桶，仅 proxy_request_logs（近期都在明细表）
@@ -176,6 +178,10 @@ public final class UsageStore: @unchecked Sendable {
             throw UsageStoreError.open(rc)
         }
         sqlite3_busy_timeout(handle, 2000)
+        // 装内置定价兜底表(TEMP;只读库照样可建,temp 库独立于主库)。用于给
+        // cc-switch 尚未收录定价、成本被写成 0 的行现场补算。建表失败不致命：
+        // costL/costR 的子查询取不到行会回落 0,即旧行为。
+        ModelPricing.installFallbackTable(handle)
         return handle
     }
 
@@ -277,8 +283,8 @@ public final class UsageStore: @unchecked Sendable {
         if let m = f.model { conds.append("\(Self.effectiveModelL) = ?"); binds.append(.text(m)) }
         let sql = """
         SELECT COUNT(*),
-               COALESCE(SUM(CAST(l.total_cost_usd AS REAL)),0),
-               COALESCE(SUM(\(Self.freshInputL)),0),
+               COALESCE(SUM(\(Self.costL)),0),
+               COALESCE(SUM(\(freshInput(db, "l"))),0),
                COALESCE(SUM(l.output_tokens),0),
                COALESCE(SUM(l.cache_creation_tokens),0),
                COALESCE(SUM(l.cache_read_tokens),0)
@@ -322,8 +328,8 @@ public final class UsageStore: @unchecked Sendable {
         let whereClause = conds.isEmpty ? "" : "WHERE " + conds.joined(separator: " AND ")
         let sql = """
         SELECT COALESCE(SUM(r.request_count),0),
-               COALESCE(SUM(CAST(r.total_cost_usd AS REAL)),0),
-               COALESCE(SUM(\(Self.freshInputR)),0),
+               COALESCE(SUM(\(Self.costR)),0),
+               COALESCE(SUM(\(freshInput(db, "r"))),0),
                COALESCE(SUM(r.output_tokens),0),
                COALESCE(SUM(r.cache_creation_tokens),0),
                COALESCE(SUM(r.cache_read_tokens),0)
@@ -396,8 +402,8 @@ public final class UsageStore: @unchecked Sendable {
         FROM (
             SELECT \(Self.foldedAppL) AS app_type,
                    COUNT(*) AS req,
-                   COALESCE(SUM(CAST(l.total_cost_usd AS REAL)),0) AS cost,
-                   COALESCE(SUM(\(Self.freshInputL)),0) AS inp,
+                   COALESCE(SUM(\(Self.costL)),0) AS cost,
+                   COALESCE(SUM(\(freshInput(db, "l"))),0) AS inp,
                    COALESCE(SUM(l.output_tokens),0) AS outp,
                    COALESCE(SUM(l.cache_creation_tokens),0) AS cc,
                    COALESCE(SUM(l.cache_read_tokens),0) AS cr
@@ -407,8 +413,8 @@ public final class UsageStore: @unchecked Sendable {
             UNION ALL
             SELECT \(Self.foldedAppR) AS app_type,
                    COALESCE(SUM(r.request_count),0),
-                   COALESCE(SUM(CAST(r.total_cost_usd AS REAL)),0),
-                   COALESCE(SUM(\(Self.freshInputR)),0),
+                   COALESCE(SUM(\(Self.costR)),0),
+                   COALESCE(SUM(\(freshInput(db, "r"))),0),
                    COALESCE(SUM(r.output_tokens),0),
                    COALESCE(SUM(r.cache_creation_tokens),0),
                    COALESCE(SUM(r.cache_read_tokens),0)
@@ -462,11 +468,11 @@ public final class UsageStore: @unchecked Sendable {
         let bucketSeconds: Int64 = 3600
         var sql = """
         SELECT CAST((l.created_at - ?1) / ?3 AS INTEGER) AS bucket,
-               COALESCE(SUM(\(Self.freshInputL)),0),
+               COALESCE(SUM(\(freshInput(db, "l"))),0),
                COALESCE(SUM(l.output_tokens),0),
                COALESCE(SUM(l.cache_creation_tokens),0),
                COALESCE(SUM(l.cache_read_tokens),0),
-               COALESCE(SUM(CAST(l.total_cost_usd AS REAL)),0),
+               COALESCE(SUM(\(Self.costL)),0),
                COUNT(*)
         FROM proxy_request_logs l
         WHERE l.created_at >= ?1 AND l.created_at <= ?2 AND \(Self.effectiveUsageFilterL)
@@ -535,11 +541,11 @@ public final class UsageStore: @unchecked Sendable {
         let lSQL = """
         SELECT date(l.created_at,'unixepoch','localtime') AS d,
                COUNT(*),
-               COALESCE(SUM(\(Self.freshInputL)),0),
+               COALESCE(SUM(\(freshInput(db, "l"))),0),
                COALESCE(SUM(l.output_tokens),0),
                COALESCE(SUM(l.cache_creation_tokens),0),
                COALESCE(SUM(l.cache_read_tokens),0),
-               COALESCE(SUM(CAST(l.total_cost_usd AS REAL)),0)
+               COALESCE(SUM(\(Self.costL)),0)
         FROM proxy_request_logs l
         WHERE \(lConds.joined(separator: " AND "))
         GROUP BY d
@@ -576,11 +582,11 @@ public final class UsageStore: @unchecked Sendable {
         let rSQL = """
         SELECT r.date,
                COALESCE(SUM(r.request_count),0),
-               COALESCE(SUM(\(Self.freshInputR)),0),
+               COALESCE(SUM(\(freshInput(db, "r"))),0),
                COALESCE(SUM(r.output_tokens),0),
                COALESCE(SUM(r.cache_creation_tokens),0),
                COALESCE(SUM(r.cache_read_tokens),0),
-               COALESCE(SUM(CAST(r.total_cost_usd AS REAL)),0)
+               COALESCE(SUM(\(Self.costR)),0)
         FROM usage_daily_rollups r
         \(rWhere)
         GROUP BY r.date
@@ -744,8 +750,32 @@ public final class UsageStore: @unchecked Sendable {
     static let foldedAppL = "CASE WHEN l.app_type='claude-desktop' THEN 'claude' ELSE l.app_type END"
     /// 有效计价模型：pricing_model 非空优先，NULL/'' 回落 model。
     static let effectiveModelL = "COALESCE(NULLIF(l.pricing_model, ''), l.model)"
-    /// cache 归一化 input：codex/gemini 的 input 含 cache_read，需减去；其余原样。
-    static let freshInputL = "CASE WHEN l.app_type IN ('codex','gemini') AND l.input_tokens >= l.cache_read_tokens THEN (l.input_tokens - l.cache_read_tokens) ELSE l.input_tokens END"
+    /// 成本：库里已有正成本优先，未定价行按内置表现场补算(见 ModelPricing)。
+    /// 用户在 cc-switch 里改过的价永远优先，绝不被内置表覆盖。
+    static let costL = ModelPricing.costSQL(
+        alias: "l", effectiveModel: effectiveModelL,
+        multiplier: "COALESCE(NULLIF(CAST(l.cost_multiplier AS REAL), 0), 1.0)")
+    /// cache 归一化 input（对齐 sql_helpers.rs::fresh_input_sql，v13 语义）：
+    /// input_token_semantics 0=legacy（codex 系 input 含 cache_read）、
+    /// 1=total（还含 cache_creation）、2=fresh（已归一，原样返回）。
+    static func freshInputV13(_ a: String) -> String {
+        "CASE WHEN \(a).input_token_semantics = 2 THEN \(a).input_tokens WHEN \(a).app_type IN ('codex','gemini','grokbuild') AND \(a).input_token_semantics = 1 AND \(a).input_tokens >= (\(a).cache_read_tokens + \(a).cache_creation_tokens) THEN (\(a).input_tokens - \(a).cache_read_tokens - \(a).cache_creation_tokens) WHEN \(a).app_type IN ('codex','gemini','grokbuild') AND \(a).input_token_semantics = 0 AND \(a).input_tokens >= \(a).cache_read_tokens THEN (\(a).input_tokens - \(a).cache_read_tokens) ELSE \(a).input_tokens END"
+    }
+    /// cache 归一化 input（schema <13 旧库：无 input_token_semantics 列，行为与旧版完全一致）。
+    static func freshInputLegacy(_ a: String) -> String {
+        "CASE WHEN \(a).app_type IN ('codex','gemini') AND \(a).input_tokens >= \(a).cache_read_tokens THEN (\(a).input_tokens - \(a).cache_read_tokens) ELSE \(a).input_tokens END"
+    }
+    /// 按当前库 schema 选 fresh_input 表达式：每次查询用打开的连接探测一次列存在性
+    /// （pragma 读元数据，微秒级；不做实例级缓存，避免 cc-switch 升级迁移后口径滞后）。
+    private func freshInput(_ db: OpaquePointer, _ alias: String) -> String {
+        var stmt: OpaquePointer?
+        var has = false
+        if sqlite3_prepare_v2(db, "SELECT 1 FROM pragma_table_info('proxy_request_logs') WHERE name='input_token_semantics'", -1, &stmt, nil) == SQLITE_OK {
+            has = sqlite3_step(stmt) == SQLITE_ROW
+        }
+        sqlite3_finalize(stmt)
+        return has ? Self.freshInputV13(alias) : Self.freshInputLegacy(alias)
+    }
     /// provider 展示名：providers.name 优先，会话占位 provider_id 映射为可读名。
     static let providerNameCoalesce = "COALESCE(p.name, CASE l.provider_id WHEN '_session' THEN 'Claude (Session)' WHEN '_codex_session' THEN 'Codex (Session)' WHEN '_gemini_session' THEN 'Gemini (Session)' WHEN '_opencode_session' THEN 'OpenCode (Session)' ELSE l.provider_id END)"
     static let providersJoinL = "LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type"
@@ -755,8 +785,9 @@ public final class UsageStore: @unchecked Sendable {
     static let foldedAppR = "CASE WHEN r.app_type='claude-desktop' THEN 'claude' ELSE r.app_type END"
     /// 有效计价模型（rollups 侧）。
     static let effectiveModelR = "COALESCE(NULLIF(r.pricing_model, ''), r.model)"
-    /// cache 归一化 input（rollups 侧）。
-    static let freshInputR = "CASE WHEN r.app_type IN ('codex','gemini') AND r.input_tokens >= r.cache_read_tokens THEN (r.input_tokens - r.cache_read_tokens) ELSE r.input_tokens END"
+    /// 成本（rollups 侧）。该表没有 cost_multiplier 列，倍率恒 1。
+    static let costR = ModelPricing.costSQL(
+        alias: "r", effectiveModel: effectiveModelR, multiplier: "1.0")
     /// 跨源去重过滤（对齐 usage_stats.rs::effective_usage_log_filter，别名 l）：
     /// session 系日志若在 ±10min 窗口内存在指纹匹配的成功 proxy 行，则剔除该 session 行，
     /// 防止「同一次请求既落 session 又落 proxy」被双算。600 = 10min 窗口秒数。
@@ -856,6 +887,25 @@ public final class UsageStore: @unchecked Sendable {
         var rows: [RequestLogRow] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
             let mult = colText(stmt, 7)
+            let inTok = sqlite3_column_int64(stmt, 8)
+            let outTok = sqlite3_column_int64(stmt, 9)
+            let crTok = sqlite3_column_int64(stmt, 10)
+            let ccTok = sqlite3_column_int64(stmt, 11)
+            var costs = (input: colText(stmt, 12), output: colText(stmt, 13),
+                         cacheRead: colText(stmt, 14), cacheCreation: colText(stmt, 15),
+                         total: colText(stmt, 16))
+            // cc-switch 入库时查不到定价 → 成本写死 0,面板显示「未定价」。这里用
+            // 内置表现场补算(只读,不改库);库里已有正成本的行原样保留。
+            if (Double(costs.total) ?? 0) <= 0,
+               inTok > 0 || outTok > 0 || crTok > 0 || ccTok > 0 {
+                let effective = colTextOpt(stmt, 6).flatMap { $0.isEmpty ? nil : $0 }
+                    ?? colText(stmt, 4)
+                if let b = ModelPricing.backfilledCosts(
+                    model: effective, multiplier: Double(mult) ?? 1,
+                    input: inTok, output: outTok, cacheRead: crTok, cacheCreation: ccTok) {
+                    costs = b
+                }
+            }
             rows.append(RequestLogRow(
                 requestId: colText(stmt, 0),
                 providerId: colText(stmt, 1),
@@ -865,15 +915,15 @@ public final class UsageStore: @unchecked Sendable {
                 requestModel: colTextOpt(stmt, 5),
                 pricingModel: colTextOpt(stmt, 6),
                 costMultiplier: mult.isEmpty ? "1" : mult,
-                inputTokens: sqlite3_column_int64(stmt, 8),
-                outputTokens: sqlite3_column_int64(stmt, 9),
-                cacheReadTokens: sqlite3_column_int64(stmt, 10),
-                cacheCreationTokens: sqlite3_column_int64(stmt, 11),
-                inputCostUsd: colText(stmt, 12),
-                outputCostUsd: colText(stmt, 13),
-                cacheReadCostUsd: colText(stmt, 14),
-                cacheCreationCostUsd: colText(stmt, 15),
-                totalCostUsd: colText(stmt, 16),
+                inputTokens: inTok,
+                outputTokens: outTok,
+                cacheReadTokens: crTok,
+                cacheCreationTokens: ccTok,
+                inputCostUsd: costs.input,
+                outputCostUsd: costs.output,
+                cacheReadCostUsd: costs.cacheRead,
+                cacheCreationCostUsd: costs.cacheCreation,
+                totalCostUsd: costs.total,
                 isStreaming: sqlite3_column_int64(stmt, 17) != 0,
                 latencyMs: sqlite3_column_int64(stmt, 18),
                 firstTokenMs: colIntOpt(stmt, 19),
@@ -922,8 +972,8 @@ public final class UsageStore: @unchecked Sendable {
         let sql = """
         SELECT l.provider_id, \(Self.providerNameCoalesce) AS provider_name,
                COUNT(*) AS request_count,
-               COALESCE(SUM(\(Self.freshInputL) + l.output_tokens), 0) AS total_tokens,
-               COALESCE(SUM(CAST(l.total_cost_usd AS REAL)), 0) AS total_cost,
+               COALESCE(SUM(\(freshInput(db, "l")) + l.output_tokens), 0) AS total_tokens,
+               COALESCE(SUM(\(Self.costL)), 0) AS total_cost,
                COALESCE(SUM(CASE WHEN l.status_code >= 200 AND l.status_code < 300 THEN 1 ELSE 0 END), 0) AS success_count,
                CASE WHEN COUNT(*) > 0 THEN COALESCE(SUM(l.latency_ms), 0) / COUNT(*) ELSE 0 END AS avg_latency
         FROM proxy_request_logs l
@@ -988,8 +1038,8 @@ public final class UsageStore: @unchecked Sendable {
         let sql = """
         SELECT \(Self.effectiveModelL) AS model,
                COUNT(*) AS request_count,
-               COALESCE(SUM(\(Self.freshInputL) + l.output_tokens), 0) AS total_tokens,
-               COALESCE(SUM(CAST(l.total_cost_usd AS REAL)), 0) AS total_cost
+               COALESCE(SUM(\(freshInput(db, "l")) + l.output_tokens), 0) AS total_tokens,
+               COALESCE(SUM(\(Self.costL)), 0) AS total_cost
         FROM proxy_request_logs l
         \(Self.providersJoinL)
         \(whereClause)

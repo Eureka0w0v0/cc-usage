@@ -26,12 +26,13 @@ enum MBKey {
 /// 菜单栏可分组展示的 AI 来源。All（全部合计）不在此枚举里——它就是 MBKey 那组旧开关。
 /// 码片 key 格式 "\(rawValue).tokens.today" / "\(rawValue).cost.week" / "codex.quota"。
 enum MBApp: String, CaseIterable {
-    case claude, codex, gemini, opencode, antigravity
+    // rawValue 必须等于 cc-switch DB 的 app_type（grokbuild 而非 grok）
+    case claude, codex, gemini, opencode, antigravity, grokbuild
     var title: String {
         switch self {
         case .claude: return "Claude"; case .codex: return "Codex"
         case .gemini: return "Gemini"; case .opencode: return "OpenCode"
-        case .antigravity: return "Antigravity"
+        case .antigravity: return "Antigravity"; case .grokbuild: return "Grok"
         }
     }
     /// Antigravity 没有本地用量库（Tokens/Cost 无从谈起），只有各模型配额。
@@ -41,7 +42,7 @@ enum MBApp: String, CaseIterable {
         switch self {
         case .claude: return "brand-claude"; case .codex: return "brand-openai"
         case .gemini: return "brand-gemini"; case .opencode: return "brand-opencode"
-        case .antigravity: return "brand-antigravity"
+        case .antigravity: return "brand-antigravity"; case .grokbuild: return "brand-grok"
         }
     }
 }
@@ -662,6 +663,7 @@ struct MenuBarSettingsView: View {
     @AppStorage("mb.group.gemini")   private var expGemini = false
     @AppStorage("mb.group.opencode") private var expOpencode = false
     @AppStorage("mb.group.antigravity") private var expAntigravity = false
+    @AppStorage("mb.group.grok")     private var expGrok = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -695,14 +697,19 @@ struct MenuBarSettingsView: View {
                     }
                 }
             }
-            // Gemini 按天限请求数且不落盘、OpenCode 配额归背后 provider——都没有配额窗口可显示，
-            // Quota 行保留占位并如实标注，五个组结构对齐
+            // Gemini 按天限请求数且不落盘、OpenCode 配额归背后 provider、Grok/xAI 无公开额度接口——
+            // 都没有配额窗口可显示，Quota 行保留占位并如实标注
             group("Gemini", $expGemini, icon: MBApp.gemini.iconAsset) {
                 appRows(.gemini)
                 row("Quota") { noQuota("No quota API") }
             }
             group("OpenCode", $expOpencode, icon: MBApp.opencode.iconAsset) {
                 appRows(.opencode)
+                row("Quota") { noQuota("No quota API") }
+            }
+            // Grok/xAI 无公开 remaining/utilization 查询接口，Quota 与 Gemini/OpenCode 同占位
+            group("Grok", $expGrok, icon: MBApp.grokbuild.iconAsset) {
+                appRows(.grokbuild)
                 row("Quota") { noQuota("No quota API") }
             }
             // Antigravity 各模型实时配额（联网查询，无本地用量库），逐模型勾选、显示已用 %

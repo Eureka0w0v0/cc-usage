@@ -49,6 +49,56 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertEqual(s.tokensProcessed, 110)   // 70 + 10 + 0 + 30
     }
 
+    func testFreshInputTotalSemanticsSubtractsCacheReadAndCreation() throws {
+        // v13 total 行(semantics=1):input 含 cache_read + cache_creation,都要减
+        try Fixture.insertLog(dbPath, id: "c-total", app: "codex", model: "gpt-5.5",
+                              input: 1000, output: 10, cacheRead: 300, cacheCreation: 200,
+                              createdAt: Fixture.ts(2026, 6, 10, 12),
+                              providerId: "_codex_session", semantics: 1)
+        let s = try store.rangeSummary(
+            UsageFilter(start: Fixture.ts(2026, 6, 10), end: Fixture.ts(2026, 6, 11), appType: "codex"),
+            calendar: cal)
+        XCTAssertEqual(s.input, 500)             // 1000 - 300 - 200
+        XCTAssertEqual(s.tokensProcessed, 1010)  // 500 + 10 + 200 + 300
+    }
+
+    func testFreshInputFreshSemanticsReturnsInputUnchanged() throws {
+        // v13 fresh 行(semantics=2):已归一,codex 也不再扣减(对齐 fresh_input_sql)
+        try Fixture.insertRollup(dbPath, date: "2026-06-09", app: "codex", model: "gpt-5.5",
+                                 requests: 1, input: 500, cacheRead: 300, cacheCreation: 200,
+                                 semantics: 2)
+        let s = try store.rangeSummary(
+            UsageFilter(start: Fixture.ts(2026, 6, 9), end: Fixture.ts(2026, 6, 10), appType: "codex"),
+            calendar: cal)
+        XCTAssertEqual(s.input, 500)             // 原样返回,不重复扣 cache_read
+    }
+
+    func testFreshInputGrokbuildLegacySubtractsCacheRead() throws {
+        // grokbuild 同属 cache-inclusive 应用(v13 起),legacy 行减 cache_read
+        try Fixture.insertLog(dbPath, id: "g1", app: "grokbuild", model: "grok-4",
+                              input: 700, output: 10, cacheRead: 250,
+                              createdAt: Fixture.ts(2026, 6, 10, 12),
+                              providerId: "_session", semantics: 0)
+        let s = try store.rangeSummary(
+            UsageFilter(start: Fixture.ts(2026, 6, 10), end: Fixture.ts(2026, 6, 11), appType: "grokbuild"),
+            calendar: cal)
+        XCTAssertEqual(s.input, 450)             // 700 - 250
+    }
+
+    func testLegacySchemaWithoutSemanticsColumnStillWorks() throws {
+        // schema <13 旧库:无 input_token_semantics 列 → 降级为旧表达式,不报错、口径不变
+        let legacyPath = try Fixture.makeLegacyDB("legacy")
+        defer { try? FileManager.default.removeItem(atPath: legacyPath) }
+        let legacyStore = try Fixture.store(legacyPath)
+        try Fixture.insertLog(legacyPath, id: "c1", app: "codex", model: "gpt-5",
+                              input: 100, output: 10, cacheRead: 30,
+                              createdAt: Fixture.ts(2026, 6, 10, 12), providerId: "_codex_session")
+        let s = try legacyStore.rangeSummary(
+            UsageFilter(start: Fixture.ts(2026, 6, 10), end: Fixture.ts(2026, 6, 11), appType: "codex"),
+            calendar: cal)
+        XCTAssertEqual(s.input, 70)              // 100 - 30,与旧版行为一致
+    }
+
     func testSessionRowDedupedAgainstMatchingProxyRow() throws {
         let t = Fixture.ts(2026, 6, 10, 12)
         try Fixture.insertLog(dbPath, id: "p1", input: 100, output: 10, cacheRead: 5, cacheCreation: 2,
