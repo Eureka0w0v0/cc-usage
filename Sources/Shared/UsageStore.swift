@@ -154,18 +154,23 @@ public struct ModelStatRow: Sendable {
 // SQLite 绑定文本时用（拷贝字符串，安全）
 let SQLITE_TRANSIENT_DEST = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-/// 线程安全：自身状态只有两个不可变引用（path / overlay），每次查询独立开只读连接，
-/// SessionOverlay 内部有锁——可安全从任意线程调用（后台 reload / 桥接队列都依赖这点）。
+/// 线程安全：自身状态只有三个不可变引用（path / overlay / ompOverlay），每次查询独立开
+/// 只读连接，两个 overlay 内部各自有锁——可安全从任意线程调用（后台 reload / 桥接队列
+/// 都依赖这点）。
 public final class UsageStore: @unchecked Sendable {
     public static let defaultPath =
         (NSHomeDirectory() as NSString).appendingPathComponent(".cc-switch/cc-switch.db")
 
     private let path: String
     private let overlay: SessionOverlay
-    /// overlay 可注入：测试用独立实例（空 projectsDir）隔离真实会话日志，生产默认共享单例。
-    public init(path: String = UsageStore.defaultPath, overlay: SessionOverlay = .shared) {
+    private let ompOverlay: OmpOverlay
+    /// 两个 overlay 均可注入：测试用独立实例（空目录）隔离真实会话日志，生产默认共享单例。
+    public init(path: String = UsageStore.defaultPath,
+                overlay: SessionOverlay = .shared,
+                ompOverlay: OmpOverlay = .shared) {
         self.path = path
         self.overlay = overlay
+        self.ompOverlay = ompOverlay
     }
 
     // 只读打开（mode=ro，尊重 WAL，绝不写库）
@@ -185,19 +190,34 @@ public final class UsageStore: @unchecked Sendable {
         return handle
     }
 
-    // MARK: - 未入库增量叠加（SessionOverlay）
+    // MARK: - 增量叠加（SessionOverlay + OmpOverlay）
     //
-    // cc-switch 不在运行时,新用量只存在于会话 JSONL 里(session_log_sync 行偏移
-    // 之后)。SessionOverlay 只读解析这批行,这里把它们合并进各查询结果,让
-    // 菜单栏/面板在 cc-switch 关闭时照样实时。cc-switch 入库后 overlay 自动清空,
-    // 数字无缝交接(request_id 精确去重),不双算。
+    // 两个来源性质不同：
+    //   * SessionOverlay —— cc-switch 迟早会入库的 Claude Code 增量。它不在运行时新用量
+    //     只存在于 ~/.claude/projects 的 JSONL 里，补录后 overlay 自动清空、数字无缝交接；
+    //   * OmpOverlay —— cc-switch 压根不扫 ~/.omp/agent/sessions，永远不会收录，所以这
+    //     一层是 OMP 用量在本应用里的唯一来源，不存在「等它补录」。
+    //
+    // 两者产出同一种 OverlayRow，各自带 appType/providerName，这里按行过滤后合并：于是
+    // OMP 走 anthropic 的 Claude 请求落进 claude 分组（与 5H/Week 徽标同一笔账），走
+    // custom-gateway 的 grok 落进 grokbuild 分组，不会被笼统算成一坨。
+    // 两层共用 "session:<msg_id>" 命名空间，同一条响应即便都看见也只算一次。
 
-    /// 取符合过滤条件的未入库增量行。app 恒为 claude;overlay 行 pricing_model
-    /// 为空 → 有效计价模型回落 model,与库内 session 行口径一致。
+    /// 取符合过滤条件的增量行。overlay 行 pricing_model 为空 → 有效计价模型回落 model,
+    /// 与库内 session 行口径一致。
     private func overlayRows(_ db: OpaquePointer, start: Int64?, end: Int64?,
                              appType: String?, model: String?) -> [OverlayRow] {
-        if let at = appType, at != "claude" { return [] }
         var rows = overlay.pendingRows(db: db)
+        let ompRows = ompOverlay.pendingRows(db: db)
+        if !ompRows.isEmpty {
+            if rows.isEmpty {
+                rows = ompRows                      // 常态：cc-switch 已消化完 Claude Code 日志
+            } else {
+                let seen = Set(rows.map(\.requestId))
+                rows.append(contentsOf: ompRows.filter { !seen.contains($0.requestId) })
+            }
+        }
+        if let at = appType { rows = rows.filter { $0.appType == at } }
         if let s = start { rows = rows.filter { $0.createdAt >= s } }
         if let e = end { rows = rows.filter { $0.createdAt <= e } }
         if let m = model { rows = rows.filter { $0.model == m } }
@@ -205,11 +225,12 @@ public final class UsageStore: @unchecked Sendable {
     }
 
     /// LogQueryFilter 版(Tabs 用):多两个维度——provider 名与状态码。
-    /// overlay 行的 provider 展示名恒为 "Claude (Session)",状态码恒 200。
+    /// overlay 行状态码恒 200;provider 展示名由行自带("Claude (Session)" / "OMP (…)")。
     private func overlayLogRows(_ db: OpaquePointer, _ f: LogQueryFilter) -> [OverlayRow] {
-        if let pn = f.providerName, pn != "Claude (Session)" { return [] }
         if let sc = f.statusCode, sc != 200 { return [] }
-        return overlayRows(db, start: f.start, end: f.end, appType: f.appType, model: f.model)
+        var rows = overlayRows(db, start: f.start, end: f.end, appType: f.appType, model: f.model)
+        if let pn = f.providerName { rows = rows.filter { $0.providerName == pn } }
+        return rows
     }
 
     /// 把增量行累加进汇总(claude 的 fresh_input = input,无 cache 扣减)。
@@ -444,15 +465,20 @@ public final class UsageStore: @unchecked Sendable {
             if s.requests == 0 && s.tokensProcessed == 0 { continue }
             out.append((appType: app, summary: s))
         }
-        // 未入库增量并入 claude 桶(不存在则新建)
+        // 增量行按各自 app_type 并入(桶不存在则新建)。OMP 日志一个文件里混着
+        // Claude 与 Grok，全塞进 claude 桶会让 Grok 的用量假装成 Claude 的。
         let ov = overlayRows(db, start: filter.start, end: filter.end, appType: nil, model: filter.model)
         if !ov.isEmpty {
-            if let i = out.firstIndex(where: { $0.appType == "claude" }) {
-                addOverlay(&out[i].summary, ov)
-            } else {
-                var s = UsageSummary()
-                addOverlay(&s, ov)
-                out.append((appType: "claude", summary: s))
+            var byApp: [String: [OverlayRow]] = [:]
+            for r in ov { byApp[r.appType, default: []].append(r) }
+            for (app, rows) in byApp {
+                if let i = out.firstIndex(where: { $0.appType == app }) {
+                    addOverlay(&out[i].summary, rows)
+                } else {
+                    var s = UsageSummary()
+                    addOverlay(&s, rows)
+                    out.append((appType: app, summary: s))
+                }
             }
         }
         out.sort { $0.summary.tokensProcessed > $1.summary.tokensProcessed }
@@ -934,7 +960,7 @@ public final class UsageStore: @unchecked Sendable {
                 dataSource: colTextOpt(stmt, 24)
             ))
         }
-        // 未入库增量:计入总数;并入第 0 页并按时间倒序重排(增量行都是最新的,
+        // 增量行:计入总数;并入第 0 页并按时间倒序重排(增量行都是最新的,
         // 页可能略超 pageSize,前端列表照常渲染)。字段口径与 cc-switch 入库值一致。
         let ov = overlayLogRows(db, f).sorted { $0.createdAt > $1.createdAt }
         if !ov.isEmpty {
@@ -943,8 +969,8 @@ public final class UsageStore: @unchecked Sendable {
                 let fmt6 = { (v: Double) in String(format: "%.6f", v) }
                 let ovRows = ov.map { r in
                     RequestLogRow(
-                        requestId: r.requestId, providerId: "_session",
-                        providerName: "Claude (Session)", appType: "claude",
+                        requestId: r.requestId, providerId: r.providerId,
+                        providerName: r.providerName, appType: r.appType,
                         model: r.model, requestModel: r.model, pricingModel: nil,
                         costMultiplier: "1.0",
                         inputTokens: r.input, outputTokens: r.output,
@@ -954,7 +980,7 @@ public final class UsageStore: @unchecked Sendable {
                         totalCostUsd: fmt6(r.totalCost),
                         isStreaming: true, latencyMs: 0, firstTokenMs: nil, durationMs: nil,
                         statusCode: 200, errorMessage: nil, createdAt: r.createdAt,
-                        dataSource: "session_log"
+                        dataSource: r.providerId == "_session" ? "session_log" : "omp_session"
                     )
                 }
                 rows = (ovRows + rows).sorted { $0.createdAt > $1.createdAt }
@@ -1004,25 +1030,34 @@ public final class UsageStore: @unchecked Sendable {
                 avgLatencyMs: sqlite3_column_int64(stmt, 6)
             ))
         }
-        // 未入库增量并入 "Claude (Session)"(overlay 行恒 200/latency 0,按计数折算均值)
+        // 增量行按各自 provider 并入(overlay 行恒 200/latency 0,按计数折算均值)。
+        // OMP 日志里混着多家 provider,必须分组累加——一股脑塞进 "Claude (Session)"
+        // 会把 grok 的花费记到 Claude 头上。
         let ov = overlayLogRows(db, f)
         if !ov.isEmpty {
-            let toks = ov.reduce(Int64(0)) { $0 + $1.input + $1.output }
-            let cost = ov.reduce(0.0) { $0 + $1.totalCost }
-            let n = Int64(ov.count)
-            if let i = out.firstIndex(where: { $0.providerId == "_session" }) {
-                let oldN = out[i].requestCount
-                let newN = oldN + n
-                out[i].successRate = newN > 0
-                    ? (out[i].successRate * Double(oldN) + 100.0 * Double(n)) / Double(newN) : 100
-                out[i].avgLatencyMs = newN > 0 ? out[i].avgLatencyMs * oldN / newN : 0
-                out[i].requestCount = newN
-                out[i].totalTokens += toks
-                out[i].totalCost += cost
-            } else {
-                out.append(ProviderStatRow(providerId: "_session", providerName: "Claude (Session)",
-                                           requestCount: n, totalTokens: toks, totalCost: cost,
-                                           successRate: 100, avgLatencyMs: 0))
+            var grouped: [String: (name: String, req: Int64, toks: Int64, cost: Double)] = [:]
+            for r in ov {
+                var g = grouped[r.providerId] ?? (name: r.providerName, req: 0, toks: 0, cost: 0)
+                g.req += 1
+                g.toks += r.input + r.output
+                g.cost += r.totalCost
+                grouped[r.providerId] = g
+            }
+            for (pid, g) in grouped {
+                if let i = out.firstIndex(where: { $0.providerId == pid }) {
+                    let oldN = out[i].requestCount
+                    let newN = oldN + g.req
+                    out[i].successRate = newN > 0
+                        ? (out[i].successRate * Double(oldN) + 100.0 * Double(g.req)) / Double(newN) : 100
+                    out[i].avgLatencyMs = newN > 0 ? out[i].avgLatencyMs * oldN / newN : 0
+                    out[i].requestCount = newN
+                    out[i].totalTokens += g.toks
+                    out[i].totalCost += g.cost
+                } else {
+                    out.append(ProviderStatRow(providerId: pid, providerName: g.name,
+                                               requestCount: g.req, totalTokens: g.toks, totalCost: g.cost,
+                                               successRate: 100, avgLatencyMs: 0))
+                }
             }
             out.sort { $0.totalCost > $1.totalCost }
         }

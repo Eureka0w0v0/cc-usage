@@ -43,6 +43,12 @@ public struct OverlayRow: Sendable {
     public var sessionId: String?
     var hasStopReason: Bool
     var sourceFile: String
+    /// 归属的 cc-switch app_type，决定这行进哪个分组。SessionOverlay 恒为 claude；
+    /// OmpOverlay 一个日志里混着多家 provider，逐行分流（见 OmpOverlay.classify）。
+    public var appType: String = "claude"
+    /// Request Logs / Provider Stats 里的占位 provider 身份（库里没有对应 providers 行）。
+    public var providerId: String = "_session"
+    public var providerName: String = "Claude (Session)"
 }
 
 public final class SessionOverlay {

@@ -150,7 +150,15 @@ enum Fixture {
         return SessionOverlay(projectsDir: dir)
     }
 
+    /// 同上，隔离真实 ~/.omp/agent/sessions——否则本机 OMP 用量会漏进每个断言。
+    static func emptyOmpOverlay() throws -> OmpOverlay {
+        let dir = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("ccusage-test-omp-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        return OmpOverlay(sessionsDir: dir)
+    }
+
     static func store(_ dbPath: String) throws -> UsageStore {
-        UsageStore(path: dbPath, overlay: try emptyOverlay())
+        UsageStore(path: dbPath, overlay: try emptyOverlay(), ompOverlay: try emptyOmpOverlay())
     }
 }

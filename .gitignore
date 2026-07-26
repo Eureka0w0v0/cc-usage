@@ -13,3 +13,4 @@ DerivedData/
 
 # 内部工作文档（不进公开仓库）
 docs-internal/
+.snow/

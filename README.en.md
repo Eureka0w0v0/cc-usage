@@ -35,6 +35,7 @@ The Usage dashboard in [cc-switch](https://github.com/farion1231/cc-switch) is g
 - 🔄 **5-second live refresh**: choose 5/10/30/60s or off; the choice persists, and the menu bar and main window share one refresh cadence so they never disagree
 - 🔋 **Official subscription quota**: queries Anthropic's `/api/oauth/usage` with your local Claude Code OAuth credentials, throttled to once per 5 minutes with an in-process shared cache (no 429s); shown from the very first paint
 - 🔌 **Live even with cc-switch closed**: a built-in read-only overlay incrementally parses Claude Code session logs and prices them with cc-switch's own pricing table; when cc-switch imports those rows later the overlay drains via exact request-id dedup — verified seamless handoff, zero double counting
+- 🧬 **OMP usage no longer missing**: [Oh My Pi](https://github.com/sst/omp) writes its sessions to `~/.omp/agent/sessions`, a directory cc-switch knows nothing about and will **never** import — the app parses it read-only and **routes each row by model family**: Claude requests count as Claude, Grok requests count as Grok, never lumped together; costs come from OMP's own figures (custom gateways simply don't exist in cc-switch's pricing table)
 - 🪟 **Well-behaved windowing**: a single unique main window; closing it keeps the menu bar resident
 
 ## Prerequisites (read this)
@@ -44,6 +45,7 @@ The Usage dashboard in [cc-switch](https://github.com/farion1231/cc-switch) is g
 > 1. **macOS 14 (Sonoma) or later**;
 > 2. [cc-switch](https://github.com/farion1231/cc-switch) (≥ 3.16 recommended) installed — it owns the local database, history and pricing table; this app reads its database **read-only**.
 >    **cc-switch does NOT need to be running**: while it's closed, the app incrementally parses Claude Code's session logs (`~/.claude/projects`) itself and overlays the not-yet-imported usage in real time; when cc-switch comes back and imports those rows, the overlay deduplicates by request id and hands off seamlessly with no double counting (importing **new** Codex / Gemini usage still requires cc-switch to run);
+>    If you use [OMP](https://github.com/sst/omp), its usage likewise needs no cc-switch — see "How it works" below;
 > 3. The quota chips/badges require a Claude Code login on this machine (OAuth credentials are read from the Keychain / `~/.claude/.credentials.json`).
 
 ## Install
@@ -85,6 +87,7 @@ flowchart TB
         subgraph layer["Swift data layer"]
             UsageStore["UsageStore<br/>read-only SQLite"]
             SessionOverlay["SessionOverlay<br/>pending rows · in-memory overlay"]
+            OmpOverlay["OmpOverlay<br/>OMP usage · routed by model family"]
             QuotaCache["QuotaCache<br/>5-min throttle + in-flight dedup"]
         end
         menubar --> layer
@@ -92,11 +95,13 @@ flowchart TB
     end
     db[("~/.cc-switch/cc-switch.db")]
     jsonl[("~/.claude/projects<br/>session JSONL")]
+    ompjsonl[("~/.omp/agent/sessions<br/>OMP session JSONL")]
     api(["api.anthropic.com<br/>/api/oauth/usage"])
-    ccswitch["cc-switch itself<br/>(history + Codex/Gemini import)"]
+    ccswitch["cc-switch itself<br/>(history archive + Codex/Gemini import)"]
 
     UsageStore -->|"read-only"| db
     SessionOverlay -->|"read-only tail parsing"| jsonl
+    OmpOverlay -->|"read-only tail parsing"| ompjsonl
     QuotaCache -->|"OAuth credentials"| api
     jsonl -->|"parsed while running"| ccswitch
     ccswitch -->|"the only writer"| db
@@ -104,6 +109,7 @@ flowchart TB
 
 - The main window is not a re-implementation: cc-switch's frontend source plus a thin `invoke` bridge (`embed/`) is compiled by Vite into a single-file `index.html` running in a WKWebView. Tauri `invoke` calls from the frontend are intercepted in Swift and answered straight from the local SQLite database — aggregation semantics faithfully reimplement cc-switch's `usage_stats.rs`;
 - While cc-switch is closed, `SessionOverlay` resumes from the line offsets cc-switch recorded in `session_log_sync` and read-only parses the session JSONL tails, mirroring its importer (`session_usage.rs`) rule by rule — parsing, dedup and pricing alike. The pending rows are merged into every query in memory and drain to zero via exact `request_id` dedup once cc-switch imports them: nothing is ever written, nothing is ever counted twice;
+- OMP usage is a different story: cc-switch never scans `~/.omp/agent/sessions`, so those rows will **never** land in the database on their own — `OmpOverlay` is not a stopgap awaiting import, it is their only source. Attribution is decided by **model family**, not provider name: one provider can serve models from several families, and which ledger a request belongs to depends on whose model it hit, so Claude models must land in the Claude bucket (and if OMP shares a subscription account with Claude Code, that spend is the very quota the 5H/Week badge reports — get the bucket wrong and the panel contradicts itself with a rising quota percentage next to motionless token counts). Grok through a custom gateway lands in the Grok bucket. Costs are taken verbatim from OMP (only its `models.yml` prices those custom endpoints). When the response id is an Anthropic `msg_xxx`, the request id reuses cc-switch's own `session:<msg_id>` namespace — which both prevents double counting against `SessionOverlay` and lets the row drain automatically should it ever get imported;
 - Subscription quota uses your local Claude Code OAuth credentials; results live in one in-process shared cache read by both the menu bar and the panel, which is why the two always agree.
 
 ## Rebuilding the panel frontend (optional)
@@ -124,7 +130,8 @@ The script copies the bridge files under `embed/` into the cc-switch tree (all a
 
 ```bash
 bash scripts/test.sh    # unit tests: pricing candidates / rollup bounds / two-table
-                        # merge without double counting / overlay parsing, etc.
+                        # merge without double counting / overlay parsing /
+                        # OMP attribution routing and dedup, etc.
                         # All run against temp sqlite + temp dirs — real data untouched.
 ```
 
@@ -132,7 +139,7 @@ Pushes and PRs trigger a GitHub Actions smoke build + tests (`.github/workflows/
 
 ## Privacy
 
-- All usage data stays **on your machine**: the app reads cc-switch's SQLite database read-only and uploads nothing;
+- All usage data stays **on your machine**: the app reads cc-switch's SQLite database and local session logs (`~/.claude/projects`, `~/.omp/agent/sessions`) read-only, writes to none of them, and uploads nothing;
 - The only network request is Anthropic's official quota endpoint `api.anthropic.com/api/oauth/usage` (only when a quota chip/badge is enabled, at most once per 5 minutes);
 - OAuth credentials are read locally, never persisted elsewhere, never sent anywhere else.
 
