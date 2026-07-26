@@ -16,7 +16,7 @@ final class OmpOverlayTests: XCTestCase {
         try FileManager.default.createDirectory(
             atPath: (sessionsDir as NSString).appendingPathComponent("-Proj"),
             withIntermediateDirectories: true)
-        overlay = OmpOverlay(sessionsDir: sessionsDir)
+        overlay = OmpOverlay(sessionsDir: sessionsDir, minRefreshInterval: 0)
         var handle: OpaquePointer?
         XCTAssertEqual(sqlite3_open(dbPath, &handle), SQLITE_OK)
         db = handle
@@ -155,7 +155,7 @@ final class OmpOverlayTests: XCTestCase {
 
         // cc-switch（或 SessionOverlay 那条路径）已收录同一条 → 本层必须让位，绝不双算
         try Fixture.insertLog(dbPath, id: "session:msg_d1", output: 10, createdAt: 1)
-        Thread.sleep(forTimeInterval: 2.1)   // 越过 2s 扫描节流窗口
+
         XCTAssertTrue(overlay.pendingRows(db: db).isEmpty)
     }
 
@@ -169,7 +169,7 @@ final class OmpOverlayTests: XCTestCase {
             .data(using: .utf8)!)
         try fh.close()
 
-        Thread.sleep(forTimeInterval: 2.1)
+
         XCTAssertEqual(Set(overlay.pendingRows(db: db).map(\.requestId)),
                        ["session:msg_i1", "session:msg_i2"])
     }
@@ -178,7 +178,7 @@ final class OmpOverlayTests: XCTestCase {
         let path = try write([msgLine(rid: "msg_v1", provider: "anthropic", model: "claude-opus-5", output: 10)])
         XCTAssertEqual(overlay.pendingRows(db: db).count, 1)
         try FileManager.default.removeItem(atPath: path)
-        Thread.sleep(forTimeInterval: 2.1)
+
         XCTAssertTrue(overlay.pendingRows(db: db).isEmpty)
     }
 
@@ -222,5 +222,40 @@ final class OmpOverlayTests: XCTestCase {
         let anthropic = try XCTUnwrap(stats.first { $0.providerName == "OMP (anthropic)" })
         XCTAssertEqual(anthropic.requestCount, 1)
         XCTAssertEqual(anthropic.totalCost, 1.0, accuracy: 1e-12)
+    }
+
+    /// 跨 overlay 防双算。这是 OmpOverlay 复用 "session:<msg_id>" 命名空间的全部意义，
+    /// 也是 UsageStore.overlayRows 里那条「两层都非空 → 按 requestId 去重」分支唯一的
+    /// 守卫：其余用例都把 SessionOverlay 置空（rows.isEmpty 恒真），该分支从不执行，
+    /// 把它写成无条件 append 也照样全绿。
+    func testSameMessageIdSeenByBothOverlaysCountsOnce() throws {
+        let msgId = "msg_shared1"
+
+        // OMP 侧记了这条 anthropic 响应
+        try write([msgLine(rid: msgId, provider: "anthropic", model: "claude-opus-5",
+                           output: 100, input: 10, cost: 1.0)])
+
+        // Claude Code 侧也记了同一个 message.id
+        let projects = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("ccusage-omp-proj-\(UUID().uuidString)")
+        let projDir = (projects as NSString).appendingPathComponent("p1")
+        try FileManager.default.createDirectory(atPath: projDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: projects) }
+        let ccLine = #"""
+        {"type":"assistant","sessionId":"s1","timestamp":"2026-07-26T13:28:12Z","message":{"id":"\#(msgId)","stop_reason":"end_turn","model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":100}}}
+        """#
+        try (ccLine + "\n").write(
+            toFile: (projDir as NSString).appendingPathComponent("s.jsonl"),
+            atomically: true, encoding: .utf8)
+
+        let store = UsageStore(
+            path: dbPath,
+            overlay: SessionOverlay(projectsDir: projects, minRefreshInterval: 0),
+            ompOverlay: overlay)
+        let ts = Int64(1_785_072_483)
+        let s = try store.rangeSummary(UsageFilter(start: ts - 3600, end: ts + 3600))
+
+        XCTAssertEqual(s.requests, 1, "同一 msg_id 被两层各看见一次，合流后必须只算一次")
+        XCTAssertEqual(s.output, 100)
     }
 }

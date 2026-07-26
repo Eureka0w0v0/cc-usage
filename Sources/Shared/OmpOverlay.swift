@@ -28,7 +28,7 @@ public final class OmpOverlay {
     public static let shared = OmpOverlay()
 
     /// 两次真实扫描的最小间隔:一个刷新 tick 内 UsageStore 的多个查询共享同一次扫描。
-    private let minRefreshInterval: TimeInterval = 2.0
+    private let minRefreshInterval: TimeInterval
 
     private let lock = NSLock()
     private var rows: [String: OverlayRow] = [:]
@@ -43,9 +43,12 @@ public final class OmpOverlay {
 
     private let sessionsDir: String
 
+    /// minRefreshInterval 可注入：测试传 0 即可免掉「睡过节流窗口」的等待。
     public init(sessionsDir: String =
-        (NSHomeDirectory() as NSString).appendingPathComponent(".omp/agent/sessions")) {
+        (NSHomeDirectory() as NSString).appendingPathComponent(".omp/agent/sessions"),
+        minRefreshInterval: TimeInterval = 2.0) {
         self.sessionsDir = sessionsDir
+        self.minRefreshInterval = minRefreshInterval
     }
 
     // MARK: - 对外入口
@@ -103,7 +106,11 @@ public final class OmpOverlay {
         var seenPaths = Set<String>()
         for path in files {
             seenPaths.insert(path)
-            scanFileLocked(path)
+            // 每个文件一个 autorelease 池：JSONSerialization 每行都产 Foundation 对象，
+            // 而 message 里挂着整段回复正文。不排空的话这些对象要等整趟扫描结束才释放，
+            // 实测峰值常驻 313MB → 加池后 53MB（且快 30%，内存压力小了）。WidgetKit
+            // 扩展的内存上限很紧，不加这一层会被系统直接掐掉。
+            autoreleasepool { scanFileLocked(path) }
         }
         // 文件消失(会话被清理)→ 其行一并移除
         let vanished = Set(marks.keys).subtracting(seenPaths)
@@ -113,11 +120,6 @@ public final class OmpOverlay {
         }
         pruneRowsAlreadyInDB(db)
     }
-
-    /// 计费行的必要标记。OMP 日志里 tool_call / custom / thinking 之类的行占七成以上，
-    /// 它们不可能含 "usage"——先做一次字节子串命中再决定要不要 JSONSerialization，
-    /// 冷启动全量扫描的解析量因此砍掉大半（本机实测 29392 行里只有 8275 行需要解析）。
-    private static let usageMarker = Data(#""usage""#.utf8)
 
     private func scanFileLocked(_ path: String) {
         guard let st = statNanos(path) else { return }
@@ -163,7 +165,7 @@ public final class OmpOverlay {
                 off += lineLen + 1
                 consumedBytes = startBytes + Int64(off)
 
-                guard lineLen > 0, Self.hasUsageMarker(lineBase, lineLen) else { continue }
+                guard lineLen > 0, JSONLScan.hasUsageMarker(lineBase, lineLen) else { continue }
                 let lineData = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: lineBase),
                                     count: lineLen, deallocator: .none)
                 guard let obj = try? JSONSerialization.jsonObject(with: lineData) as? NSDictionary
@@ -225,15 +227,9 @@ public final class OmpOverlay {
             input: input, output: output, cacheRead: cacheRead, cacheCreation: cacheWrite,
             inputCost: ic, outputCost: oc, cacheReadCost: crc, cacheCreationCost: ccc,
             totalCost: total,
-            sessionId: (obj["id"] as? String), hasStopReason: true, sourceFile: path,
+            hasStopReason: true, sourceFile: path,
             appType: cls.appType, providerId: cls.providerId, providerName: cls.providerName
         )
-    }
-
-    private static func hasUsageMarker(_ p: UnsafeRawPointer, _ len: Int) -> Bool {
-        usageMarker.withUnsafeBytes { m in
-            memmem(p, len, m.baseAddress!, m.count) != nil
-        }
     }
 
     /// Anthropic 的 msg_xxx 复用 cc-switch 的 "session:" 命名空间(可被库内行收敛、

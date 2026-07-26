@@ -62,8 +62,12 @@ enum CodexQuota {
         let size = (try? handle.seekToEnd()) ?? 0
         let tail: UInt64 = 1 << 18
         try? handle.seek(toOffset: size > tail ? size - tail : 0)
-        guard let data = try? handle.readToEnd(),
-              let text = String(data: data, encoding: .utf8) else { return nil }
+        guard let data = try? handle.readToEnd() else { return nil }
+        // 尾读从任意字节偏移开始，必然可能切断多字节 UTF-8（会话里有中日文时概率很高）。
+        // String(data:encoding:) 遇到非法序列返回 nil → 整个最新会话被判成「无 rate_limits」，
+        // 回落到更旧的文件显示过期百分比，甚至三个都切坏时显示 "—"。改用永不失败的解码：
+        // 被破坏的首行本来就是残行，parse 时 JSON 解析不过自然跳过。
+        let text = String(decoding: data, as: UTF8.self)
         for line in text.split(separator: "\n").reversed() where line.contains("\"rate_limits\"") {
             if let raw = parse(String(line)) { return raw }
         }

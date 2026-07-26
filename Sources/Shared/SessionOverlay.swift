@@ -40,7 +40,6 @@ public struct OverlayRow: Sendable {
     public var cacheReadCost: Double
     public var cacheCreationCost: Double
     public var totalCost: Double
-    public var sessionId: String?
     var hasStopReason: Bool
     var sourceFile: String
     /// 归属的 cc-switch app_type，决定这行进哪个分组。SessionOverlay 恒为 claude；
@@ -51,11 +50,24 @@ public struct OverlayRow: Sendable {
     public var providerName: String = "Claude (Session)"
 }
 
+/// 两个 overlay 共用的逐行扫描原语。
+enum JSONLScan {
+    /// 计费行的必要标记。会话日志里 tool_call / thinking / custom 之类的行占七成以上，
+    /// 它们不可能含 "usage"——先做一次字节子串命中再决定要不要 JSONSerialization。
+    static let usageMarker = Data(#""usage""#.utf8)
+
+    static func hasUsageMarker(_ p: UnsafeRawPointer, _ len: Int) -> Bool {
+        usageMarker.withUnsafeBytes { m in
+            memmem(p, len, m.baseAddress!, m.count) != nil
+        }
+    }
+}
+
 public final class SessionOverlay {
     public static let shared = SessionOverlay()
 
     /// 两次真实扫描的最小间隔:一个刷新 tick 内 UsageStore 的多个查询共享同一次扫描。
-    private let minRefreshInterval: TimeInterval = 2.0
+    private let minRefreshInterval: TimeInterval
     /// 定价表缓存时长(cc-switch 更新价格后最迟 5 分钟被叠加层看到)。
     private let pricingTTL: TimeInterval = 300
 
@@ -79,9 +91,12 @@ public final class SessionOverlay {
 
     private let projectsDir: String
 
+    /// minRefreshInterval 可注入：测试传 0 即可免掉「睡过节流窗口」的等待。
     public init(projectsDir: String =
-        (NSHomeDirectory() as NSString).appendingPathComponent(".claude/projects")) {
+        (NSHomeDirectory() as NSString).appendingPathComponent(".claude/projects"),
+        minRefreshInterval: TimeInterval = 2.0) {
         self.projectsDir = projectsDir
+        self.minRefreshInterval = minRefreshInterval
     }
 
     // MARK: - 对外入口
@@ -109,7 +124,9 @@ public final class SessionOverlay {
         var seenPaths = Set<String>()
         for path in files {
             seenPaths.insert(path)
-            scanFileLocked(path, dbState: sync[path] ?? (lastModified: 0, offset: 0))
+            // 每个文件一个 autorelease 池（同 OmpOverlay）：JSONSerialization 的
+            // Foundation 对象否则要堆到整趟扫描结束，实测本层峰值常驻 96MB。
+            autoreleasepool { scanFileLocked(path, dbState: sync[path] ?? (lastModified: 0, offset: 0)) }
         }
         // 文件消失(会话被清理)→ 其待入库行一并移除
         let vanished = Set(marks.keys).subtracting(seenPaths)
@@ -135,16 +152,21 @@ public final class SessionOverlay {
         var startBytes: Int64 = 0
         var linesRead: Int64 = 0
         var skipLines = dbState.offset
-        if let m = marks[path], m.dbOffset == dbState.offset, m.bytesRead <= st.size {
-            // 在自己的进度上续读(不必重数 db 偏移内的行)
-            startBytes = m.bytesRead
-            linesRead = m.linesRead
-            skipLines = 0
-            if m.mtimeNs == st.mtimeNs { return }   // 内容未变
-        } else {
-            // db 偏移推进(cc-switch 刚跑过)或文件被重写 → 从头重建本文件的增量
-            rows = rows.filter { $0.value.sourceFile != path }
+        if let m = marks[path] {
+            if m.dbOffset == dbState.offset, m.bytesRead <= st.size {
+                // 在自己的进度上续读(不必重数 db 偏移内的行)
+                startBytes = m.bytesRead
+                linesRead = m.linesRead
+                skipLines = 0
+                if m.mtimeNs == st.mtimeNs { return }   // 内容未变
+            } else {
+                // db 偏移推进(cc-switch 刚跑过)或文件被重写 → 从头重建本文件的增量
+                rows = rows.filter { $0.value.sourceFile != path }
+            }
         }
+        // marks 无记录 = 首次见到该文件，rows 里必然没有它的行。冷启动时若每个文件
+        // 都白跑一次全量 filter，等于把整个结果字典重建上千遍（~/.claude/projects
+        // 本机 1092 个文件，比 OMP 那边语料更大）。
 
         guard let fh = FileHandle(forReadingAtPath: path) else { return }
         defer { try? fh.close() }
@@ -157,65 +179,81 @@ public final class SessionOverlay {
 
         // 只消费完整行(带 \n);写了一半的最后一行留到下个 tick,
         // 避免把残缺 JSON 当作「已处理」而永久丢失(严于上游,口径不受影响)。
+        //
+        // 走裸指针 + "usage" 字节预筛:这里只需要找换行与子串,没有一处用得上 Data
+        // 的语义,而 Data 的下标/切片在大体量日志上开销压倒性(同一批文件实测逐行
+        // 切分 377ms vs memchr 88ms);七成以上的行不含 usage,不必进 JSON 解析。
         var consumedBytes = startBytes
-        var sessionId: String? = nil
-        var idx = data.startIndex
-        while idx < data.endIndex {
-            guard let nl = data[idx...].firstIndex(of: 0x0A) else { break }
-            let lineData = data[idx..<nl]
-            idx = data.index(after: nl)
-            consumedBytes = startBytes + Int64(idx - data.startIndex)
-            linesRead += 1
-            if skipLines > 0 && linesRead <= dbState.offset { continue }
-
-            guard !lineData.isEmpty,
-                  let obj = try? JSONSerialization.jsonObject(with: Data(lineData)) as? [String: Any]
-            else { continue }
-
-            if sessionId == nil, let sid = obj["sessionId"] as? String { sessionId = sid }
-            guard obj["type"] as? String == "assistant",
-                  let message = obj["message"] as? [String: Any],
-                  let msgId = message["id"] as? String,
-                  let usage = message["usage"] as? [String: Any]
-            else { continue }
-
-            let input = int64(usage["input_tokens"])
-            let output = int64(usage["output_tokens"])
-            let cacheRead = int64(usage["cache_read_input_tokens"])
-            let cacheCreation = int64(usage["cache_creation_input_tokens"])
-            // 任一计费维度 > 0 才计入(对齐上游 has_billable_tokens)
-            guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { continue }
-
-            let model = (message["model"] as? String) ?? "unknown"
-            let hasStop = (message["stop_reason"] as? String) != nil
-            let ts = (obj["timestamp"] as? String).flatMap(Self.parseRFC3339)
-                ?? Int64(Date().timeIntervalSince1970)
-            let requestId = "session:" + msgId
-
-            // message.id 去重:stop_reason 优先,同级取 output 更大者(对齐上游)
-            if let old = rows[requestId] {
-                let replace = (hasStop && !old.hasStopReason)
-                    || (hasStop == old.hasStopReason && output > old.output)
-                if !replace { continue }
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            guard let base = raw.baseAddress else { return }
+            let total = raw.count
+            var off = 0
+            while off < total {
+                guard let nl = memchr(base + off, 0x0A, total - off) else { break }
+                let lineBase = base + off
+                let lineLen = UnsafeRawPointer(nl) - lineBase
+                off += lineLen + 1
+                consumedBytes = startBytes + Int64(off)
+                linesRead += 1
+                // db 偏移内的行 cc-switch 已消化:只数,不解析
+                if skipLines > 0 && linesRead <= dbState.offset { continue }
+                guard lineLen > 0, JSONLScan.hasUsageMarker(lineBase, lineLen) else { continue }
+                let lineData = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: lineBase),
+                                    count: lineLen, deallocator: .none)
+                guard let obj = try? JSONSerialization.jsonObject(with: lineData) as? NSDictionary
+                else { continue }
+                ingestLocked(obj, path: path)
             }
-
-            let p = findPricing(model)
-            let ic = p.map { Double(input) * $0.input / 1_000_000 } ?? 0
-            let oc = p.map { Double(output) * $0.output / 1_000_000 } ?? 0
-            let crc = p.map { Double(cacheRead) * $0.cacheRead / 1_000_000 } ?? 0
-            let ccc = p.map { Double(cacheCreation) * $0.cacheCreation / 1_000_000 } ?? 0
-
-            rows[requestId] = OverlayRow(
-                requestId: requestId, model: model, createdAt: ts,
-                input: input, output: output, cacheRead: cacheRead, cacheCreation: cacheCreation,
-                inputCost: ic, outputCost: oc, cacheReadCost: crc, cacheCreationCost: ccc,
-                totalCost: ic + oc + crc + ccc,
-                sessionId: sessionId, hasStopReason: hasStop, sourceFile: path
-            )
         }
 
         marks[path] = FileMark(mtimeNs: st.mtimeNs, bytesRead: consumedBytes,
                                linesRead: linesRead, dbOffset: dbState.offset)
+    }
+
+    /// 单行 JSON → 一条待入库行。不命中计费条件时静默跳过。
+    ///
+    /// 走 NSDictionary 而非 `as? [String: Any]`:后者会把整棵子树递归桥接成 Swift
+    /// 字典,而 message 里挂着整段回复正文——我们只要几个标量字段。
+    private func ingestLocked(_ obj: NSDictionary, path: String) {
+        guard obj["type"] as? String == "assistant",
+              let message = obj["message"] as? NSDictionary,
+              let msgId = message["id"] as? String,
+              let usage = message["usage"] as? NSDictionary
+        else { return }
+
+        let input = int64(usage["input_tokens"])
+        let output = int64(usage["output_tokens"])
+        let cacheRead = int64(usage["cache_read_input_tokens"])
+        let cacheCreation = int64(usage["cache_creation_input_tokens"])
+        // 任一计费维度 > 0 才计入(对齐上游 has_billable_tokens)
+        guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { return }
+
+        let model = (message["model"] as? String) ?? "unknown"
+        let hasStop = (message["stop_reason"] as? String) != nil
+        let ts = (obj["timestamp"] as? String).flatMap(Self.parseRFC3339)
+            ?? Int64(Date().timeIntervalSince1970)
+        let requestId = "session:" + msgId
+
+        // message.id 去重:stop_reason 优先,同级取 output 更大者(对齐上游)
+        if let old = rows[requestId] {
+            let replace = (hasStop && !old.hasStopReason)
+                || (hasStop == old.hasStopReason && output > old.output)
+            if !replace { return }
+        }
+
+        let p = findPricing(model)
+        let ic = p.map { Double(input) * $0.input / 1_000_000 } ?? 0
+        let oc = p.map { Double(output) * $0.output / 1_000_000 } ?? 0
+        let crc = p.map { Double(cacheRead) * $0.cacheRead / 1_000_000 } ?? 0
+        let ccc = p.map { Double(cacheCreation) * $0.cacheCreation / 1_000_000 } ?? 0
+
+        rows[requestId] = OverlayRow(
+            requestId: requestId, model: model, createdAt: ts,
+            input: input, output: output, cacheRead: cacheRead, cacheCreation: cacheCreation,
+            inputCost: ic, outputCost: oc, cacheReadCost: crc, cacheCreationCost: ccc,
+            totalCost: ic + oc + crc + ccc,
+            hasStopReason: hasStop, sourceFile: path
+        )
     }
 
     /// 已被 cc-switch 入库的行从叠加层剔除(request_id 精确去重的兜底)。

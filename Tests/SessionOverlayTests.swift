@@ -18,7 +18,7 @@ final class SessionOverlayTests: XCTestCase {
         try FileManager.default.createDirectory(
             atPath: (projectsDir as NSString).appendingPathComponent("proj1"),
             withIntermediateDirectories: true)
-        overlay = SessionOverlay(projectsDir: projectsDir)
+        overlay = SessionOverlay(projectsDir: projectsDir, minRefreshInterval: 0)
         var handle: OpaquePointer?
         XCTAssertEqual(sqlite3_open(dbPath, &handle), SQLITE_OK)
         db = handle
@@ -76,7 +76,7 @@ final class SessionOverlayTests: XCTestCase {
         try fh.close()
         try Fixture.insertLog(dbPath, id: "session:m1", output: 10, createdAt: 1)
 
-        Thread.sleep(forTimeInterval: 2.1)   // 越过 2s 扫描节流窗口
+
         let rows = overlay.pendingRows(db: db)
         XCTAssertEqual(rows.map(\.requestId), ["session:m3"])
         XCTAssertEqual(rows.first?.output, 7)

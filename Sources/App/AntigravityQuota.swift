@@ -75,11 +75,15 @@ actor AntigravityQuota {
     /// 失败时保留上次结果（stale-if-error），不闪空。
     func latest() async -> [Model] {
         if Date().timeIntervalSince(cacheAt) < 30 { return cache }
+        // 闸门在入口就推进,成败一视同仁。只在成功后推进的话 30s 节流对失败路径完全
+        // 失效——Dashboard 每 5 秒调一次,凭据一过期就是每小时 720 次带 client_secret
+        // 与 refresh_token 的 POST 打向 Google,足以被限流甚至标记异常。
+        // 放在第一个 await 之前:actor 重入时后来的调用会被上面的 if 挡住。
+        cacheAt = Date()
         guard let token = await validAccessToken() else { return cache }
         guard let proj = await ensureProject(token: token) else { return cache }
         guard let models = await fetchModels(token: token, project: proj) else { return cache }
         cache = models
-        cacheAt = Date()
         return models
     }
 

@@ -715,13 +715,21 @@ public final class UsageStore: @unchecked Sendable {
     }
 
     /// 按过滤条件生成快照（区间汇总 + 累计 + 走势）。
-    public func snapshot(filter: UsageFilter, now: Date = Date(), calendar: Calendar = .current) throws -> UsageSnapshot {
+    ///
+    /// includeCumulative=false 时跳过那次无时间窗的全库聚合：它要带着跨源去重的相关
+    /// 子查询逐行扫完 proxy_request_logs + rollups（本机实测 ~27ms），而菜单栏路径
+    /// 只读 today/trend/lastEventAt，累计值拿了就扔——默认 5 秒一刷即每秒白燃 CPU。
+    /// Widget 要显示累计，保持传 true。
+    public func snapshot(filter: UsageFilter, now: Date = Date(), calendar: Calendar = .current,
+                         includeCumulative: Bool = true) throws -> UsageSnapshot {
         let db = try openRO()
         defer { sqlite3_close(db) }
 
         let f = resolvedFilter(filter, now: now, calendar)
         let range = try summary(db, f, calendar)
-        let cumulative = try summary(db, UsageFilter(appType: filter.appType, model: filter.model), calendar)
+        let cumulative = includeCumulative
+            ? try summary(db, UsageFilter(appType: filter.appType, model: filter.model), calendar)
+            : UsageSummary()
         let tr = try trend(db, f, calendar)
         let lastTs = lastEventTs(db)
 
@@ -885,10 +893,13 @@ public final class UsageStore: @unchecked Sendable {
         if sqlite3_step(cstmt) == SQLITE_ROW { total = Int(sqlite3_column_int64(cstmt, 0)) }
         sqlite3_finalize(cstmt)
 
-        // 分页数据
-        let offset = max(0, page) * max(1, pageSize)
+        // 分页数据。pageSize 直接来自 WebView 桥接，必须消毒后再绑给 LIMIT：
+        // 0 → LIMIT 0 返回空页；负数 → SQLite 语义下 LIMIT -1 = 无上限，会把整张
+        // proxy_request_logs 物化成 RequestLogRow 再桥接成 JSON 丢给 WKWebView。
+        let size = max(1, pageSize)
+        let offset = max(0, page) * size
         var pageBinds = binds
-        pageBinds.append(.int(Int64(pageSize)))
+        pageBinds.append(.int(Int64(size)))
         pageBinds.append(.int(Int64(offset)))
         let sql = """
         SELECT l.request_id, l.provider_id, \(Self.providerNameCoalesce) AS provider_name, l.app_type, l.model,

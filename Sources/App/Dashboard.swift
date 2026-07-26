@@ -192,7 +192,7 @@ final class PanelModel: ObservableObject {
         visTimer = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.checkStatusItemVisibility() }
-        // 屏幕/前台 app 变化：可用空间可能变了，解除上限重新按全宽评估（有空间就别截断）
+        // 屏幕变化：可用空间真的变了，解除上限重新按全宽评估（有空间就别截断）。
         let clearCap: @Sendable () -> Void = { [weak self] in
             Task { @MainActor in
                 self?.mbWidthCap = nil
@@ -202,9 +202,16 @@ final class PanelModel: ObservableObject {
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main) { _ in clearCap() }
+        // 前台 app 变化：菜单栏可用空间可能被让出来了，值得重新争取——但只抬天花板，
+        // 不动 mbWidthCap。清掉 cap 会让 label 立刻回全宽、随即被挤掉，而恢复要等
+        // checkStatusItemVisibility 攒够 hiddenTicks（1Hz 巡检）→ 每切一次 app 就隐身
+        // 两秒多。夺回空间交给 235-243 的增长分支即可，全程不失可见。
+        let raiseCeiling: @Sendable () -> Void = { [weak self] in
+            Task { @MainActor in self?.growCeiling = .greatestFiniteMagnitude }
+        }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
-            object: nil, queue: .main) { _ in clearCap() }
+            object: nil, queue: .main) { _ in raiseCeiling() }
     }
 
     /// 状态项可见性巡检（纯反应式，无持久化、无跨 app 记忆）：
@@ -313,7 +320,8 @@ final class PanelModel: ObservableObject {
                 do {
                     // 缺省 filter = 本地今日零点 → now（resolvedFilter），全部来源/模型——
                     // 与菜单栏「今日」完全同口径，snap.today 直接复用，不再单独多算一次。
-                    o.snap = try store.snapshot(filter: UsageFilter())
+                    // 菜单栏只读 today/trend/lastEventAt，累计值拿了就扔 → 跳过那次全库聚合。
+                    o.snap = try store.snapshot(filter: UsageFilter(), includeCumulative: false)
                     o.today = o.snap?.today
                     // 菜单栏 W/M：近 7 天 / 近 30 天（滚动窗口），全部来源。
                     // 用滚动窗口而非日历「本周/本月」——否则月初时「本周」会跨回上月、反比「本月」多，违反「月≥周≥日」直觉。

@@ -142,20 +142,31 @@ enum Fixture {
         """)
     }
 
-    /// 指向空临时目录的 overlay：测试不去扫真实会话日志。
-    static func emptyOverlay() throws -> SessionOverlay {
+    /// 测试用临时目录集合，tearDown 时统一清掉（否则每跑一次测试就在 /tmp 留下几十个空目录）。
+    nonisolated(unsafe) static var tempDirs: [String] = []
+
+    private static func makeTempDir(_ prefix: String) throws -> String {
         let dir = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("ccusage-test-projects-\(UUID().uuidString)")
+            .appendingPathComponent("ccusage-test-\(prefix)-\(UUID().uuidString)")
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        return SessionOverlay(projectsDir: dir)
+        tempDirs.append(dir)
+        return dir
+    }
+
+    static func cleanTempDirs() {
+        for d in tempDirs { try? FileManager.default.removeItem(atPath: d) }
+        tempDirs.removeAll()
+    }
+
+    /// 指向空临时目录的 overlay：测试不去扫真实会话日志。
+    /// minRefreshInterval 传 0——测试关心的是「重扫后的结果」，不该为等一个常量窗口睡 2 秒。
+    static func emptyOverlay() throws -> SessionOverlay {
+        SessionOverlay(projectsDir: try makeTempDir("projects"), minRefreshInterval: 0)
     }
 
     /// 同上，隔离真实 ~/.omp/agent/sessions——否则本机 OMP 用量会漏进每个断言。
     static func emptyOmpOverlay() throws -> OmpOverlay {
-        let dir = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("ccusage-test-omp-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        return OmpOverlay(sessionsDir: dir)
+        OmpOverlay(sessionsDir: try makeTempDir("omp"), minRefreshInterval: 0)
     }
 
     static func store(_ dbPath: String) throws -> UsageStore {

@@ -40,6 +40,12 @@ struct PanelWebView: NSViewRepresentable {
             label: "cc-usage.bridge", qos: .userInitiated, attributes: .concurrent)
         /// ISO8601DateFormatter 线程安全，静态复用（quotaJSON / trends 每 tick 都在调）。
         private static let iso = ISO8601DateFormatter()
+        /// 桥接层拒绝请求时回给前端的错误（catch 分支会把它字符串化进 replyHandler）。
+        struct Err: LocalizedError {
+            let msg: String
+            init(_ m: String) { msg = m }
+            var errorDescription: String? { msg }
+        }
 
         func userContentController(_ ucc: WKUserContentController,
                                    didReceive message: WKScriptMessage,
@@ -154,8 +160,15 @@ struct PanelWebView: NSViewRepresentable {
                 let value = args["value"]
                 if value == nil || value is NSNull {
                     UserDefaults.standard.removeObject(forKey: "embed.\(key)")
+                } else if let v = value as? NSNumber {
+                    UserDefaults.standard.set(v, forKey: "embed.\(key)")
+                } else if let v = value as? String {
+                    UserDefaults.standard.set(v, forKey: "embed.\(key)")
                 } else {
-                    UserDefaults.standard.set(value, forKey: "embed.\(key)")
+                    // UserDefaults 只吃 plist 类型，喂进 NSNull（JS 的 [null] / {a:null}
+                    // 桥接过来就是）会抛 ObjC 异常——Swift 捕获不了，整个进程当场终止。
+                    // 面板真正用到的设置只有标量，其余一律拒绝，走既有错误路径回给前端。
+                    throw Err("set_setting: unsupported value type for key \(key)")
                 }
                 if key == "refreshIntervalMs", let ms = (value as? NSNumber)?.intValue {
                     Task { @MainActor in PanelModel.shared?.applyEmbedRefreshInterval(ms: ms) }
