@@ -21,6 +21,7 @@
 		2FB870100920324A6F8DB6F1 /* CodexQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36764B37F900CFF7A2CD31CB /* CodexQuota.swift */; };
 		30D0267489B6604D1EDBBFDE /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
 		430272EA72A336833DA9941E /* OmpOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852F6FC486224DEFA66DC312 /* OmpOverlay.swift */; };
+		487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */; };
 		4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */ = {isa = PBXBuildFile; fileRef = E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */; };
 		4B6DFD55433EA15C86FE9B19 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		4D4D7C0D1F59343D57277E53 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = C843DC8A24FE2FC77A32C289 /* Sample.swift */; };
@@ -100,6 +101,7 @@
 		3B12A88A474853068E9E3317 /* brand-grok.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-grok.png"; sourceTree = "<group>"; };
 		3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOverlay.swift; sourceTree = "<group>"; };
 		45E808353F9922E4E141F092 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaginationAndCacheTests.swift; sourceTree = "<group>"; };
 		4A79728DAD95A349D54CBC66 /* PricingCandidatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingCandidatesTests.swift; sourceTree = "<group>"; };
 		4DABE7E9FF3FE398191AD203 /* Widget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Widget.entitlements; sourceTree = "<group>"; };
 		4FD962A14316054D9A982BE4 /* OmpOverlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmpOverlayTests.swift; sourceTree = "<group>"; };
@@ -199,6 +201,7 @@
 				E1AB14D881996E7BEEB26551 /* FormattingTests.swift */,
 				A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */,
 				4FD962A14316054D9A982BE4 /* OmpOverlayTests.swift */,
+				462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */,
 				4A79728DAD95A349D54CBC66 /* PricingCandidatesTests.swift */,
 				31C6399E4E6DDB98439F8769 /* RollupBoundsTests.swift */,
 				58B7579031ABBBFE04A53F94 /* SessionOverlayTests.swift */,
@@ -450,6 +453,7 @@
 				1EB76A1AAF9DEB820C81DC05 /* ModelPricingFallbackTests.swift in Sources */,
 				CA273B275122E65E0AE9BB7D /* OmpOverlay.swift in Sources */,
 				2F7C1BA51315A51A1C47EA60 /* OmpOverlayTests.swift in Sources */,
+				487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */,
 				CCBC5F29DF2F3BE14EF8DAE4 /* PricingCandidatesTests.swift in Sources */,
 				F6A65301583E710CE61822B6 /* RollupBoundsTests.swift in Sources */,
 				7768945481BA8CEC1034946D /* Sample.swift in Sources */,

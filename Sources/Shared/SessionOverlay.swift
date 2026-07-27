@@ -61,6 +61,60 @@ enum JSONLScan {
             memmem(p, len, m.baseAddress!, m.count) != nil
         }
     }
+
+    /// proxy_request_logs 的入库水位：行数 + 最新时间戳。两个 overlay 的预检共用。
+    /// 补录会让两者都涨、清理旧日志会让行数掉——只要这对数不变，就说明库里没有
+    /// 新行，pruneRowsAlreadyInDB 不可能产生新命中，那趟全量 IN 查询可以整个省掉。
+    /// 本机实测 0.21ms（换掉的是 100ms 级的一整趟扫描）。
+    static func dbWatermark(_ db: OpaquePointer) -> Watermark? {
+        var stmt: OpaquePointer?
+        let sql = "SELECT COUNT(*), COALESCE(MAX(created_at), 0) FROM proxy_request_logs"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return Watermark(rows: sqlite3_column_int64(stmt, 0), maxTs: sqlite3_column_int64(stmt, 1))
+    }
+
+    struct Watermark: Equatable { var rows: Int64; var maxTs: Int64 }
+}
+
+/// 目录列表缓存：只在目录树形状变动时重新枚举。
+///
+/// 两个 overlay 的 collectJSONLFiles 都是每个刷新 tick 必跑的热路径，而它们要趟过的
+/// 条目远多于真正关心的 .jsonl——~/.omp/agent/sessions 下 10928 个条目里 9704 个是
+/// .log、463 个是 .md，只剩 566 个 .jsonl，枚举一趟实测 47.8ms。换遍历 API 治不了本
+/// (FileManager.enumerator 与显式栈 + contentsOfDirectory 实测同样是 47.7ms)，因为
+/// 成本就在「条目多」本身。
+///
+/// 目录 mtime 在其直接子项增删时变动，正是「文件列表可能变了」的信号：只 stat 枚举
+/// 时走过的那几十个目录就能判定缓存是否还成立（83 个目录 0.118ms，比重新枚举快 400 倍）。
+/// 文件内容追加不会改父目录 mtime——那由各 overlay 自己的逐文件 mtime 负责，与本缓存
+/// 无关，故不会漏掉正在写入的会话。
+///
+/// 线程安全由调用方保证：两个 overlay 都只在各自的 lock 内调用。
+final class DirListCache {
+    private var dirMtimes: [(path: String, mtime: Int64)] = []
+    private var cached: [String] = []
+    private var primed = false
+
+    /// enumerate 必须返回 (匹配到的文件, 枚举过程中据以做判断的全部目录)。
+    /// 少记一个目录 = 那一层的增删会被漏看，故凡是 contentsOfDirectory 过、或
+    /// 据其内容决定过分支的目录都要记进去。
+    func files(_ enumerate: () -> (files: [String], dirs: [String])) -> [String] {
+        if primed, dirMtimes.allSatisfy({ Self.mtimeNs($0.path) == $0.mtime }) { return cached }
+        let r = enumerate()
+        cached = r.files
+        // 目录不存在 → 记 0；将来被创建时 mtime 变为真值，缓存自然失效。
+        dirMtimes = r.dirs.map { (path: $0, mtime: Self.mtimeNs($0) ?? 0) }
+        primed = true
+        return cached
+    }
+
+    private static func mtimeNs(_ path: String) -> Int64? {
+        var st = stat()
+        guard stat(path, &st) == 0 else { return nil }
+        return Int64(st.st_mtimespec.tv_sec) &* 1_000_000_000 &+ Int64(st.st_mtimespec.tv_nsec)
+    }
 }
 
 public final class SessionOverlay {
@@ -88,6 +142,12 @@ public final class SessionOverlay {
     private var pricingExact: [String: Pricing] = [:]
     private var pricingIds: [String] = []          // 前缀匹配用(短 id 优先)
     private var pricingLoadedAt: Date?
+
+    /// 上一次真正扫完时的库水位，供预检短路比对（见 nothingChangedLocked）。
+    private var lastWatermark: JSONLScan.Watermark?
+
+    /// 文件列表缓存（只在目录树形状变了才重新枚举）。始终在 lock 内使用。
+    private let dirCache = DirListCache()
 
     private let projectsDir: String
 
@@ -117,10 +177,15 @@ public final class SessionOverlay {
     // MARK: - 扫描
 
     private func refreshLocked(_ db: OpaquePointer) {
-        loadPricingIfStale(db)
         let sync = loadSyncTable(db)
         let files = collectJSONLFiles()
 
+        // 刷新 tick(默认 5s)比节流窗(2s)长，意味着每一轮都会穿透节流真跑一次
+        // refresh——而绝大多数轮次里文件和库都纹丝没动。先用一次全量 stat 问清楚
+        // 「这趟有没有事可做」，没有就整趟省掉(含 vanished 集合运算与全量 prune)。
+        if nothingChangedLocked(files, sync, db) { return }
+
+        loadPricingIfStale(db)
         var seenPaths = Set<String>()
         for path in files {
             seenPaths.insert(path)
@@ -135,6 +200,40 @@ public final class SessionOverlay {
             rows = rows.filter { !vanished.contains($0.value.sourceFile) }
         }
         pruneRowsAlreadyInDB(db)
+        lastWatermark = JSONLScan.dbWatermark(db)
+    }
+
+    /// 本轮扫描会不会产生任何变化？代价只有一次全量 stat(本机 1095 文件 ~1.7ms)
+    /// 加一次水位查询(0.21ms)，换掉的是逐文件 open/seek/read、vanished 集合运算与
+    /// 对全部 rows 的分批 IN 查询。
+    ///
+    /// 判定逐条对齐 scanFileLocked 的「无事发生」分支，任一不成立就走完整流程：
+    ///   * marks 里有记录的文件 —— 必须仍未被 cc-switch 消化(否则要清掉它的行)，
+    ///     且 db 偏移、已读字节、mtime 三者都没动(否则要续读或重建)；
+    ///   * marks 里没有的文件 —— 必须是「已被消化」那类(scanFileLocked 对它是
+    ///     纯 no-op)，否则就是新出现的增量，要真扫；
+    ///   * marks 的每个 key 都还在 files 里 —— 否则有文件消失，要走 vanished 清理；
+    ///   * 库水位没动 —— 否则 cc-switch 补录过，prune 可能有新命中。
+    private func nothingChangedLocked(_ files: [String],
+                                      _ sync: [String: (lastModified: Int64, offset: Int64)],
+                                      _ db: OpaquePointer) -> Bool {
+        guard let wm = lastWatermark else { return false }   // 首轮必须真扫
+        var live = 0
+        for path in files {
+            guard let st = statNanos(path) else { return false }
+            let dbState = sync[path] ?? (lastModified: 0, offset: 0)
+            if let m = marks[path] {
+                live += 1
+                guard st.mtimeNs > dbState.lastModified,
+                      m.dbOffset == dbState.offset,
+                      m.bytesRead <= st.size,
+                      m.mtimeNs == st.mtimeNs else { return false }
+            } else if st.mtimeNs > dbState.lastModified {
+                return false
+            }
+        }
+        guard live == marks.count else { return false }
+        return JSONLScan.dbWatermark(db) == wm
     }
 
     /// 扫描单个文件的新增部分(对齐 sync_single_file)。
@@ -280,33 +379,45 @@ public final class SessionOverlay {
     // MARK: - 文件收集(对齐 collect_jsonl_files:固定三层,不递归)
 
     private func collectJSONLFiles() -> [String] {
-        let fm = FileManager.default
-        var files: [String] = []
-        guard let projects = try? fm.contentsOfDirectory(atPath: projectsDir) else { return files }
-        for proj in projects {
-            let projPath = (projectsDir as NSString).appendingPathComponent(proj)
-            guard isDirectory(projPath) else { continue }
-            guard let subs = try? fm.contentsOfDirectory(atPath: projPath) else { continue }
-            for sub in subs {
-                let subPath = (projPath as NSString).appendingPathComponent(sub)
-                if sub.hasSuffix(".jsonl") {
-                    files.append(subPath)                    // 主会话
-                } else if isDirectory(subPath) {
-                    let subagents = (subPath as NSString).appendingPathComponent("subagents")
-                    guard isDirectory(subagents) else { continue }
-                    appendJSONLChildren(subagents, &files)   // 子 agent
-                    let workflows = (subagents as NSString).appendingPathComponent("workflows")
-                    if isDirectory(workflows),
-                       let wfs = try? fm.contentsOfDirectory(atPath: workflows) {
-                        for wf in wfs {                      // Workflow 子 agent
-                            let wfPath = (workflows as NSString).appendingPathComponent(wf)
-                            if isDirectory(wfPath) { appendJSONLChildren(wfPath, &files) }
+        dirCache.files {
+            let fm = FileManager.default
+            var files: [String] = []
+            var dirs: [String] = [projectsDir]
+            guard let projects = try? fm.contentsOfDirectory(atPath: projectsDir) else { return (files, dirs) }
+            for proj in projects {
+                let projPath = (projectsDir as NSString).appendingPathComponent(proj)
+                guard isDirectory(projPath) else { continue }
+                dirs.append(projPath)
+                guard let subs = try? fm.contentsOfDirectory(atPath: projPath) else { continue }
+                for sub in subs {
+                    let subPath = (projPath as NSString).appendingPathComponent(sub)
+                    if sub.hasSuffix(".jsonl") {
+                        files.append(subPath)                    // 主会话
+                    } else if isDirectory(subPath) {
+                        // 会话目录本身也要记：它下面「有没有长出 subagents/」这个判断
+                        // 就依赖它的内容，漏记会让新开的子 agent 一直看不见。
+                        dirs.append(subPath)
+                        let subagents = (subPath as NSString).appendingPathComponent("subagents")
+                        guard isDirectory(subagents) else { continue }
+                        dirs.append(subagents)
+                        appendJSONLChildren(subagents, &files)   // 子 agent
+                        let workflows = (subagents as NSString).appendingPathComponent("workflows")
+                        if isDirectory(workflows),
+                           let wfs = try? fm.contentsOfDirectory(atPath: workflows) {
+                            dirs.append(workflows)
+                            for wf in wfs {                      // Workflow 子 agent
+                                let wfPath = (workflows as NSString).appendingPathComponent(wf)
+                                if isDirectory(wfPath) {
+                                    dirs.append(wfPath)
+                                    appendJSONLChildren(wfPath, &files)
+                                }
+                            }
                         }
                     }
                 }
             }
+            return (files, dirs)
         }
-        return files
     }
 
     private func appendJSONLChildren(_ dir: String, _ files: inout [String]) {

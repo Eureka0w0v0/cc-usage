@@ -898,9 +898,18 @@ public final class UsageStore: @unchecked Sendable {
         // proxy_request_logs 物化成 RequestLogRow 再桥接成 JSON 丢给 WKWebView。
         let size = max(1, pageSize)
         let offset = max(0, page) * size
+        // 库内行与增量行各自按 created_at DESC 有序，本页 = 两路归并后的第
+        // [offset, offset+size) 段。取该段只需两路各拿前 need 条——排在更后面的行
+        // 无论如何都挤不进这一页。故 SQL 侧不再走 OFFSET，改为一律 LIMIT need
+        // 后在内存里切片(见下方归并)。
+        //
+        // 取舍：深翻页要物化 need 行而非 size 行，成本随页码线性上涨(本机 26480 行
+        // 下 page 0 = 9.7ms、page 1000 = 67ms，内存无异常)。换来的是第 0 页——也就是
+        // 面板每次打开与每轮刷新都要走的那条路——从 56ms/7.8MB payload 降到 9.7ms，
+        // 且分页终于自洽。真实使用里没人翻到第一千页，这笔换划算。
+        let need = offset + size
         var pageBinds = binds
-        pageBinds.append(.int(Int64(size)))
-        pageBinds.append(.int(Int64(offset)))
+        pageBinds.append(.int(Int64(need)))
         let sql = """
         SELECT l.request_id, l.provider_id, \(Self.providerNameCoalesce) AS provider_name, l.app_type, l.model,
                l.request_model, l.pricing_model, l.cost_multiplier,
@@ -912,7 +921,7 @@ public final class UsageStore: @unchecked Sendable {
         \(Self.providersJoinL)
         \(whereClause)
         ORDER BY l.created_at DESC
-        LIMIT ? OFFSET ?
+        LIMIT ?
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
@@ -971,33 +980,52 @@ public final class UsageStore: @unchecked Sendable {
                 dataSource: colTextOpt(stmt, 24)
             ))
         }
-        // 增量行:计入总数;并入第 0 页并按时间倒序重排(增量行都是最新的,
-        // 页可能略超 pageSize,前端列表照常渲染)。字段口径与 cc-switch 入库值一致。
-        let ov = overlayLogRows(db, f).sorted { $0.createdAt > $1.createdAt }
-        if !ov.isEmpty {
-            total += ov.count
-            if page == 0 {
-                let fmt6 = { (v: Double) in String(format: "%.6f", v) }
-                let ovRows = ov.map { r in
-                    RequestLogRow(
-                        requestId: r.requestId, providerId: r.providerId,
-                        providerName: r.providerName, appType: r.appType,
-                        model: r.model, requestModel: r.model, pricingModel: nil,
-                        costMultiplier: "1.0",
-                        inputTokens: r.input, outputTokens: r.output,
-                        cacheReadTokens: r.cacheRead, cacheCreationTokens: r.cacheCreation,
-                        inputCostUsd: fmt6(r.inputCost), outputCostUsd: fmt6(r.outputCost),
-                        cacheReadCostUsd: fmt6(r.cacheReadCost), cacheCreationCostUsd: fmt6(r.cacheCreationCost),
-                        totalCostUsd: fmt6(r.totalCost),
-                        isStreaming: true, latencyMs: 0, firstTokenMs: nil, durationMs: nil,
-                        statusCode: 200, errorMessage: nil, createdAt: r.createdAt,
-                        dataSource: r.providerId == "_session" ? "session_log" : "omp_session"
-                    )
-                }
-                rows = (ovRows + rows).sorted { $0.createdAt > $1.createdAt }
+        // 增量行:计入总数,并与库内行二路归并后再切页。
+        //
+        // 旧实现把符合条件的增量行**整批**塞进第 0 页(无视 pageSize)。本机 overlay
+        // 常驻 1.4 万行 → 前端要 20 条却收到 14722 条、7.8MB payload 过 WKWebView 桥,
+        // 面板直接卡死;而且 total 把这些行算了进去、第 1 页之后却一条都不给,分页
+        // 一路错位到底(逐页拉全量只能取回不到七成,跨页时间序也是断的)。
+        //
+        // 归并只需两路各自的前 need 条:两路都按 created_at DESC 有序,第 need 条
+        // 之后的行不可能落进 [offset, offset+size)。
+        let ov = overlayLogRows(db, f)
+        guard !ov.isEmpty else {
+            return RequestLogPage(rows: Array(rows.dropFirst(offset)), total: total)
+        }
+        total += ov.count
+
+        let fmt6 = { (v: Double) in String(format: "%.6f", v) }
+        let ovRows = ov.sorted { $0.createdAt > $1.createdAt }.prefix(need).map { r in
+            RequestLogRow(
+                requestId: r.requestId, providerId: r.providerId,
+                providerName: r.providerName, appType: r.appType,
+                model: r.model, requestModel: r.model, pricingModel: nil,
+                costMultiplier: "1.0",
+                inputTokens: r.input, outputTokens: r.output,
+                cacheReadTokens: r.cacheRead, cacheCreationTokens: r.cacheCreation,
+                inputCostUsd: fmt6(r.inputCost), outputCostUsd: fmt6(r.outputCost),
+                cacheReadCostUsd: fmt6(r.cacheReadCost), cacheCreationCostUsd: fmt6(r.cacheCreationCost),
+                totalCostUsd: fmt6(r.totalCost),
+                isStreaming: true, latencyMs: 0, firstTokenMs: nil, durationMs: nil,
+                statusCode: 200, errorMessage: nil, createdAt: r.createdAt,
+                dataSource: r.providerId == "_session" ? "session_log" : "omp_session"
+            )
+        }
+
+        // 同 created_at 时库内行优先(>=)：cc-switch 补录后同一条响应会先由库内行
+        // 顶替、overlay 侧再被 request_id 去重剔除，翻页时不会先后跳位。
+        var merged: [RequestLogRow] = []
+        merged.reserveCapacity(min(need, rows.count + ovRows.count))
+        var i = 0, j = 0
+        while merged.count < need, i < rows.count || j < ovRows.count {
+            if j >= ovRows.count || (i < rows.count && rows[i].createdAt >= ovRows[j].createdAt) {
+                merged.append(rows[i]); i += 1
+            } else {
+                merged.append(ovRows[j]); j += 1
             }
         }
-        return RequestLogPage(rows: rows, total: total)
+        return RequestLogPage(rows: Array(merged.dropFirst(offset)), total: total)
     }
 
     /// Provider 统计。对齐 get_provider_stats（GROUP BY provider_id, app_type，

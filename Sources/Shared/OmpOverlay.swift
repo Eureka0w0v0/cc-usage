@@ -41,6 +41,12 @@ public final class OmpOverlay {
     }
     private var marks: [String: FileMark] = [:]
 
+    /// 上一次真正扫完时的库水位，供预检短路比对（见 nothingChangedLocked）。
+    private var lastWatermark: JSONLScan.Watermark?
+
+    /// 文件列表缓存（只在目录树形状变了才重新枚举）。始终在 lock 内使用。
+    private let dirCache = DirListCache()
+
     private let sessionsDir: String
 
     /// minRefreshInterval 可注入：测试传 0 即可免掉「睡过节流窗口」的等待。
@@ -103,6 +109,10 @@ public final class OmpOverlay {
     private func refreshLocked(_ db: OpaquePointer) {
         let files = collectJSONLFiles()
 
+        // 与 SessionOverlay 同理：刷新 tick 比节流窗长，每一轮都会真跑一次 refresh，
+        // 而绝大多数轮次无事发生。这里没有 session_log_sync 参与，判定更简单。
+        if nothingChangedLocked(files, db) { return }
+
         var seenPaths = Set<String>()
         for path in files {
             seenPaths.insert(path)
@@ -119,6 +129,21 @@ public final class OmpOverlay {
             rows = rows.filter { !vanished.contains($0.value.sourceFile) }
         }
         pruneRowsAlreadyInDB(db)
+        lastWatermark = JSONLScan.dbWatermark(db)
+    }
+
+    /// 本轮扫描会不会产生任何变化？判定对齐 scanFileLocked 的「内容未变」分支：
+    /// 文件集合与 marks 完全重合(既无新文件也无消失)，且每个文件的 mtime 与已读
+    /// 字节都没动。再加一道库水位——OMP 的行理论上不会被 cc-switch 收录，但
+    /// pruneRowsAlreadyInDB 确实依赖库内容，水位没动它就不可能有新命中。
+    private func nothingChangedLocked(_ files: [String], _ db: OpaquePointer) -> Bool {
+        guard let wm = lastWatermark, files.count == marks.count else { return false }
+        for path in files {
+            guard let m = marks[path], let st = statNanos(path),
+                  m.bytesRead <= st.size,
+                  m.mtimeNs == st.mtimeNs else { return false }
+        }
+        return JSONLScan.dbWatermark(db) == wm
     }
 
     private func scanFileLocked(_ path: String) {
@@ -267,17 +292,35 @@ public final class OmpOverlay {
 
     /// OMP 的目录形状是 sessions/<folder>/<session>.jsonl 以及同名目录下的 subagent
     /// 日志(还可再嵌一层)。这里不像 SessionOverlay 那样对齐上游的固定三层——OMP 没有
-    /// 需要逐条复刻的导入器,直接递归枚举,层级怎么变都不会漏。
+    /// 需要逐条复刻的导入器,直接递归,层级怎么变都不会漏。
+    ///
+    /// 整趟枚举包在 DirListCache 里:这个目录下 .log 与 .md 占了 93%(10928 个条目里
+    /// 只有 566 个 .jsonl),趟一遍就要 47.8ms,而目录形状几乎从不变。
     private func collectJSONLFiles() -> [String] {
-        let fm = FileManager.default
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: sessionsDir, isDirectory: &isDir), isDir.boolValue else { return [] }
-        guard let en = fm.enumerator(atPath: sessionsDir) else { return [] }
-        var files: [String] = []
-        for case let rel as String in en where rel.hasSuffix(".jsonl") {
-            files.append((sessionsDir as NSString).appendingPathComponent(rel))
+        dirCache.files {
+            let fm = FileManager.default
+            guard isDirectory(sessionsDir) else { return ([], [sessionsDir]) }
+            var files: [String] = []
+            var dirs: [String] = []
+            var stack = [sessionsDir]
+            while let dir = stack.popLast() {
+                dirs.append(dir)
+                guard let entries = try? fm.contentsOfDirectory(atPath: dir) else { continue }
+                for e in entries {
+                    let p = (dir as NSString).appendingPathComponent(e)
+                    if e.hasSuffix(".jsonl") { files.append(p) }
+                    else if isDirectory(p) { stack.append(p) }
+                }
+            }
+            return (files, dirs)
         }
-        return files
+    }
+
+    /// 走裸 stat 而非 FileManager.fileExists(atPath:isDirectory:)——后者要过一层
+    /// Foundation 桥接，而这里每个刷新 tick 要判上百次。
+    private func isDirectory(_ path: String) -> Bool {
+        var st = stat()
+        return stat(path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFDIR
     }
 
     private func statNanos(_ path: String) -> (mtimeNs: Int64, size: Int64)? {
