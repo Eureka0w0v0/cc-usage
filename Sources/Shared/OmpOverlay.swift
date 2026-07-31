@@ -253,7 +253,8 @@ public final class OmpOverlay {
             inputCost: ic, outputCost: oc, cacheReadCost: crc, cacheCreationCost: ccc,
             totalCost: total,
             hasStopReason: true, sourceFile: path,
-            appType: cls.appType, providerId: cls.providerId, providerName: cls.providerName
+            appType: cls.appType, providerId: cls.providerId, providerName: cls.providerName,
+            dataSource: "omp_session"
         )
     }
 

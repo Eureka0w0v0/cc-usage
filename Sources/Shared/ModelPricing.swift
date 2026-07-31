@@ -106,6 +106,7 @@ public enum ModelPricing {
         "gpt-4.1": R(2, 8, 0.5, 0),  // GPT-4.1
         "gpt-4.1-mini": R(0.4, 1.6, 0.1, 0),  // GPT-4.1 Mini
         "gpt-4.1-nano": R(0.1, 0.4, 0.025, 0),  // GPT-4.1 Nano
+        "gemini-3.6-flash": R(1.5, 7.5, 0.15, 0),  // Gemini 3.6 Flash
         "gemini-3.5-flash": R(1.5, 9, 0.15, 0),  // Gemini 3.5 Flash
         "gemini-3.1-pro-preview": R(2, 12, 0.2, 0),  // Gemini 3.1 Pro Preview
         "gemini-3.1-flash-lite": R(0.25, 1.5, 0.025, 0),  // Gemini 3.1 Flash Lite
@@ -176,6 +177,8 @@ public enum ModelPricing {
         "qwq-32b": R(0.2, 0.6, 0, 0),  // QwQ 32B
         "qwen3-32b": R(0.16, 0.64, 0, 0),  // Qwen3 32B
         "grok-4.5": R(2, 6, 0.5, 0),  // Grok 4.5
+        // Grok Build 的 cache read 实测 0.30（上游按 costUsdTicks 反推），非挂牌 0.50
+        "grok-4.5-build": R(2, 6, 0.30, 0),  // Grok 4.5 Build
         "grok-4.3": R(1.25, 2.5, 0.2, 0),  // Grok 4.3
         "grok-4.20-0309-reasoning": R(1.25, 2.5, 0.2, 0),  // Grok 4.20 Reasoning
         "grok-4.20-0309-non-reasoning": R(1.25, 2.5, 0.2, 0),  // Grok 4.20

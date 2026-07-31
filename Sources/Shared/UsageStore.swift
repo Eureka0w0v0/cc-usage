@@ -151,6 +151,15 @@ public struct ModelStatRow: Sendable {
     public var avgCostPerRequest: Double
 }
 
+/// 「按来源」一行。dataSource 取值空间同 proxy_request_logs.data_source
+/// （session_log / codex_session / gemini_session / opencode_session / grok_session /
+/// proxy），外加本 app 独有的 omp_session（cc-switch 不导入 OMP）。
+public struct DataSourceStat: Sendable {
+    public var dataSource: String
+    public var requestCount: Int64
+    public var totalCost: Double
+}
+
 // SQLite 绑定文本时用（拷贝字符串，安全）
 let SQLITE_TRANSIENT_DEST = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -811,7 +820,7 @@ public final class UsageStore: @unchecked Sendable {
         return has ? Self.freshInputV13(alias) : Self.freshInputLegacy(alias)
     }
     /// provider 展示名：providers.name 优先，会话占位 provider_id 映射为可读名。
-    static let providerNameCoalesce = "COALESCE(p.name, CASE l.provider_id WHEN '_session' THEN 'Claude (Session)' WHEN '_codex_session' THEN 'Codex (Session)' WHEN '_gemini_session' THEN 'Gemini (Session)' WHEN '_opencode_session' THEN 'OpenCode (Session)' ELSE l.provider_id END)"
+    static let providerNameCoalesce = "COALESCE(p.name, CASE l.provider_id WHEN '_session' THEN 'Claude (Session)' WHEN '_codex_session' THEN 'Codex (Session)' WHEN '_gemini_session' THEN 'Gemini (Session)' WHEN '_opencode_session' THEN 'OpenCode (Session)' WHEN '_grok_session' THEN 'Grok Build (Session)' ELSE l.provider_id END)"
     static let providersJoinL = "LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type"
 
     // ── usage_daily_rollups(别名 r) 侧的对应片段，供两表合并的 summary/trend/by-app 使用 ──
@@ -1167,5 +1176,50 @@ public final class UsageStore: @unchecked Sendable {
             out.sort { $0.totalCost > $1.totalCost }
         }
         return out
+    }
+
+    /// 「按来源」分组，对齐 session_usage.rs::get_data_source_breakdown：
+    /// **不带时间窗**（上游此接口就是全表口径，日期选择器不作用于它）、
+    /// GROUP BY COALESCE(data_source,'proxy')、带跨源去重过滤、按请求数降序。
+    /// usage_daily_rollups 无 data_source 列，天然不参与（与上游一致）。
+    ///
+    /// 与上游的唯一有意偏差：成本用 costL（内置定价兜底）而非裸 total_cost_usd，
+    /// 与本 app 其余面板同源，未定价模型不至于显示 0。
+    public func dataSourceBreakdown() throws -> [DataSourceStat] {
+        let db = try openRO()
+        defer { sqlite3_close(db) }
+        let sql = """
+        SELECT COALESCE(l.data_source,'proxy') AS ds,
+               COUNT(*),
+               COALESCE(SUM(\(Self.costL)),0)
+        FROM proxy_request_logs l
+        WHERE \(Self.effectiveUsageFilterL)
+        GROUP BY ds
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw UsageStoreError.prepare(sql)
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        var acc: [String: (req: Int64, cost: Double)] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let c = sqlite3_column_text(stmt, 0) else { continue }
+            acc[String(cString: c)] = (sqlite3_column_int64(stmt, 1),
+                                       sqlite3_column_double(stmt, 2))
+        }
+        // 未入库增量按各自来源并入（SessionOverlay=session_log 会与库内同名桶合并，
+        // 补录后自动收敛；OmpOverlay=omp_session 单列）。
+        for r in overlayRows(db, start: nil, end: nil, appType: nil, model: nil) {
+            var a = acc[r.dataSource] ?? (0, 0)
+            a.req += 1
+            a.cost += r.totalCost
+            acc[r.dataSource] = a
+        }
+        return acc
+            .map { DataSourceStat(dataSource: $0.key,
+                                  requestCount: $0.value.req,
+                                  totalCost: $0.value.cost) }
+            .sorted { $0.requestCount > $1.requestCount }
     }
 }

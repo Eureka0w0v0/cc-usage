@@ -119,7 +119,7 @@ struct PanelWebView: NSViewRepresentable {
                 let s = try store.rangeSummary(UsageFilter(start: start, end: end, appType: appType, model: model))
                 return summaryDict(s)
             case "get_usage_data_sources":
-                return try dataSources(start: start, end: end)
+                return try dataSources()
 
             // ── 下半部 Tabs：真查 proxy_request_logs（对齐 usage_stats.rs 字段/口径）──
             case "get_request_logs":
@@ -300,15 +300,18 @@ struct PanelWebView: NSViewRepresentable {
             }
         }
 
-        private func dataSources(start: Int64?, end: Int64?) throws -> [[String: Any]] {
+        private func dataSources() throws -> [[String: Any]] {
             // 「按来源」只统计有 data_source 的明细行（rollups 无该列，不计入）。
-            // 本机明细只有 session_log 一个来源。
-            let s = try store.rangeSummaryLogsOnly(UsageFilter(start: start, end: end))
-            return [[
-                "dataSource": "session_log",
-                "requestCount": s.requests,
-                "totalCostUsd": String(format: "%.6f", s.cost),
-            ]]
+            // 真按 data_source 分组——库里除 session_log 外还有 codex_session，
+            // 升级 cc-switch 后还会出现 grok_session；旧实现把它们全贴成 session_log。
+            // 与上游一样不吃时间窗（get_data_source_breakdown 是全表口径）。
+            try store.dataSourceBreakdown().map {
+                [
+                    "dataSource": $0.dataSource,
+                    "requestCount": $0.requestCount,
+                    "totalCostUsd": String(format: "%.6f", $0.totalCost),
+                ]
+            }
         }
     }
 }

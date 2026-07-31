@@ -48,6 +48,10 @@ public struct OverlayRow: Sendable {
     /// Request Logs / Provider Stats 里的占位 provider 身份（库里没有对应 providers 行）。
     public var providerId: String = "_session"
     public var providerName: String = "Claude (Session)"
+    /// 「按来源」分组键，对齐库里 proxy_request_logs.data_source 的取值空间。
+    /// SessionOverlay 解析的就是 cc-switch 补录后会写成 'session_log' 的那批行，故同名；
+    /// OmpOverlay 是 cc-switch 完全不导入的来源，单列 'omp_session' 不与上游取值冲突。
+    public var dataSource: String = "session_log"
 }
 
 /// 两个 overlay 共用的逐行扫描原语。
