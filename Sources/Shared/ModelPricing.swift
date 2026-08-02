@@ -28,7 +28,7 @@ public enum ModelPricing {
         Row(input: i, output: o, cacheRead: cr, cacheCreation: cw)
     }
 
-    /// 对齐 cc-switch seed_model_pricing 的 178 条内置定价。
+    /// 对齐 cc-switch seed_model_pricing 的 188 条内置定价（同步至 v3.19.1）。
     public static let table: [String: Row] = [
         "claude-fable-5": R(10, 50, 1, 12.5),  // Claude Fable 5
         "claude-mythos-5": R(10, 50, 1, 12.5),  // Claude Mythos 5
@@ -38,6 +38,9 @@ public enum ModelPricing {
         "claude-opus-4-7": R(5, 25, 0.5, 6.25),  // Claude Opus 4.7
         "claude-opus-4-6-20260206": R(5, 25, 0.5, 6.25),  // Claude Opus 4.6
         "claude-sonnet-4-6-20260217": R(3, 15, 0.3, 3.75),  // Claude Sonnet 4.6
+        // 裸 id 行覆盖无日期后缀的日志变体，与 dated 行同价
+        "claude-opus-4-6": R(5, 25, 0.5, 6.25),  // Claude Opus 4.6
+        "claude-sonnet-4-6": R(3, 15, 0.3, 3.75),  // Claude Sonnet 4.6
         "claude-opus-4-5-20251101": R(5, 25, 0.5, 6.25),  // Claude Opus 4.5
         "claude-sonnet-4-5-20250929": R(3, 15, 0.3, 3.75),  // Claude Sonnet 4.5
         "claude-haiku-4-5-20251001": R(1, 5, 0.1, 1.25),  // Claude Haiku 4.5
@@ -47,8 +50,9 @@ public enum ModelPricing {
         "claude-3-5-haiku-20241022": R(0.8, 4, 0.08, 1),  // Claude 3.5 Haiku
         "claude-3-5-sonnet-20241022": R(3, 15, 0.3, 3.75),  // Claude 3.5 Sonnet
         "gpt-5.6-sol": R(5, 30, 0.5, 6.25),  // GPT-5.6 Sol
-        "gpt-5.6-terra": R(2.5, 15, 0.25, 3.125),  // GPT-5.6 Terra
-        "gpt-5.6-luna": R(1, 6, 0.1, 1.25),  // GPT-5.6 Luna
+        // 2026-07-30 OpenAI 降价：luna -80%、terra -20%（sol 不变）
+        "gpt-5.6-terra": R(2, 12, 0.2, 2.5),  // GPT-5.6 Terra
+        "gpt-5.6-luna": R(0.2, 1.2, 0.02, 0.25),  // GPT-5.6 Luna
         "gpt-5.6": R(5, 30, 0.5, 6.25),  // GPT-5.6 Sol
         "gpt-5.6-low": R(5, 30, 0.5, 6.25),  // GPT-5.6 Sol
         "gpt-5.6-medium": R(5, 30, 0.5, 6.25),  // GPT-5.6 Sol
@@ -79,6 +83,7 @@ public enum ModelPricing {
         "gpt-5.3-codex-medium": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex
         "gpt-5.3-codex-high": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex
         "gpt-5.3-codex-xhigh": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex
+        "gpt-5.3-codex-spark": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex Spark
         "gpt-5.1": R(1.25, 10, 0.125, 0),  // GPT-5.1
         "gpt-5.1-low": R(1.25, 10, 0.125, 0),  // GPT-5.1
         "gpt-5.1-medium": R(1.25, 10, 0.125, 0),  // GPT-5.1
@@ -108,6 +113,7 @@ public enum ModelPricing {
         "gpt-4.1-nano": R(0.1, 0.4, 0.025, 0),  // GPT-4.1 Nano
         "gemini-3.6-flash": R(1.5, 7.5, 0.15, 0),  // Gemini 3.6 Flash
         "gemini-3.5-flash": R(1.5, 9, 0.15, 0),  // Gemini 3.5 Flash
+        "gemini-3.5-flash-lite": R(0.3, 2.5, 0.03, 0),  // Gemini 3.5 Flash Lite
         "gemini-3.1-pro-preview": R(2, 12, 0.2, 0),  // Gemini 3.1 Pro Preview
         "gemini-3.1-flash-lite": R(0.25, 1.5, 0.025, 0),  // Gemini 3.1 Flash Lite
         "gemini-3.1-flash-lite-preview": R(0.25, 1.5, 0.025, 0),  // Gemini 3.1 Flash Lite Preview
@@ -131,8 +137,9 @@ public enum ModelPricing {
         "deepseek-v3.2": R(0.28, 0.42, 0.028, 0),  // DeepSeek V3.2
         "deepseek-v3.1": R(0.55, 1.67, 0.055, 0),  // DeepSeek V3.1
         "deepseek-v3": R(0.28, 1.11, 0.028, 0),  // DeepSeek V3
-        "deepseek-chat": R(0.27, 1.1, 0.07, 0),  // DeepSeek Chat
-        "deepseek-reasoner": R(0.55, 2.19, 0.14, 0),  // DeepSeek Reasoner
+        // 自 2026-07 起为 V4 Flash 的 legacy 别名（同价）
+        "deepseek-chat": R(0.14, 0.28, 0.0028, 0),  // DeepSeek Chat
+        "deepseek-reasoner": R(0.14, 0.28, 0.0028, 0),  // DeepSeek Reasoner
         "deepseek-v4-flash": R(0.14, 0.28, 0.0028, 0),  // DeepSeek V4 Flash
         "deepseek-v4-pro": R(0.435, 0.87, 0.003625, 0),  // DeepSeek V4 Pro
         "kimi-k2-thinking": R(0.55, 2.2, 0.1, 0),  // Kimi K2 Thinking
@@ -141,6 +148,8 @@ public enum ModelPricing {
         "kimi-k2.5": R(0.6, 3, 0.1, 0),  // Kimi K2.5
         "kimi-k2.6": R(0.95, 4, 0.16, 0),  // Kimi K2.6
         "kimi-k2.7-code": R(0.95, 4, 0.19, 0),  // Kimi K2.7 Code
+        // HighSpeed 加速档 = 本体 2 倍价（Kimi 官方一贯模式，同 K2 Turbo）
+        "kimi-k2.7-code-highspeed": R(1.9, 8, 0.38, 0),  // Kimi K2.7 Code HighSpeed
         "kimi-k3": R(3, 15, 0.3, 0),  // Kimi K3
         "k3": R(3, 15, 0.3, 0),  // Kimi K3
         "hunyuan-hy3": R(0.14, 0.56, 0.035, 0),  // Hunyuan Hy3
@@ -152,12 +161,14 @@ public enum ModelPricing {
         "minimax-m2.5-lightning": R(0.3, 2.4, 0.03, 0),  // MiniMax M2.5 Lightning
         "minimax-m2.7": R(0.3, 1.2, 0.06, 0.375),  // MiniMax M2.7
         "minimax-m2.7-highspeed": R(0.6, 2.4, 0.06, 0.375),  // MiniMax M2.7 Highspeed
-        "minimax-m3": R(0.6, 2.4, 0.12, 0),  // MiniMax M3
+        "minimax-m3": R(0.3, 1.2, 0.06, 0),  // MiniMax M3（官方标准档）
         "glm-4.7": R(0.6, 2.2, 0.11, 0),  // GLM-4.7
         "glm-4.6": R(0.6, 2.2, 0.11, 0),  // GLM-4.6
         "glm-5": R(1, 3.2, 0.2, 0),  // GLM-5
         "glm-5.1": R(1.4, 4.4, 0.26, 0),  // GLM-5.1
         "glm-5.2": R(1.4, 4.4, 0.26, 0),  // GLM-5.2
+        "glm-5-turbo": R(1.2, 4, 0.24, 0),  // GLM-5-Turbo
+        "glm-5v-turbo": R(1.2, 4, 0.24, 0),  // GLM-5V-Turbo
         "mimo-v2-flash": R(0.09, 0.29, 0.009, 0),  // MiMo V2 Flash
         "mimo-v2-pro": R(0.435, 0.87, 0.0036, 0),  // MiMo V2 Pro
         "mimo-v2.5": R(0.14, 0.29, 0.0028, 0),  // MiMo V2.5
@@ -165,6 +176,7 @@ public enum ModelPricing {
         "qwen3.7-max": R(2.5, 7.5, 0.25, 0),  // Qwen3.7 Max
         "qwen3.7-plus": R(0.4, 1.6, 0.08, 0),  // Qwen3.7 Plus
         "qwen3.6-plus": R(0.325, 1.95, 0.065, 0),  // Qwen3.6 Plus
+        "qwen3.6-flash": R(0.1875, 1.125, 0.0375, 0),  // Qwen3.6 Flash
         "qwen3.5-plus": R(0.26, 1.56, 0.052, 0),  // Qwen3.5 Plus
         "qwen3-max": R(0.78, 3.9, 0, 0),  // Qwen3 Max
         "qwen3-235b-a22b": R(0.7, 8.4, 0, 0),  // Qwen3 235B-A22B

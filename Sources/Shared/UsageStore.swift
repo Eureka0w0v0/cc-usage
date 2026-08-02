@@ -831,11 +831,20 @@ public final class UsageStore: @unchecked Sendable {
     /// 成本（rollups 侧）。该表没有 cost_multiplier 列，倍率恒 1。
     static let costR = ModelPricing.costSQL(
         alias: "r", effectiveModel: effectiveModelR, multiplier: "1.0")
+    /// 跨源去重时的 app_type 匹配（对齐 usage_stats.rs::dedup_app_type_match_sql）：
+    /// Claude Code 与 Claude Desktop 共用同一套 message id —— 走 Desktop 网关的请求以
+    /// `claude-desktop` 落 proxy 行，而 session 导入器以 `claude` 落 session_log 行。
+    /// 故 `claude` 的 session 行必须也能匹配 `claude-desktop` 的 proxy 行，否则同一笔
+    /// 请求被双算。其余 app_type 保持精确比较，避免不同上游之间误撞。
+    /// 注意：这是比展示口径折叠（foldedAppL）更窄的匹配 —— 只放宽 claude 一侧。
+    static func dedupAppTypeMatch(_ left: String, _ right: String) -> String {
+        "\(left) IN (\(right), CASE WHEN \(right)='claude' THEN 'claude-desktop' ELSE \(right) END)"
+    }
     /// 跨源去重过滤（对齐 usage_stats.rs::effective_usage_log_filter，别名 l）：
     /// session 系日志若在 ±10min 窗口内存在指纹匹配的成功 proxy 行，则剔除该 session 行，
     /// 防止「同一次请求既落 session 又落 proxy」被双算。600 = 10min 窗口秒数。
     /// 本机无 'proxy' 行 → EXISTS 恒 false → NOT(...) 恒 true → 全过（已验证），但忠实照搬。
-    static let effectiveUsageFilterL = "NOT (COALESCE(l.data_source,'proxy') IN ('session_log','codex_session','gemini_session','opencode_session') AND EXISTS (SELECT 1 FROM proxy_request_logs proxy_dedup WHERE COALESCE(proxy_dedup.data_source,'proxy')='proxy' AND proxy_dedup.app_type=l.app_type AND proxy_dedup.status_code>=200 AND proxy_dedup.status_code<300 AND proxy_dedup.input_tokens=l.input_tokens AND proxy_dedup.output_tokens=l.output_tokens AND proxy_dedup.cache_read_tokens=l.cache_read_tokens AND (proxy_dedup.cache_creation_tokens=l.cache_creation_tokens OR (l.cache_creation_tokens=0 AND COALESCE(l.data_source,'proxy') IN ('codex_session','gemini_session','opencode_session'))) AND proxy_dedup.created_at BETWEEN l.created_at-600 AND l.created_at+600 AND (LOWER(proxy_dedup.model)=LOWER(l.model) OR LOWER(proxy_dedup.model)='unknown' OR LOWER(l.model)='unknown')))"
+    static let effectiveUsageFilterL = "NOT (COALESCE(l.data_source,'proxy') IN ('session_log','codex_session','gemini_session','opencode_session') AND EXISTS (SELECT 1 FROM proxy_request_logs proxy_dedup WHERE COALESCE(proxy_dedup.data_source,'proxy')='proxy' AND \(dedupAppTypeMatch("proxy_dedup.app_type", "l.app_type")) AND proxy_dedup.status_code>=200 AND proxy_dedup.status_code<300 AND proxy_dedup.input_tokens=l.input_tokens AND proxy_dedup.output_tokens=l.output_tokens AND proxy_dedup.cache_read_tokens=l.cache_read_tokens AND (proxy_dedup.cache_creation_tokens=l.cache_creation_tokens OR (l.cache_creation_tokens=0 AND COALESCE(l.data_source,'proxy') IN ('codex_session','gemini_session','opencode_session'))) AND proxy_dedup.created_at BETWEEN l.created_at-600 AND l.created_at+600 AND (LOWER(proxy_dedup.model)=LOWER(l.model) OR LOWER(proxy_dedup.model)='unknown' OR LOWER(l.model)='unknown')))"
 
     private enum Bind { case int(Int64); case text(String) }
 
