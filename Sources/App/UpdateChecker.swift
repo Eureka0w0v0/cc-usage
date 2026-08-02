@@ -215,26 +215,64 @@ final class UpdateChecker: ObservableObject {
         return app
     }
 
-    /// 写替换脚本 detached 执行后退出自身。脚本：等本进程退出（最多 30s）→
-    /// ditto 到 staging（失败不动现有 app）→ 去 quarantine → 原子换入 → open 拉起新版本。
+    /// 写替换脚本 detached 执行后退出自身。脚本：等本进程退出 → ditto 到 staging →
+    /// 去 quarantine → 换入 → open 拉起。
+    ///
+    /// 三条硬约束（旧实现三条都不满足，见各自注释）：
+    /// 1. **磁盘上任何时刻都存在一份可用 bundle**。旧实现是 `rm -rf 目标 && mv staging 目标`，
+    ///    先删后移；`mv` 若失败，用户的 app 就此消失。现在改成把旧版本 `mv` 到备份名，
+    ///    换入成功才删备份，失败则原样搬回。
+    /// 2. **任何一步失败都要把现有版本拉回来**。旧实现 `ditto … || exit 1` 直接退出，
+    ///    而调用方在 `p.run()` 之后立刻 `NSApp.terminate`，于是应用退了又不被拉起——
+    ///    在用户看来就是「点了更新，程序没了」。`/Applications` 对非管理员不可写时
+    ///    必然走到这条路径。
+    /// 3. **绝不对存活进程的 bundle 动手**。旧实现等待超时后照样往下删；现在超时即放弃。
+    ///
+    /// 路径一律走位置参数传入，不拼进脚本正文：安装路径含 `$`/`` ` ``/`"`/`\` 时既不会
+    /// 破坏脚本，也不存在注入面。失败原因写进临时目录的日志，便于事后排查。
     private nonisolated static func swapAndRelaunch(newApp: URL, target: URL) async throws {
         let pid = ProcessInfo.processInfo.processIdentifier
-        let staging = target.path + ".update-staging"
         let script = """
         #!/bin/bash
-        for _ in $(seq 1 150); do kill -0 \(pid) 2>/dev/null || break; sleep 0.2; done
-        rm -rf "\(staging)"
-        ditto "\(newApp.path)" "\(staging)" || exit 1
-        xattr -dr com.apple.quarantine "\(staging)" 2>/dev/null
-        rm -rf "\(target.path)" && mv "\(staging)" "\(target.path)"
-        open "\(target.path)"
+        # $1=新版本 .app  $2=安装目标  $3=日志
+        NEWAPP="$1"; TARGET="$2"; LOG="$3"
+        exec >>"$LOG" 2>&1
+        STAGING="$TARGET.update-staging"
+        BACKUP="$TARGET.update-backup"
+
+        abort() { echo "[$(date)] 更新中止：$1 —— 拉起现有版本"; open "$TARGET" 2>/dev/null; exit 1; }
+
+        # 等本进程退出（最多 30s）；超时仍存活则放弃，不碰运行中的 bundle。
+        alive=1
+        for _ in $(seq 1 150); do
+          kill -0 \(pid) 2>/dev/null || { alive=0; break; }
+          sleep 0.2
+        done
+        [ "$alive" = 0 ] || abort "旧进程未在 30s 内退出"
+
+        rm -rf "$STAGING" "$BACKUP"
+        ditto "$NEWAPP" "$STAGING" || abort "解压到 staging 失败（安装目录不可写？磁盘满？）"
+        xattr -dr com.apple.quarantine "$STAGING" 2>/dev/null
+
+        # 换入：旧版先挪开而非先删，任一步失败都能回滚。
+        mv "$TARGET" "$BACKUP" || { rm -rf "$STAGING"; abort "移开旧版本失败"; }
+        if mv "$STAGING" "$TARGET"; then
+          rm -rf "$BACKUP"
+          echo "[$(date)] 更新完成"
+        else
+          mv "$BACKUP" "$TARGET"
+          rm -rf "$STAGING"
+          abort "换入新版本失败，已回滚到旧版本"
+        fi
+        open "$TARGET"
         """
-        let scriptURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ccusage-update-\(pid).sh")
+        let tmp = FileManager.default.temporaryDirectory
+        let scriptURL = tmp.appendingPathComponent("ccusage-update-\(pid).sh")
+        let logURL = tmp.appendingPathComponent("ccusage-update.log")
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/bash")
-        p.arguments = [scriptURL.path]
+        p.arguments = [scriptURL.path, newApp.path, target.path, logURL.path]
         try p.run()                                     // 不 wait：脚本活得比本进程久
         await MainActor.run { NSApp.terminate(nil) }
     }
