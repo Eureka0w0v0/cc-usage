@@ -22,12 +22,19 @@ import SQLite3
 
 public struct UsageSummary: Sendable {
     public var requests: Int = 0
+    public var successes: Int = 0
     public var input: Int64 = 0
     public var output: Int64 = 0
     public var creation: Int64 = 0
     public var hit: Int64 = 0
     public var cost: Double = 0
 
+    /// 成功率（百分比）。对齐 usage_stats.rs：无请求时返回 **0** 而非 100。
+    /// 早前桥接层给面板直接写死 100，属于潜伏的错值——只是当前 embed 不渲染
+    /// summary 的这个字段（只有 ProviderStatsTable 渲染成功率，走的是另一条路）。
+    public var successRate: Double {
+        requests > 0 ? Double(successes) / Double(requests) * 100 : 0
+    }
     public var tokensProcessed: Int64 { input + output + creation + hit }
     public var cacheHitRate: Double {
         let denom = Double(input + creation + hit)
@@ -246,6 +253,9 @@ public final class UsageStore: @unchecked Sendable {
     private func addOverlay(_ s: inout UsageSummary, _ rows: [OverlayRow]) {
         guard !rows.isEmpty else { return }
         s.requests += rows.count
+        // 增量行来自已完成的响应（JSONL 里只有拿到 usage 的 assistant 消息才成行），
+        // 没有失败态可言，全部计入成功。
+        s.successes += rows.count
         for r in rows {
             s.input += r.input
             s.output += r.output
@@ -313,11 +323,12 @@ public final class UsageStore: @unchecked Sendable {
         if let m = f.model { conds.append("\(Self.effectiveModelL) = ?"); binds.append(.text(m)) }
         let sql = """
         SELECT COUNT(*),
-               COALESCE(SUM(\(Self.costL)),0),
+               COALESCE(SUM(\(costL(db))),0),
                COALESCE(SUM(\(freshInput(db, "l"))),0),
                COALESCE(SUM(l.output_tokens),0),
                COALESCE(SUM(l.cache_creation_tokens),0),
-               COALESCE(SUM(l.cache_read_tokens),0)
+               COALESCE(SUM(l.cache_read_tokens),0),
+               COALESCE(SUM(CASE WHEN l.status_code >= 200 AND l.status_code < 300 THEN 1 ELSE 0 END),0)
         FROM proxy_request_logs l
         WHERE \(conds.joined(separator: " AND "))
         """
@@ -336,6 +347,7 @@ public final class UsageStore: @unchecked Sendable {
             s.output   = sqlite3_column_int64(stmt, 3)
             s.creation = sqlite3_column_int64(stmt, 4)
             s.hit      = sqlite3_column_int64(stmt, 5)
+            s.successes = Int(sqlite3_column_int64(stmt, 6))
         }
         // 未入库增量:所有汇总路径(Hero/菜单栏/累计/数据源)都经此函数,一处叠加全局生效
         addOverlay(&s, overlayRows(db, start: f.start, end: f.end, appType: f.appType, model: f.model))
@@ -358,11 +370,12 @@ public final class UsageStore: @unchecked Sendable {
         let whereClause = conds.isEmpty ? "" : "WHERE " + conds.joined(separator: " AND ")
         let sql = """
         SELECT COALESCE(SUM(r.request_count),0),
-               COALESCE(SUM(\(Self.costR)),0),
+               COALESCE(SUM(\(costR(db))),0),
                COALESCE(SUM(\(freshInput(db, "r"))),0),
                COALESCE(SUM(r.output_tokens),0),
                COALESCE(SUM(r.cache_creation_tokens),0),
-               COALESCE(SUM(r.cache_read_tokens),0)
+               COALESCE(SUM(r.cache_read_tokens),0),
+               COALESCE(SUM(r.success_count),0)
         FROM usage_daily_rollups r
         \(whereClause)
         """
@@ -381,6 +394,7 @@ public final class UsageStore: @unchecked Sendable {
             s.output   = sqlite3_column_int64(stmt, 3)
             s.creation = sqlite3_column_int64(stmt, 4)
             s.hit      = sqlite3_column_int64(stmt, 5)
+            s.successes = Int(sqlite3_column_int64(stmt, 6))
         }
         return s
     }
@@ -390,12 +404,13 @@ public final class UsageStore: @unchecked Sendable {
         let a = try summaryLogsOnly(db, f)
         let r = try summaryRollupsOnly(db, f, cal)
         var s = UsageSummary()
-        s.requests = a.requests + r.requests
-        s.input    = a.input + r.input
-        s.output   = a.output + r.output
-        s.creation = a.creation + r.creation
-        s.hit      = a.hit + r.hit
-        s.cost     = a.cost + r.cost
+        s.requests  = a.requests + r.requests
+        s.successes = a.successes + r.successes
+        s.input     = a.input + r.input
+        s.output    = a.output + r.output
+        s.creation  = a.creation + r.creation
+        s.hit       = a.hit + r.hit
+        s.cost      = a.cost + r.cost
         return s
     }
 
@@ -428,26 +443,28 @@ public final class UsageStore: @unchecked Sendable {
         let rWhere = rConds.isEmpty ? "" : "WHERE " + rConds.joined(separator: " AND ")
         let sql = """
         SELECT app_type,
-               SUM(req), SUM(cost), SUM(inp), SUM(outp), SUM(cc), SUM(cr)
+               SUM(req), SUM(cost), SUM(inp), SUM(outp), SUM(cc), SUM(cr), SUM(ok)
         FROM (
             SELECT \(Self.foldedAppL) AS app_type,
                    COUNT(*) AS req,
-                   COALESCE(SUM(\(Self.costL)),0) AS cost,
+                   COALESCE(SUM(\(costL(db))),0) AS cost,
                    COALESCE(SUM(\(freshInput(db, "l"))),0) AS inp,
                    COALESCE(SUM(l.output_tokens),0) AS outp,
                    COALESCE(SUM(l.cache_creation_tokens),0) AS cc,
-                   COALESCE(SUM(l.cache_read_tokens),0) AS cr
+                   COALESCE(SUM(l.cache_read_tokens),0) AS cr,
+                   COALESCE(SUM(CASE WHEN l.status_code >= 200 AND l.status_code < 300 THEN 1 ELSE 0 END),0) AS ok
             FROM proxy_request_logs l
             WHERE \(dConds.joined(separator: " AND "))
             GROUP BY l.app_type
             UNION ALL
             SELECT \(Self.foldedAppR) AS app_type,
                    COALESCE(SUM(r.request_count),0),
-                   COALESCE(SUM(\(Self.costR)),0),
+                   COALESCE(SUM(\(costR(db))),0),
                    COALESCE(SUM(\(freshInput(db, "r"))),0),
                    COALESCE(SUM(r.output_tokens),0),
                    COALESCE(SUM(r.cache_creation_tokens),0),
-                   COALESCE(SUM(r.cache_read_tokens),0)
+                   COALESCE(SUM(r.cache_read_tokens),0),
+                   COALESCE(SUM(r.success_count),0)
             FROM usage_daily_rollups r
             \(rWhere)
             GROUP BY r.app_type
@@ -471,6 +488,7 @@ public final class UsageStore: @unchecked Sendable {
             s.output   = sqlite3_column_int64(stmt, 4)
             s.creation = sqlite3_column_int64(stmt, 5)
             s.hit      = sqlite3_column_int64(stmt, 6)
+            s.successes = Int(sqlite3_column_int64(stmt, 7))
             if s.requests == 0 && s.tokensProcessed == 0 { continue }
             out.append((appType: app, summary: s))
         }
@@ -507,7 +525,7 @@ public final class UsageStore: @unchecked Sendable {
                COALESCE(SUM(l.output_tokens),0),
                COALESCE(SUM(l.cache_creation_tokens),0),
                COALESCE(SUM(l.cache_read_tokens),0),
-               COALESCE(SUM(\(Self.costL)),0),
+               COALESCE(SUM(\(costL(db))),0),
                COUNT(*)
         FROM proxy_request_logs l
         WHERE l.created_at >= ?1 AND l.created_at <= ?2 AND \(Self.effectiveUsageFilterL)
@@ -580,7 +598,7 @@ public final class UsageStore: @unchecked Sendable {
                COALESCE(SUM(l.output_tokens),0),
                COALESCE(SUM(l.cache_creation_tokens),0),
                COALESCE(SUM(l.cache_read_tokens),0),
-               COALESCE(SUM(\(Self.costL)),0)
+               COALESCE(SUM(\(costL(db))),0)
         FROM proxy_request_logs l
         WHERE \(lConds.joined(separator: " AND "))
         GROUP BY d
@@ -621,7 +639,7 @@ public final class UsageStore: @unchecked Sendable {
                COALESCE(SUM(r.output_tokens),0),
                COALESCE(SUM(r.cache_creation_tokens),0),
                COALESCE(SUM(r.cache_read_tokens),0),
-               COALESCE(SUM(\(Self.costR)),0)
+               COALESCE(SUM(\(costR(db))),0)
         FROM usage_daily_rollups r
         \(rWhere)
         GROUP BY r.date
@@ -787,17 +805,15 @@ public final class UsageStore: @unchecked Sendable {
     // 本机 rollup 里的历史 codex 数据不在明细表，Request Logs 无法逐行展示，故三个 Tab
     // 统一以明细表为准，保证与用户已看到的 Hero 数字自洽）。SQL 片段逐一复刻
     // usage_stats.rs（alias 固定 l = proxy_request_logs，p = providers）。
-    // 本机无 'proxy' 行，故跨源去重过滤（effective_usage_log_filter）为空操作，略去。
+    // 跨源去重过滤（effective_usage_log_filter）在三个 Tab 里同样必须套用：早前以
+    // 「本机无 'proxy' 行 → 空操作」为由略去，但那是环境事实不是语义结论——用户一旦
+    // 打开 cc-switch 的代理，同一笔请求既落 proxy 又落 session_log，Hero 去重而 Tab
+    // 不去重就会当场自相矛盾（Hero 总额 ≠ Σ Provider Stats，重复行还直接列在日志里）。
 
     /// 折叠 claude-desktop→claude（仅过滤/分组口径，行投影仍返回原始 app_type）。
     static let foldedAppL = "CASE WHEN l.app_type='claude-desktop' THEN 'claude' ELSE l.app_type END"
     /// 有效计价模型：pricing_model 非空优先，NULL/'' 回落 model。
     static let effectiveModelL = "COALESCE(NULLIF(l.pricing_model, ''), l.model)"
-    /// 成本：库里已有正成本优先，未定价行按内置表现场补算(见 ModelPricing)。
-    /// 用户在 cc-switch 里改过的价永远优先，绝不被内置表覆盖。
-    static let costL = ModelPricing.costSQL(
-        alias: "l", effectiveModel: effectiveModelL,
-        multiplier: "COALESCE(NULLIF(CAST(l.cost_multiplier AS REAL), 0), 1.0)")
     /// cache 归一化 input（对齐 sql_helpers.rs::fresh_input_sql，v13 语义）：
     /// input_token_semantics 0=legacy（codex 系 input 含 cache_read）、
     /// 1=total（还含 cache_creation）、2=fresh（已归一，原样返回）。
@@ -808,16 +824,49 @@ public final class UsageStore: @unchecked Sendable {
     static func freshInputLegacy(_ a: String) -> String {
         "CASE WHEN \(a).app_type IN ('codex','gemini') AND \(a).input_tokens >= \(a).cache_read_tokens THEN (\(a).input_tokens - \(a).cache_read_tokens) ELSE \(a).input_tokens END"
     }
-    /// 按当前库 schema 选 fresh_input 表达式：每次查询用打开的连接探测一次列存在性
-    /// （pragma 读元数据，微秒级；不做实例级缓存，避免 cc-switch 升级迁移后口径滞后）。
-    private func freshInput(_ db: OpaquePointer, _ alias: String) -> String {
+    /// 元数据探测小工具：每次查询用打开的连接现探，不做实例级缓存，避免 cc-switch
+    /// 升级迁移后口径滞后。读的是元数据表，微秒级。
+    private func exists(_ db: OpaquePointer, _ sql: String) -> Bool {
         var stmt: OpaquePointer?
-        var has = false
-        if sqlite3_prepare_v2(db, "SELECT 1 FROM pragma_table_info('proxy_request_logs') WHERE name='input_token_semantics'", -1, &stmt, nil) == SQLITE_OK {
-            has = sqlite3_step(stmt) == SQLITE_ROW
+        var found = false
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            found = sqlite3_step(stmt) == SQLITE_ROW
         }
         sqlite3_finalize(stmt)
-        return has ? Self.freshInputV13(alias) : Self.freshInputLegacy(alias)
+        return found
+    }
+    /// 某表是否有某列（老库缺列时相关分支必须整支摘掉，否则 prepare 直接失败）。
+    private func hasColumn(_ db: OpaquePointer, _ table: String, _ col: String) -> Bool {
+        exists(db, "SELECT 1 FROM pragma_table_info('\(table)') WHERE name='\(col)'")
+    }
+    /// 本库是否有 v13 的 input_token_semantics 列。
+    private func hasSemantics(_ db: OpaquePointer) -> Bool {
+        hasColumn(db, "proxy_request_logs", "input_token_semantics")
+    }
+    /// TEMP 兜底定价表是否建成（openRO 里装的）。建不成时 costSQL 必须退化，
+    /// 否则相关子查询在 prepare 阶段解析不到表名，会让每一条查询直接抛错。
+    private func hasFallbackPricing(_ db: OpaquePointer) -> Bool {
+        exists(db, "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='\(ModelPricing.fallbackTable)'")
+    }
+    /// 按当前库 schema 选 fresh_input 表达式。
+    private func freshInput(_ db: OpaquePointer, _ alias: String) -> String {
+        hasSemantics(db) ? Self.freshInputV13(alias) : Self.freshInputLegacy(alias)
+    }
+    /// 成本（明细表侧）：库里已有正成本优先，未定价行按内置表现场补算(见 ModelPricing)。
+    /// 用户在 cc-switch 里改过的价永远优先，绝不被内置表覆盖。
+    private func costL(_ db: OpaquePointer) -> String {
+        ModelPricing.costSQL(
+            alias: "l",
+            multiplier: "COALESCE(NULLIF(CAST(l.cost_multiplier AS REAL), 0), 1.0)",
+            hasSemantics: hasSemantics(db), hasFallbackTable: hasFallbackPricing(db),
+            hasRequestModel: hasColumn(db, "proxy_request_logs", "request_model"))
+    }
+    /// 成本（rollups 侧）。该表没有 cost_multiplier 列，倍率恒 1。
+    private func costR(_ db: OpaquePointer) -> String {
+        ModelPricing.costSQL(
+            alias: "r", multiplier: "1.0",
+            hasSemantics: hasSemantics(db), hasFallbackTable: hasFallbackPricing(db),
+            hasRequestModel: hasColumn(db, "usage_daily_rollups", "request_model"))
     }
     /// provider 展示名：providers.name 优先，会话占位 provider_id 映射为可读名。
     static let providerNameCoalesce = "COALESCE(p.name, CASE l.provider_id WHEN '_session' THEN 'Claude (Session)' WHEN '_codex_session' THEN 'Codex (Session)' WHEN '_gemini_session' THEN 'Gemini (Session)' WHEN '_opencode_session' THEN 'OpenCode (Session)' WHEN '_grok_session' THEN 'Grok Build (Session)' ELSE l.provider_id END)"
@@ -828,9 +877,6 @@ public final class UsageStore: @unchecked Sendable {
     static let foldedAppR = "CASE WHEN r.app_type='claude-desktop' THEN 'claude' ELSE r.app_type END"
     /// 有效计价模型（rollups 侧）。
     static let effectiveModelR = "COALESCE(NULLIF(r.pricing_model, ''), r.model)"
-    /// 成本（rollups 侧）。该表没有 cost_multiplier 列，倍率恒 1。
-    static let costR = ModelPricing.costSQL(
-        alias: "r", effectiveModel: effectiveModelR, multiplier: "1.0")
     /// 跨源去重时的 app_type 匹配（对齐 usage_stats.rs::dedup_app_type_match_sql）：
     /// Claude Code 与 Claude Desktop 共用同一套 message id —— 走 Desktop 网关的请求以
     /// `claude-desktop` 落 proxy 行，而 session 导入器以 `claude` 落 session_log 行。
@@ -873,8 +919,10 @@ public final class UsageStore: @unchecked Sendable {
     }
 
     // provider / model 统计共用的 WHERE + 绑定参数（时间窗 + app + provider + model）。
+    // 首条恒为跨源去重过滤，对齐 get_provider_stats / get_model_stats（usage_stats.rs
+    // :1265 / :1409，两者都以 vec![effective_usage_log_filter("l")] 起头）。
     private func statsWhere(_ f: LogQueryFilter) -> (String, [Bind]) {
-        var conds: [String] = []
+        var conds: [String] = [Self.effectiveUsageFilterL]
         var binds: [Bind] = []
         if let s = f.start { conds.append("l.created_at >= ?"); binds.append(.int(s)) }
         if let e = f.end { conds.append("l.created_at <= ?"); binds.append(.int(e)) }
@@ -890,7 +938,8 @@ public final class UsageStore: @unchecked Sendable {
         let db = try openRO()
         defer { sqlite3_close(db) }
 
-        var conds: [String] = []
+        // 首条恒为跨源去重过滤，对齐 get_request_logs（usage_stats.rs:1554）。
+        var conds: [String] = [Self.effectiveUsageFilterL]
         var binds: [Bind] = []
         if let at = f.appType { conds.append("\(Self.foldedAppL) = ?"); binds.append(.text(at)) }
         if let pn = f.providerName { conds.append("\(Self.providerNameCoalesce) = ?"); binds.append(.text(pn)) }
@@ -934,7 +983,8 @@ public final class UsageStore: @unchecked Sendable {
                l.input_tokens, l.output_tokens, l.cache_read_tokens, l.cache_creation_tokens,
                l.input_cost_usd, l.output_cost_usd, l.cache_read_cost_usd, l.cache_creation_cost_usd, l.total_cost_usd,
                l.is_streaming, l.latency_ms, l.first_token_ms, l.duration_ms,
-               l.status_code, l.error_message, l.created_at, l.data_source
+               l.status_code, l.error_message, l.created_at, l.data_source,
+               \(ModelPricing.billableInputSQL("l", hasSemantics: hasSemantics(db))) AS billable_input
         FROM proxy_request_logs l
         \(Self.providersJoinL)
         \(whereClause)
@@ -962,11 +1012,17 @@ public final class UsageStore: @unchecked Sendable {
             // 内置表现场补算(只读,不改库);库里已有正成本的行原样保留。
             if (Double(costs.total) ?? 0) <= 0,
                inTok > 0 || outTok > 0 || crTok > 0 || ccTok > 0 {
-                let effective = colTextOpt(stmt, 6).flatMap { $0.isEmpty ? nil : $0 }
-                    ?? colText(stmt, 4)
-                if let b = ModelPricing.backfilledCosts(
+                // 计价基准与 input 口径都走与 costSQL 同一套规则（占位符判定 +
+                // billable input），否则同一行在 Hero 和明细表里会算出两个数。
+                let effective = ModelPricing.resolvePricingModel(
+                    pricingModel: colTextOpt(stmt, 6),
+                    model: colText(stmt, 4),
+                    requestModel: colTextOpt(stmt, 5))
+                if let effective,
+                   let b = ModelPricing.backfilledCosts(
                     model: effective, multiplier: Double(mult) ?? 1,
-                    input: inTok, output: outTok, cacheRead: crTok, cacheCreation: ccTok) {
+                    billableInput: sqlite3_column_int64(stmt, 25),
+                    output: outTok, cacheRead: crTok, cacheCreation: ccTok) {
                     costs = b
                 }
             }
@@ -1056,7 +1112,7 @@ public final class UsageStore: @unchecked Sendable {
         SELECT l.provider_id, \(Self.providerNameCoalesce) AS provider_name,
                COUNT(*) AS request_count,
                COALESCE(SUM(\(freshInput(db, "l")) + l.output_tokens), 0) AS total_tokens,
-               COALESCE(SUM(\(Self.costL)), 0) AS total_cost,
+               COALESCE(SUM(\(costL(db))), 0) AS total_cost,
                COALESCE(SUM(CASE WHEN l.status_code >= 200 AND l.status_code < 300 THEN 1 ELSE 0 END), 0) AS success_count,
                CASE WHEN COUNT(*) > 0 THEN COALESCE(SUM(l.latency_ms), 0) / COUNT(*) ELSE 0 END AS avg_latency
         FROM proxy_request_logs l
@@ -1131,7 +1187,7 @@ public final class UsageStore: @unchecked Sendable {
         SELECT \(Self.effectiveModelL) AS model,
                COUNT(*) AS request_count,
                COALESCE(SUM(\(freshInput(db, "l")) + l.output_tokens), 0) AS total_tokens,
-               COALESCE(SUM(\(Self.costL)), 0) AS total_cost
+               COALESCE(SUM(\(costL(db))), 0) AS total_cost
         FROM proxy_request_logs l
         \(Self.providersJoinL)
         \(whereClause)
@@ -1200,7 +1256,7 @@ public final class UsageStore: @unchecked Sendable {
         let sql = """
         SELECT COALESCE(l.data_source,'proxy') AS ds,
                COUNT(*),
-               COALESCE(SUM(\(Self.costL)),0)
+               COALESCE(SUM(\(costL(db))),0)
         FROM proxy_request_logs l
         WHERE \(Self.effectiveUsageFilterL)
         GROUP BY ds

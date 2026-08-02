@@ -36,8 +36,10 @@ enum Fixture {
       date TEXT,
       app_type TEXT DEFAULT 'claude',
       model TEXT DEFAULT '',
+      request_model TEXT,
       pricing_model TEXT,
       request_count INTEGER DEFAULT 0,
+      success_count INTEGER DEFAULT 0,
       input_tokens INTEGER DEFAULT 0,
       output_tokens INTEGER DEFAULT 0,
       cache_read_tokens INTEGER DEFAULT 0,
@@ -114,16 +116,25 @@ enum Fixture {
                           cost: Double = 0, createdAt: Int64,
                           dataSource: String = "session_log",
                           status: Int = 200, providerId: String = "_session",
-                          semantics: Int64? = nil) throws {
-        let semCols = semantics.map { _ in ", input_token_semantics" } ?? ""
-        let semVals = semantics.map { ", \($0)" } ?? ""
+                          semantics: Int64? = nil,
+                          pricingModel: String? = nil, requestModel: String? = nil) throws {
+        // 可选列一律「给了才写」，好让用例区分「列为 NULL」与「列是空串/占位符」——
+        // 定价基准解析对这两者的处理并不相同。
+        var cols = "", vals = ""
+        func opt(_ name: String, _ v: String?) {
+            guard let v else { return }
+            cols += ", \(name)"; vals += ", '\(v)'"
+        }
+        if let semantics { cols += ", input_token_semantics"; vals += ", \(semantics)" }
+        opt("pricing_model", pricingModel)
+        opt("request_model", requestModel)
         try exec(path, """
         INSERT INTO proxy_request_logs(request_id, provider_id, app_type, model,
           input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-          total_cost_usd, status_code, created_at, data_source\(semCols))
+          total_cost_usd, status_code, created_at, data_source\(cols))
         VALUES('\(id)','\(providerId)','\(app)','\(model)',
           \(input),\(output),\(cacheRead),\(cacheCreation),
-          '\(cost)',\(status),\(createdAt),'\(dataSource)'\(semVals));
+          '\(cost)',\(status),\(createdAt),'\(dataSource)'\(vals));
         """)
     }
 
@@ -131,13 +142,16 @@ enum Fixture {
                              app: String = "claude", model: String = "claude-sonnet-5",
                              requests: Int64 = 1, input: Int64 = 0, output: Int64 = 0,
                              cacheRead: Int64 = 0, cacheCreation: Int64 = 0,
-                             cost: Double = 0, semantics: Int64? = nil) throws {
+                             cost: Double = 0, semantics: Int64? = nil,
+                             successes: Int64? = nil) throws {
         let semCols = semantics.map { _ in ", input_token_semantics" } ?? ""
         let semVals = semantics.map { ", \($0)" } ?? ""
+        // 不传 successes 时按「全部成功」写，贴近 cc-switch 真实聚合行为。
+        let ok = successes ?? requests
         try exec(path, """
-        INSERT INTO usage_daily_rollups(date, app_type, model, request_count,
+        INSERT INTO usage_daily_rollups(date, app_type, model, request_count, success_count,
           input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, total_cost_usd\(semCols))
-        VALUES('\(date)','\(app)','\(model)',\(requests),
+        VALUES('\(date)','\(app)','\(model)',\(requests),\(ok),
           \(input),\(output),\(cacheRead),\(cacheCreation),'\(cost)'\(semVals));
         """)
     }

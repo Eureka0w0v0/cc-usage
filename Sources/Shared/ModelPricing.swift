@@ -36,11 +36,11 @@ public enum ModelPricing {
         "claude-opus-4-8": R(5, 25, 0.5, 6.25),  // Claude Opus 4.8
         "claude-sonnet-5": R(3, 15, 0.3, 3.75),  // Claude Sonnet 5
         "claude-opus-4-7": R(5, 25, 0.5, 6.25),  // Claude Opus 4.7
-        "claude-opus-4-6-20260206": R(5, 25, 0.5, 6.25),  // Claude Opus 4.6
-        "claude-sonnet-4-6-20260217": R(3, 15, 0.3, 3.75),  // Claude Sonnet 4.6
         // 裸 id 行覆盖无日期后缀的日志变体，与 dated 行同价
         "claude-opus-4-6": R(5, 25, 0.5, 6.25),  // Claude Opus 4.6
         "claude-sonnet-4-6": R(3, 15, 0.3, 3.75),  // Claude Sonnet 4.6
+        "claude-opus-4-6-20260206": R(5, 25, 0.5, 6.25),  // Claude Opus 4.6
+        "claude-sonnet-4-6-20260217": R(3, 15, 0.3, 3.75),  // Claude Sonnet 4.6
         "claude-opus-4-5-20251101": R(5, 25, 0.5, 6.25),  // Claude Opus 4.5
         "claude-sonnet-4-5-20250929": R(3, 15, 0.3, 3.75),  // Claude Sonnet 4.5
         "claude-haiku-4-5-20251001": R(1, 5, 0.1, 1.25),  // Claude Haiku 4.5
@@ -79,11 +79,11 @@ public enum ModelPricing {
         "gpt-5.2-codex-high": R(1.75, 14, 0.175, 0),  // GPT-5.2 Codex
         "gpt-5.2-codex-xhigh": R(1.75, 14, 0.175, 0),  // GPT-5.2 Codex
         "gpt-5.3-codex": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex
+        "gpt-5.3-codex-spark": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex Spark
         "gpt-5.3-codex-low": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex
         "gpt-5.3-codex-medium": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex
         "gpt-5.3-codex-high": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex
         "gpt-5.3-codex-xhigh": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex
-        "gpt-5.3-codex-spark": R(1.75, 14, 0.175, 0),  // GPT-5.3 Codex Spark
         "gpt-5.1": R(1.25, 10, 0.125, 0),  // GPT-5.1
         "gpt-5.1-low": R(1.25, 10, 0.125, 0),  // GPT-5.1
         "gpt-5.1-medium": R(1.25, 10, 0.125, 0),  // GPT-5.1
@@ -161,7 +161,8 @@ public enum ModelPricing {
         "minimax-m2.5-lightning": R(0.3, 2.4, 0.03, 0),  // MiniMax M2.5 Lightning
         "minimax-m2.7": R(0.3, 1.2, 0.06, 0.375),  // MiniMax M2.7
         "minimax-m2.7-highspeed": R(0.6, 2.4, 0.06, 0.375),  // MiniMax M2.7 Highspeed
-        "minimax-m3": R(0.3, 1.2, 0.06, 0),  // MiniMax M3（官方标准档）
+        // 官方标准档（此前记的是高价档，2026-07 对齐挂牌价下调）
+        "minimax-m3": R(0.3, 1.2, 0.06, 0),  // MiniMax M3
         "glm-4.7": R(0.6, 2.2, 0.11, 0),  // GLM-4.7
         "glm-4.6": R(0.6, 2.2, 0.11, 0),  // GLM-4.6
         "glm-5": R(1, 3.2, 0.2, 0),  // GLM-5
@@ -190,7 +191,7 @@ public enum ModelPricing {
         "qwen3-32b": R(0.16, 0.64, 0, 0),  // Qwen3 32B
         "grok-4.5": R(2, 6, 0.5, 0),  // Grok 4.5
         // Grok Build 的 cache read 实测 0.30（上游按 costUsdTicks 反推），非挂牌 0.50
-        "grok-4.5-build": R(2, 6, 0.30, 0),  // Grok 4.5 Build
+        "grok-4.5-build": R(2, 6, 0.3, 0),  // Grok 4.5 Build
         "grok-4.3": R(1.25, 2.5, 0.2, 0),  // Grok 4.3
         "grok-4.20-0309-reasoning": R(1.25, 2.5, 0.2, 0),  // Grok 4.20 Reasoning
         "grok-4.20-0309-non-reasoning": R(1.25, 2.5, 0.2, 0),  // Grok 4.20
@@ -244,8 +245,11 @@ public enum ModelPricing {
     private static let prefixIds: [String] = table.keys.sorted { $0.count < $1.count }
 
     /// 在连接上建 TEMP 兜底定价表，供聚合 SQL 现场补算未定价行。
-    /// 只读连接同样可建 temp 表（temp 库独立于主库）；建表失败不致命——
-    /// 调用方的 SQL 用 LEFT JOIN，表缺失时回退成「未定价按 0 计」的旧行为。
+    /// 只读连接同样可建 temp 表（temp 库独立于主库）。
+    ///
+    /// 返回值**必须**被调用方用来决定 `costSQL(hasFallbackTable:)`：相关子查询在
+    /// prepare 阶段就解析表名，表不在会让每一条查询直接抛错。早前注释说「用
+    /// LEFT JOIN，表缺失自动回落 0」是错的——从来没有 LEFT JOIN。
     @discardableResult
     public static func installFallbackTable(_ db: OpaquePointer) -> Bool {
         let ddl = """
@@ -280,45 +284,180 @@ public enum ModelPricing {
             _ = sqlite3_step(stmt)
         }
         sqlite3_exec(db, "COMMIT", nil, nil, nil)
+        seedResolvedAliases(db)
         return true
+    }
+
+    /// 把库里实际出现过的原始 model id 解析后补进兜底表（键 = 归一化后的原始 id）。
+    ///
+    /// 动机：SQL 侧只做精确匹配，而 Swift 侧 `lookup` 会走候选链（剥命名空间、
+    /// 剥日期尾、点转横线、前缀兜底）。不预解析的话 `anthropic/claude-opus-4.6`
+    /// 这类 id 在聚合里命不中记 $0、在逐行补算里却能命中——同一屏上下两个数打架。
+    /// 库里 distinct 值通常十几个，代价远小于本文件已有的 188 条静态插入。
+    private static func seedResolvedAliases(_ db: OpaquePointer) {
+        var ids = Set<String>()
+        for tbl in ["proxy_request_logs", "usage_daily_rollups"] {
+            for col in ["model", "pricing_model", "request_model"] {
+                // 表/列不存在（旧 schema）时 prepare 失败 → 跳过，不影响静态兜底。
+                let q = "SELECT DISTINCT \(col) FROM \(tbl) WHERE \(col) IS NOT NULL AND TRIM(\(col)) <> ''"
+                var st: OpaquePointer?
+                guard sqlite3_prepare_v2(db, q, -1, &st, nil) == SQLITE_OK else {
+                    sqlite3_finalize(st); continue
+                }
+                defer { sqlite3_finalize(st) }
+                while sqlite3_step(st) == SQLITE_ROW {
+                    if let p = sqlite3_column_text(st, 0) { ids.insert(String(cString: p)) }
+                }
+            }
+        }
+        guard !ids.isEmpty else { return }
+
+        var stmt: OpaquePointer?
+        let ins = "INSERT OR IGNORE INTO \(fallbackTable) VALUES (?,?,?,?,?)"
+        guard sqlite3_prepare_v2(db, ins, -1, &stmt, nil) == SQLITE_OK else {
+            sqlite3_finalize(stmt); return
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_exec(db, "BEGIN", nil, nil, nil)
+        for raw in ids {
+            // 与 normalizedModelSQL 同序：LOWER → 去 [1m] → TRIM（SQLite 的 TRIM 只去空格）。
+            let norm = raw.lowercased()
+                .replacingOccurrences(of: "[1m]", with: "")
+                .trimmingCharacters(in: CharacterSet(charactersIn: " "))
+            guard !norm.isEmpty, table[norm] == nil, let p = lookup(raw) else { continue }
+            sqlite3_reset(stmt)
+            sqlite3_bind_text(stmt, 1, norm, -1, SQLITE_TRANSIENT_DEST)
+            sqlite3_bind_double(stmt, 2, p.input)
+            sqlite3_bind_double(stmt, 3, p.output)
+            sqlite3_bind_double(stmt, 4, p.cacheRead)
+            sqlite3_bind_double(stmt, 5, p.cacheCreation)
+            _ = sqlite3_step(stmt)
+        }
+        sqlite3_exec(db, "COMMIT", nil, nil, nil)
     }
 
     public static let fallbackTable = "ccu_fallback_pricing"
 
     /// 归一化 model 列的 SQL 表达式：小写 + 去 [1m] 上下文标记 + 去首尾空白。
-    /// 覆盖 Claude 会话日志的主流形态；更复杂的别名由 db 侧 model_pricing 命中。
-    public static func normalizedModelSQL(_ effectiveModel: String) -> String {
-        "TRIM(REPLACE(LOWER(\(effectiveModel)), '[1m]', ''))"
+    /// 更复杂的别名（命名空间前缀、日期尾巴、点/横线变体）不在这里展开，而是由
+    /// `seedResolvedAliases` 预先把库里出现过的原始 id 解析后塞进兜底表——于是
+    /// SQL 侧的精确匹配与 Swift 侧的 `lookup` 覆盖同一集合，两条路不会再打架。
+    public static func normalizedModelSQL(_ modelColumn: String) -> String {
+        "TRIM(REPLACE(LOWER(\(modelColumn)), '[1m]', ''))"
+    }
+
+    /// 定价占位符判定，对齐 `is_placeholder_pricing_model`（trim + 小写后为空，
+    /// 或 unknown/null/none）。**刻意与 `effectiveModelSQL` 不同**：分组/筛选口径
+    /// 只把空串当缺失、保留 "unknown" 这个可见分类；定价口径必须把它当作缺失，
+    /// 否则会拿 "unknown" 去查价、查不到就永远记 $0。
+    public static func isPlaceholderSQL(_ col: String) -> String {
+        "TRIM(LOWER(COALESCE(\(col), ''))) IN ('', 'unknown', 'null', 'none')"
+    }
+
+    /// 计价用 input（对齐 `maybe_backfill_log_costs` 的 `billable_input_tokens`）。
+    ///
+    /// 与 `fresh_input_sql` 形状几乎一样但**下溢处理不同**：那边 input < cache 时
+    /// 原样返回 input，这边按 `saturating_sub` 归 0。定价路径必须跟
+    /// `maybe_backfill_log_costs` 走，不能图省事复用 freshInput。
+    ///
+    /// Claude 的 input_tokens 本来就是 fresh，只有 cache-inclusive 的三个 app
+    /// （codex/gemini/grokbuild）需要扣减。旧实现直接拿原始 input_tokens 计价，
+    /// 相当于把 cache_read 既算进 input 又按 cache 单价算一遍——实测可高出 5 倍。
+    public static func billableInputSQL(_ a: String, hasSemantics: Bool) -> String {
+        let cacheInclusive = "\(a).app_type IN ('codex','gemini','grokbuild')"
+        guard hasSemantics else {
+            // schema < 13：无 semantics 列，全部按 legacy（input 含 cache_read）处理。
+            return "CASE WHEN \(cacheInclusive) THEN MAX(\(a).input_tokens - \(a).cache_read_tokens, 0) ELSE \(a).input_tokens END"
+        }
+        return """
+        CASE WHEN NOT (\(cacheInclusive)) THEN \(a).input_tokens
+             WHEN \(a).input_token_semantics = 2 THEN \(a).input_tokens
+             WHEN \(a).input_token_semantics = 1
+                  THEN MAX(\(a).input_tokens - \(a).cache_read_tokens - \(a).cache_creation_tokens, 0)
+             ELSE MAX(\(a).input_tokens - \(a).cache_read_tokens, 0) END
+        """
+    }
+
+    /// 用某个模型列去兜底表取价并算出总价；取不到行则为 NULL（供 COALESCE 判定）。
+    private static func priceByColumn(_ a: String, _ modelCol: String,
+                                      billable: String, multiplier: String) -> String {
+        """
+        (SELECT ((\(billable)) * f.inp + \(a).output_tokens * f.outp
+               + \(a).cache_read_tokens * f.cr + \(a).cache_creation_tokens * f.cw) / 1000000.0
+               * \(multiplier)
+          FROM \(fallbackTable) f WHERE f.model_id = \(normalizedModelSQL(modelCol)))
+        """
     }
 
     /// 成本表达式：db 已有正成本优先，未定价行按内置表现场补算（含倍率）。
     /// alias 为表别名；multiplier 传倍率列（rollups 表无该列，传 "1.0"）。
-    /// 补算口径逐条对齐 cc-switch `maybe_backfill_log_costs`：各维度 token × 单价
-    /// ÷ 1e6 得基础成本，倍率只作用于最终总价。
-    public static func costSQL(alias a: String, effectiveModel: String,
-                               multiplier: String) -> String {
-        """
-        CASE WHEN CAST(\(a).total_cost_usd AS REAL) > 0
-             THEN CAST(\(a).total_cost_usd AS REAL)
-             ELSE COALESCE((
-                 SELECT (\(a).input_tokens * f.inp + \(a).output_tokens * f.outp
-                       + \(a).cache_read_tokens * f.cr + \(a).cache_creation_tokens * f.cw) / 1000000.0
-                       * \(multiplier)
-                 FROM \(fallbackTable) f
-                 WHERE f.model_id = \(normalizedModelSQL(effectiveModel))
-             ), 0)
+    ///
+    /// 计价基准的选取逐条对齐 `get_log_model_pricing_cached`，注意两个易错点：
+    /// 1. `pricing_model` 非占位时**直接用它、查不到价就记 0，不再往下回落**——
+    ///    路由接管下 model/request_model/pricing_model 三者可能各不相同，换基准
+    ///    会按错误价格永久固化；
+    /// 2. `request_model` **只在 `model` 本身也是占位时**才启用，且要求它与 model
+    ///    不同。model 是真实模型名但缺定价时必须保持 0 等补价。
+    /// `hasRequestModel`：该表是否有 request_model 列。老库（以及只关心汇总的
+    /// rollups 变体）可能没有，缺列会让 prepare 直接失败，故整支回落分支要能摘掉。
+    public static func costSQL(alias a: String, multiplier: String,
+                               hasSemantics: Bool, hasFallbackTable: Bool,
+                               hasRequestModel: Bool) -> String {
+        let stored = "CAST(\(a).total_cost_usd AS REAL)"
+        // 兜底表没建成时退化成「库里有多少算多少」。必须显式退化：costSQL 里的
+        // 相关子查询在 prepare 阶段就要解析表名，表不存在会让**每一条**查询
+        // （汇总/走势/按 app/Tabs/按来源）直接抛错，而不是温和地回落 0。
+        guard hasFallbackTable else { return "CASE WHEN \(stored) > 0 THEN \(stored) ELSE 0 END" }
+
+        let billable = billableInputSQL(a, hasSemantics: hasSemantics)
+        let byPricing = priceByColumn(a, "\(a).pricing_model", billable: billable, multiplier: multiplier)
+        let byModel = priceByColumn(a, "\(a).model", billable: billable, multiplier: multiplier)
+        // model 也是占位时才回落 request_model（且要求两者不同）。
+        let modelLeg: String
+        if hasRequestModel {
+            let byRequest = priceByColumn(a, "\(a).request_model", billable: billable, multiplier: multiplier)
+            modelLeg = """
+            COALESCE(\(byModel),
+                     CASE WHEN \(isPlaceholderSQL("\(a).model"))
+                           AND \(a).request_model IS NOT NULL
+                           AND \(a).request_model <> \(a).model
+                          THEN \(byRequest) END)
+            """
+        } else {
+            modelLeg = byModel
+        }
+        return """
+        CASE WHEN \(stored) > 0 THEN \(stored)
+             ELSE COALESCE(
+                CASE WHEN NOT (\(isPlaceholderSQL("\(a).pricing_model"))) THEN \(byPricing)
+                     ELSE \(modelLeg)
+                END, 0)
         END
         """
     }
 
+    /// 计价基准解析（Swift 侧，供逐行补算用）。与上面 `costSQL` 的 CASE 同一套规则。
+    public static func resolvePricingModel(pricingModel: String?, model: String,
+                                           requestModel: String?) -> String? {
+        func placeholder(_ s: String?) -> Bool {
+            let n = (s ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return n.isEmpty || n == "unknown" || n == "null" || n == "none"
+        }
+        if !placeholder(pricingModel) { return pricingModel }
+        if lookup(model) != nil { return model }
+        guard placeholder(model), let rm = requestModel, !rm.isEmpty, rm != model else { return nil }
+        return rm
+    }
+
     /// 单行补算（面板明细表用）：db 成本为 0 时按内置表算出四个分项与总价，
     /// 返回 nil 表示保持原值（已有成本，或内置表也没有该模型）。
+    /// `billableInput` 由调用方按 `billableInputSQL` 同一口径算好传入。
     public static func backfilledCosts(
         model: String, multiplier: Double,
-        input: Int64, output: Int64, cacheRead: Int64, cacheCreation: Int64
+        billableInput: Int64, output: Int64, cacheRead: Int64, cacheCreation: Int64
     ) -> (input: String, output: String, cacheRead: String, cacheCreation: String, total: String)? {
         guard let p = lookup(model) else { return nil }
-        let ic = Double(input) * p.input / 1_000_000
+        let ic = Double(billableInput) * p.input / 1_000_000
         let oc = Double(output) * p.output / 1_000_000
         let crc = Double(cacheRead) * p.cacheRead / 1_000_000
         let ccc = Double(cacheCreation) * p.cacheCreation / 1_000_000

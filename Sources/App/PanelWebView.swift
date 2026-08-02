@@ -264,7 +264,7 @@ struct PanelWebView: NSViewRepresentable {
                 "totalOutputTokens": s.output,
                 "totalCacheCreationTokens": s.creation,
                 "totalCacheReadTokens": s.hit,
-                "successRate": 100.0,
+                "successRate": s.successRate,
                 "realTotalTokens": s.tokensProcessed,
                 "cacheHitRate": s.cacheHitRate,
             ]

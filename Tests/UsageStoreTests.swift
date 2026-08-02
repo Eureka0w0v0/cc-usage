@@ -159,6 +159,39 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertEqual(byApp.first?.summary.requests, 2)
     }
 
+    /// 成功率此前在桥接层被写死成 100.0（`PanelWebView.summaryDict`），是潜伏的错值。
+    /// 口径对齐 usage_stats.rs：2xx 计成功，无请求时返回 0 而不是 100。
+    func testSuccessRateCountsOnly2xx() throws {
+        let t = Fixture.ts(2026, 6, 10, 12)
+        try Fixture.insertLog(dbPath, id: "ok1", input: 1, createdAt: t, status: 200)
+        try Fixture.insertLog(dbPath, id: "ok2", input: 1, createdAt: t, status: 299)
+        try Fixture.insertLog(dbPath, id: "bad", input: 1, createdAt: t, status: 500)
+        let s = try store.rangeSummaryLogsOnly(UsageFilter(start: t - 10, end: t + 10))
+        XCTAssertEqual(s.requests, 3)
+        XCTAssertEqual(s.successes, 2)
+        XCTAssertEqual(s.successRate, 200.0 / 3.0, accuracy: 1e-9)
+    }
+
+    func testSuccessRateIsZeroWithNoRequests() throws {
+        let t = Fixture.ts(2026, 6, 10, 12)
+        let s = try store.rangeSummaryLogsOnly(UsageFilter(start: t - 10, end: t + 10))
+        XCTAssertEqual(s.requests, 0)
+        XCTAssertEqual(s.successRate, 0, accuracy: 1e-9)
+    }
+
+    /// rollups 腿走 success_count 列，与明细腿合并后仍自洽。
+    func testSuccessRateMergesRollupLeg() throws {
+        try Fixture.insertLog(dbPath, id: "d1", input: 1,
+                              createdAt: Fixture.ts(2026, 6, 10, 12), status: 500)
+        try Fixture.insertRollup(dbPath, date: "2026-06-09", requests: 3, input: 1)
+        let s = try store.rangeSummary(
+            UsageFilter(start: Fixture.ts(2026, 6, 9), end: Fixture.ts(2026, 6, 10, 23)),
+            calendar: Fixture.cal)
+        XCTAssertEqual(s.requests, 4)
+        XCTAssertEqual(s.successes, 3, "rollup 那 3 条成功 + 明细那条 500 失败")
+        XCTAssertEqual(s.successRate, 75.0, accuracy: 1e-9)
+    }
+
     func testRequestLogsPagination() throws {
         let t = Fixture.ts(2026, 6, 10, 12)
         for i in 0..<3 {
