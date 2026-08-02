@@ -51,19 +51,38 @@ def num(s):
     d = float(s)
     return '%d' % int(d) if d == int(d) else '%g' % d
 
-table = "\n".join(
-    f'        "{mid}": R({num(i)}, {num(o)}, {num(cr)}, {num(cw)}),  // {name}'
-    for mid, name, i, o, cr, cw in rows)
-
 out = open(out_path, encoding='utf-8').read()
-new, n = re.subn(
-    r'(public static let table: \[String: Row\] = \[\n).*?(\n    \])',
-    lambda m: m.group(1) + table + m.group(2), out, flags=re.S)
-if n != 1:
+lit = re.search(r'(public static let table: \[String: Row\] = \[\n)(.*?)(\n    \])', out, re.S)
+if not lit:
     sys.exit("❌ 未能在 ModelPricing.swift 中定位 table 字面量")
 
-new = re.sub(r'对齐 cc-switch seed_model_pricing 的 \d+ 条内置定价。',
-             f'对齐 cc-switch seed_model_pricing 的 {len(rows)} 条内置定价。', new)
+# 保留手写的「整行注释」：把每段注释挂到紧随其后的 model id 上，重建时原样放回。
+# 不保留行尾的 `// 名称`——那是从上游 display name 生成的，本就该被刷新；要给某条
+# 加说明请写成独立注释行，否则下次同步会被覆盖（这正是本段逻辑存在的原因）。
+kept, pending = {}, []
+for line in lit.group(2).split("\n"):
+    st = line.strip()
+    if st.startswith("//"):
+        pending.append("        " + st)
+        continue
+    m = re.match(r'\s*"([^"]+)"\s*:', line)
+    if m and pending:
+        kept[m.group(1)] = pending
+    pending = []
+
+out_lines = []
+for mid, name, i, o, cr, cw in rows:
+    out_lines += kept.get(mid, [])
+    out_lines.append(f'        "{mid}": R({num(i)}, {num(o)}, {num(cr)}, {num(cw)}),  // {name}')
+table = "\n".join(out_lines)
+
+orphan = sorted(set(kept) - {r[0] for r in rows})
+if orphan:
+    print("⚠️  这些条目已从上游消失，挂在它们上面的注释一并丢弃：" + ", ".join(orphan))
+
+new = out[:lit.start(2)] + table + out[lit.end(2):]
+new = re.sub(r'对齐 cc-switch seed_model_pricing 的 \d+ 条内置定价',
+             f'对齐 cc-switch seed_model_pricing 的 {len(rows)} 条内置定价', new)
 open(out_path, 'w', encoding='utf-8').write(new)
 print(f"✅ 已同步 {len(rows)} 条定价 → {out_path}")
 PY
