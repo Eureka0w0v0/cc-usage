@@ -89,9 +89,19 @@ actor QuotaCache {
     /// - 窗口外 → 先推进闸门（失败也退避 5min），再执行 `fetch`；成功则回填缓存。
     /// - `fetch` 返回 nil/空（失败/429/无凭据）→ 保留上次成功数据。
     func read(fetch: @Sendable @escaping () async -> [QuotaTier]?) async -> [QuotaTier] {
-        if let inflight { return await inflight.value }
+        if let inflight { return await joinInflight(inflight) }
         if throttled { return tiers }
         return await launch(fetch)
+    }
+
+    /// 搭车在途请求时同样享受「失败保留上次成功数据」：`inflight.value` 是 **原始**
+    /// 结果（失败/429/无凭据 → `[]`），直接返回会让搭车方把额度徽标刷成空，而发起方
+    /// 却拿着完好的缓存——同一次刷新里两边不一致。这里复刻 `launch` 的回落规则。
+    /// 不写成「await 后读 self.tiers」是因为发起方回填 `tiers` 与本方恢复执行同为
+    /// actor 上的独立任务，先后顺序无保证；改判空回落则与顺序无关。
+    private func joinInflight(_ task: Task<[QuotaTier], Never>) async -> [QuotaTier] {
+        let result = await task.value
+        return result.isEmpty ? tiers : result
     }
 
     /// 强制取一次（**忽略节流**），用于用户手动动作（如在菜单栏勾选「额度」码片）：
@@ -99,7 +109,7 @@ actor QuotaCache {
     /// 已有在途请求时复用它（在途即最新，无需再发一发）。
     /// 仅供低频用户交互调用（不放进定时器），故不会造成限流。
     func forceRefresh(fetch: @Sendable @escaping () async -> [QuotaTier]?) async -> [QuotaTier] {
-        if let inflight { return await inflight.value }
+        if let inflight { return await joinInflight(inflight) }
         return await launch(fetch)
     }
 }
