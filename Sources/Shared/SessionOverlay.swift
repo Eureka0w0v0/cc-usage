@@ -133,12 +133,38 @@ public final class SessionOverlay {
     private var rows: [String: OverlayRow] = [:]   // requestId → 待入库行
     private var lastRefresh: Date?
 
-    /// 进程内续读进度(建立在 session_log_sync 偏移之上)。
+    /// cc-switch 记在 session_log_sync 里的单文件消化进度。
+    ///
+    /// cc-switch v3.20.1（schema v18）把 Claude 路径改成字节游标，并且**把
+    /// `last_line_offset` 固定写 0**（上游原话：「字节游标语义下行号不再维护，
+    /// 置 0 明确表示行号游标不可用」）。于是这张表会长期三态并存：
+    ///
+    ///   A 旧库      —— 没有 last_byte_offset 列，行号真实
+    ///   B 已升级未重扫 —— 有列但值为 NULL（mtime 门让未变化的文件不写游标），行号真实
+    ///   C 新版写过   —— 字节位真实（**可能合法地等于 0**），行号恒 0
+    ///
+    /// 判定只能靠「列在不在 + 值是不是 NULL」。**绝不可用 COALESCE(byte,0)**：
+    /// 0 是 C 态的合法字节位，那样会把 B 态误判成「从头读」——而从头读正是
+    /// 双算的源头（30 天前的明细已被 rollup 删除，request_id 去重对其失明）。
+    private struct SyncCursor {
+        var lastModified: Int64
+        var lineOffset: Int64    // 仅 byteOffset == nil 时有效
+        var byteOffset: Int64?   // nil = 行号游标(A/B 态)；非 nil = 字节游标(C 态)
+
+        static let empty = SyncCursor(lastModified: 0, lineOffset: 0, byteOffset: nil)
+
+        /// 两个游标是否指向同一进度（判断 cc-switch 有没有推进过）。
+        func samePosition(as other: SyncCursor) -> Bool {
+            byteOffset == other.byteOffset && lineOffset == other.lineOffset
+        }
+    }
+
+    /// 进程内续读进度(建立在 session_log_sync 游标之上)。
     private struct FileMark {
-        var mtimeNs: Int64      // 上次读完时的文件 mtime(ns)
-        var bytesRead: Int64    // 已消费到的字节位置(完整行边界)
-        var linesRead: Int64    // 已消费的行数(含 db 偏移内跳过的行)
-        var dbOffset: Int64     // 建立本进度时 session_log_sync 的行偏移
+        var mtimeNs: Int64        // 上次读完时的文件 mtime(ns)
+        var bytesRead: Int64      // 已消费到的字节位置(完整行边界)
+        var linesRead: Int64      // 已消费的行数(含 db 游标内跳过的行)
+        var dbCursor: SyncCursor  // 建立本进度时 session_log_sync 的游标
     }
     private var marks: [String: FileMark] = [:]
 
@@ -195,7 +221,7 @@ public final class SessionOverlay {
             seenPaths.insert(path)
             // 每个文件一个 autorelease 池（同 OmpOverlay）：JSONSerialization 的
             // Foundation 对象否则要堆到整趟扫描结束，实测本层峰值常驻 96MB。
-            autoreleasepool { scanFileLocked(path, dbState: sync[path] ?? (lastModified: 0, offset: 0)) }
+            autoreleasepool { scanFileLocked(path, dbState: sync[path] ?? .empty) }
         }
         // 文件消失(会话被清理)→ 其待入库行一并移除
         let vanished = Set(marks.keys).subtracting(seenPaths)
@@ -219,17 +245,17 @@ public final class SessionOverlay {
     ///   * marks 的每个 key 都还在 files 里 —— 否则有文件消失，要走 vanished 清理；
     ///   * 库水位没动 —— 否则 cc-switch 补录过，prune 可能有新命中。
     private func nothingChangedLocked(_ files: [String],
-                                      _ sync: [String: (lastModified: Int64, offset: Int64)],
+                                      _ sync: [String: SyncCursor],
                                       _ db: OpaquePointer) -> Bool {
         guard let wm = lastWatermark else { return false }   // 首轮必须真扫
         var live = 0
         for path in files {
             guard let st = statNanos(path) else { return false }
-            let dbState = sync[path] ?? (lastModified: 0, offset: 0)
+            let dbState = sync[path] ?? .empty
             if let m = marks[path] {
                 live += 1
                 guard st.mtimeNs > dbState.lastModified,
-                      m.dbOffset == dbState.offset,
+                      m.dbCursor.samePosition(as: dbState),
                       m.bytesRead <= st.size,
                       m.mtimeNs == st.mtimeNs else { return false }
             } else if st.mtimeNs > dbState.lastModified {
@@ -240,8 +266,21 @@ public final class SessionOverlay {
         return JSONLScan.dbWatermark(db) == wm
     }
 
+    /// 按 db 游标的形态决定本文件的读取起点(见 SyncCursor 的三态说明)。
+    private func startPoint(_ cursor: SyncCursor, fileSize: Int64)
+        -> (startBytes: Int64, skipLines: Int64) {
+        guard let b = cursor.byteOffset else {
+            return (0, cursor.lineOffset)   // A/B 态：旧行号路径，逐行跳过前 N 行
+        }
+        // C 态：直接 seek 到字节位，行号(恒 0)一概不看。越界=外部截断/重写，
+        // 钳到 EOF —— 对齐上游「游标钉至 EOF、不重放旧区间」。**绝不回退到 0
+        // 重扫**：30 天前的明细已被 rollup 删除，request_id 去重对其失明，
+        // 重扫会把那段历史再叠加一遍，与 usage_daily_rollups 双算。
+        return (min(max(0, b), fileSize), 0)
+    }
+
     /// 扫描单个文件的新增部分(对齐 sync_single_file)。
-    private func scanFileLocked(_ path: String, dbState: (lastModified: Int64, offset: Int64)) {
+    private func scanFileLocked(_ path: String, dbState: SyncCursor) {
         guard let st = statNanos(path) else { return }
 
         // cc-switch 已消化整个文件 → 丢掉本文件全部待入库行
@@ -254,29 +293,29 @@ public final class SessionOverlay {
 
         var startBytes: Int64 = 0
         var linesRead: Int64 = 0
-        var skipLines = dbState.offset
-        if let m = marks[path] {
-            if m.dbOffset == dbState.offset, m.bytesRead <= st.size {
-                // 在自己的进度上续读(不必重数 db 偏移内的行)
-                startBytes = m.bytesRead
-                linesRead = m.linesRead
-                skipLines = 0
-                if m.mtimeNs == st.mtimeNs { return }   // 内容未变
-            } else {
-                // db 偏移推进(cc-switch 刚跑过)或文件被重写 → 从头重建本文件的增量
+        var skipLines: Int64 = 0
+        if let m = marks[path], m.dbCursor.samePosition(as: dbState), m.bytesRead <= st.size {
+            // 在自己的进度上续读(不必重数 db 游标内的行)
+            startBytes = m.bytesRead
+            linesRead = m.linesRead
+            if m.mtimeNs == st.mtimeNs { return }   // 内容未变
+        } else {
+            // marks 无记录 = 首次见到该文件，rows 里必然没有它的行。冷启动时若每个
+            // 文件都白跑一次全量 filter，等于把整个结果字典重建上千遍
+            // （~/.claude/projects 本机 1092 个文件，比 OMP 那边语料更大）。
+            if marks[path] != nil {
+                // db 游标推进(cc-switch 刚跑过)或文件被重写 → 从头重建本文件的增量
                 rows = rows.filter { $0.value.sourceFile != path }
             }
+            (startBytes, skipLines) = startPoint(dbState, fileSize: st.size)
         }
-        // marks 无记录 = 首次见到该文件，rows 里必然没有它的行。冷启动时若每个文件
-        // 都白跑一次全量 filter，等于把整个结果字典重建上千遍（~/.claude/projects
-        // 本机 1092 个文件，比 OMP 那边语料更大）。
 
         guard let fh = FileHandle(forReadingAtPath: path) else { return }
         defer { try? fh.close() }
         if startBytes > 0 { try? fh.seek(toOffset: UInt64(startBytes)) }
         guard let data = try? fh.readToEnd(), !data.isEmpty else {
             marks[path] = FileMark(mtimeNs: st.mtimeNs, bytesRead: startBytes,
-                                   linesRead: linesRead, dbOffset: dbState.offset)
+                                   linesRead: linesRead, dbCursor: dbState)
             return
         }
 
@@ -299,7 +338,7 @@ public final class SessionOverlay {
                 consumedBytes = startBytes + Int64(off)
                 linesRead += 1
                 // db 偏移内的行 cc-switch 已消化:只数,不解析
-                if skipLines > 0 && linesRead <= dbState.offset { continue }
+                if skipLines > 0 && linesRead <= skipLines { continue }
                 guard lineLen > 0, JSONLScan.hasUsageMarker(lineBase, lineLen) else { continue }
                 let lineData = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: lineBase),
                                     count: lineLen, deallocator: .none)
@@ -310,7 +349,7 @@ public final class SessionOverlay {
         }
 
         marks[path] = FileMark(mtimeNs: st.mtimeNs, bytesRead: consumedBytes,
-                               linesRead: linesRead, dbOffset: dbState.offset)
+                               linesRead: linesRead, dbCursor: dbState)
     }
 
     /// 单行 JSON → 一条待入库行。不命中计费条件时静默跳过。
@@ -446,15 +485,35 @@ public final class SessionOverlay {
 
     // MARK: - session_log_sync / model_pricing
 
-    private func loadSyncTable(_ db: OpaquePointer) -> [String: (lastModified: Int64, offset: Int64)] {
-        var out: [String: (Int64, Int64)] = [:]
+    /// 某表是否有某列。老库(schema<18)没有字节游标列，SQL 必须整支换掉——
+    /// 直接 SELECT 不存在的列会让 prepare 失败，整张表读不出来。
+    private func hasColumn(_ db: OpaquePointer, _ table: String, _ col: String) -> Bool {
         var stmt: OpaquePointer?
-        let sql = "SELECT file_path, last_modified, last_line_offset FROM session_log_sync"
+        let sql = "SELECT 1 FROM pragma_table_info('\(table)') WHERE name='\(col)'"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
+    private func loadSyncTable(_ db: OpaquePointer) -> [String: SyncCursor] {
+        var out: [String: SyncCursor] = [:]
+        var stmt: OpaquePointer?
+        // schema v18 起才有 last_byte_offset；老库整支摘掉该列(见 SyncCursor 的三态说明)。
+        let hasByteCol = hasColumn(db, "session_log_sync", "last_byte_offset")
+        let sql = hasByteCol
+            ? "SELECT file_path, last_modified, last_line_offset, last_byte_offset FROM session_log_sync"
+            : "SELECT file_path, last_modified, last_line_offset FROM session_log_sync"
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return out }
         defer { sqlite3_finalize(stmt) }
         while sqlite3_step(stmt) == SQLITE_ROW {
             guard let c = sqlite3_column_text(stmt, 0) else { continue }
-            out[String(cString: c)] = (sqlite3_column_int64(stmt, 1), sqlite3_column_int64(stmt, 2))
+            // NULL 与 0 必须分开：0 是 C 态的合法字节位，NULL 才表示「没有字节游标」。
+            let byteOffset: Int64? = (hasByteCol && sqlite3_column_type(stmt, 3) != SQLITE_NULL)
+                ? sqlite3_column_int64(stmt, 3) : nil
+            out[String(cString: c)] = SyncCursor(
+                lastModified: sqlite3_column_int64(stmt, 1),
+                lineOffset: sqlite3_column_int64(stmt, 2),
+                byteOffset: byteOffset)
         }
         return out
     }
