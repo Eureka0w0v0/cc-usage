@@ -28,7 +28,7 @@ public enum ModelPricing {
         Row(input: i, output: o, cacheRead: cr, cacheCreation: cw)
     }
 
-    /// 对齐 cc-switch seed_model_pricing 的 188 条内置定价（同步至 v3.19.1）。
+    /// 对齐 cc-switch seed_model_pricing 的 192 条内置定价（同步至 v3.20.1）。
     public static let table: [String: Row] = [
         "claude-fable-5": R(10, 50, 1, 12.5),  // Claude Fable 5
         "claude-mythos-5": R(10, 50, 1, 12.5),  // Claude Mythos 5
@@ -111,6 +111,7 @@ public enum ModelPricing {
         "gpt-4.1": R(2, 8, 0.5, 0),  // GPT-4.1
         "gpt-4.1-mini": R(0.4, 1.6, 0.1, 0),  // GPT-4.1 Mini
         "gpt-4.1-nano": R(0.1, 0.4, 0.025, 0),  // GPT-4.1 Nano
+        "gemini-3.7-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.7 Flash
         "gemini-3.6-flash": R(1.5, 7.5, 0.15, 0),  // Gemini 3.6 Flash
         "gemini-3.5-flash": R(1.5, 9, 0.15, 0),  // Gemini 3.5 Flash
         "gemini-3.5-flash-lite": R(0.3, 2.5, 0.03, 0),  // Gemini 3.5 Flash Lite
@@ -138,10 +139,11 @@ public enum ModelPricing {
         "deepseek-v3.1": R(0.55, 1.67, 0.055, 0),  // DeepSeek V3.1
         "deepseek-v3": R(0.28, 1.11, 0.028, 0),  // DeepSeek V3
         // 自 2026-07 起为 V4 Flash 的 legacy 别名（同价）
-        "deepseek-chat": R(0.14, 0.28, 0.0028, 0),  // DeepSeek Chat
-        "deepseek-reasoner": R(0.14, 0.28, 0.0028, 0),  // DeepSeek Reasoner
-        "deepseek-v4-flash": R(0.14, 0.28, 0.0028, 0),  // DeepSeek V4 Flash
-        "deepseek-v4-pro": R(0.435, 0.87, 0.003625, 0),  // DeepSeek V4 Pro
+        "deepseek-chat": R(0.44, 1.32, 0.014, 0),  // DeepSeek Chat
+        "deepseek-reasoner": R(0.44, 1.32, 0.014, 0),  // DeepSeek Reasoner
+        "deepseek-v4-flash": R(0.44, 1.32, 0.014, 0),  // DeepSeek V4 Flash
+        "deepseek-v4-flash-0731": R(0.44, 1.32, 0.014, 0),  // DeepSeek V4 Flash
+        "deepseek-v4-pro": R(1.32, 3.96, 0.044, 0),  // DeepSeek V4 Pro
         "kimi-k2-thinking": R(0.55, 2.2, 0.1, 0),  // Kimi K2 Thinking
         "kimi-k2-0905": R(0.55, 2.2, 0.1, 0),  // Kimi K2
         "kimi-k2-turbo": R(1.11, 8.06, 0.14, 0),  // Kimi K2 Turbo
@@ -174,6 +176,7 @@ public enum ModelPricing {
         "mimo-v2-pro": R(0.435, 0.87, 0.0036, 0),  // MiMo V2 Pro
         "mimo-v2.5": R(0.14, 0.29, 0.0028, 0),  // MiMo V2.5
         "mimo-v2.5-pro": R(0.435, 0.87, 0.0036, 0),  // MiMo V2.5 Pro
+        "qwen3.8-max": R(2, 6, 0.25, 2.5),  // Qwen3.8 Max
         "qwen3.7-max": R(2.5, 7.5, 0.25, 0),  // Qwen3.7 Max
         "qwen3.7-plus": R(0.4, 1.6, 0.08, 0),  // Qwen3.7 Plus
         "qwen3.6-plus": R(0.325, 1.95, 0.065, 0),  // Qwen3.6 Plus
@@ -189,7 +192,8 @@ public enum ModelPricing {
         "qwq-plus": R(0.8, 2.4, 0, 0),  // QwQ Plus
         "qwq-32b": R(0.2, 0.6, 0, 0),  // QwQ 32B
         "qwen3-32b": R(0.16, 0.64, 0, 0),  // Qwen3 32B
-        "grok-4.5": R(2, 6, 0.5, 0),  // Grok 4.5
+        "grok-4.6": R(2, 6, 0.5, 0),  // Grok 4.6
+        "grok-4.5": R(2, 6, 0.3, 0),  // Grok 4.5
         // Grok Build 的 cache read 实测 0.30（上游按 costUsdTicks 反推），非挂牌 0.50
         "grok-4.5-build": R(2, 6, 0.3, 0),  // Grok 4.5 Build
         "grok-4.3": R(1.25, 2.5, 0.2, 0),  // Grok 4.3
