@@ -869,7 +869,7 @@ public final class UsageStore: @unchecked Sendable {
             hasRequestModel: hasColumn(db, "usage_daily_rollups", "request_model"))
     }
     /// provider 展示名：providers.name 优先，会话占位 provider_id 映射为可读名。
-    static let providerNameCoalesce = "COALESCE(p.name, CASE l.provider_id WHEN '_session' THEN 'Claude (Session)' WHEN '_codex_session' THEN 'Codex (Session)' WHEN '_gemini_session' THEN 'Gemini (Session)' WHEN '_opencode_session' THEN 'OpenCode (Session)' WHEN '_grok_session' THEN 'Grok Build (Session)' ELSE l.provider_id END)"
+    static let providerNameCoalesce = "COALESCE(p.name, CASE l.provider_id WHEN '_session' THEN 'Claude (Session)' WHEN '_codex_session' THEN 'Codex (Session)' WHEN '_gemini_session' THEN 'Gemini (Session)' WHEN '_opencode_session' THEN 'OpenCode (Session)' WHEN '_grok_session' THEN 'Grok Build (Session)' WHEN '_pi_session' THEN 'Pi (Session)' ELSE l.provider_id END)"
     static let providersJoinL = "LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type"
 
     // ── usage_daily_rollups(别名 r) 侧的对应片段，供两表合并的 summary/trend/by-app 使用 ──
