@@ -516,7 +516,9 @@ struct MenuBarLabel: View {
     /// pieces → 单张黑色模板图：⚡（可关）+ [All 文本] + [品牌图标 文本]…，空段兜底 "CC"。
     /// 默认不限宽；仅当 PanelModel 检测到状态项被挤掉、给出动态上限时才尾部截断 "…"。
     private var composite: NSImage {
-        let font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+        // 等宽数字：系统字体的比例数字会让 562.7K → 1.2M 这种纯数值变化也改宽度，
+        // 状态项每刷新一轮就左右跳，还会误触 governor 的「自然宽度突变>30pt=内容结构变了」判定。
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .medium)
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
         let str = NSMutableAttributedString()
         func appendIcon(_ img: NSImage) {
