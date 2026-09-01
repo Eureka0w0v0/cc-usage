@@ -500,12 +500,13 @@ struct MenuBarLabel: View {
     }
 
     /// 一段菜单栏内容：品牌图标 + 该 AI 的文本。All 段无图标（⚡ 就是本应用标识）。
-    private struct Piece { let icon: String?; let text: String }
+    /// title = 该段的可读名（VoiceOver 用——图标念不出来）。All 段无图标也无名字。
+    private struct Piece { let icon: String?; let title: String?; let text: String }
 
     private var pieces: [Piece] {
         var out: [Piece] = []
         let all = segments.map(\.text).joined(separator: "  ")
-        if !all.isEmpty { out.append(Piece(icon: nil, text: all)) }
+        if !all.isEmpty { out.append(Piece(icon: nil, title: nil, text: all)) }
         for app in MBApp.allCases {
             let a = app.rawValue
             let sums = model.mbAppSummaries[a]
@@ -546,7 +547,9 @@ struct MenuBarLabel: View {
                     segs.append(contentsOf: sel.map { "\($0.family): \(Int($0.usedPercent.rounded()))%" })
                 }
             }
-            if !segs.isEmpty { out.append(Piece(icon: app.iconAsset, text: segs.joined(separator: " "))) }
+            if !segs.isEmpty {
+                out.append(Piece(icon: app.iconAsset, title: app.title, text: segs.joined(separator: " ")))
+            }
         }
         return out
     }
@@ -608,8 +611,17 @@ struct MenuBarLabel: View {
             return true
         }
         img.isTemplate = true
+        img.accessibilityDescription = voiceOverText(ps)   // 合成图本身念不出来，补一句纯文本
         MBLabelCache.store(key, image: img, natural: natural)
         return img
+    }
+
+    /// VoiceOver 文案："CC Usage · Claude D: 562.7K 5H: 0% W: 25%"。
+    private func voiceOverText(_ ps: [Piece]) -> String {
+        guard !ps.isEmpty else { return "CC Usage" }
+        let body = ps.map { [$0.title, $0.text].compactMap { $0 }.joined(separator: " ") }
+            .joined(separator: ", ")
+        return "CC Usage · \(body)"
     }
 
     private func quotaStr(_ label: String, _ name: String) -> String {
