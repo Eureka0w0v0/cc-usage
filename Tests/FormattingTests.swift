@@ -16,6 +16,18 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(Fmt.cost(150), "$150")
     }
 
+    // 菜单栏专用紧凑格式：0 不再写成 "$0.000"，M/B 只留 1 位小数。
+    func testCompactForMenuBar() {
+        XCTAssertEqual(Fmt.costCompact(0), "$0")
+        XCTAssertEqual(Fmt.costCompact(0.5), "$0.500")   // 非 0 与 cost 同口径
+        XCTAssertEqual(Fmt.costCompact(150), "$150")
+
+        XCTAssertEqual(Fmt.tokensCompact(999), "999")
+        XCTAssertEqual(Fmt.tokensCompact(1_500), "1.5K")
+        XCTAssertEqual(Fmt.tokensCompact(2_340_000), "2.3M")
+        XCTAssertEqual(Fmt.tokensCompact(1_500_000_000), "1.5B")
+    }
+
     func testPercentClampAndRounding() {
         XCTAssertEqual(Fmt.percent(0.5), "50.0%")
         XCTAssertEqual(Fmt.percent(0.9995), "100%")   // ≥99.95 取整

@@ -491,11 +491,13 @@ struct MenuBarLabel: View {
         // 每个开启的周期一段，前缀 D/W/M（Day/Week/Month）；同周期的 Tokens/花费 合并为 "D:1M·$0.1"。
         // 多选各自独立出现，如 D 用量 + W 用量 → "D:1M W:1M"。
         func add(_ letter: String, _ sum: UsageSummary?, _ tok: Bool, _ cost: Bool) {
-            guard tok || cost, let s = sum else { return }
+            guard tok || cost else { return }
+            // 数据未到（冷启动、或刚勾上还没补到这一轮）时占位，别整段消失——
+            // 否则 label 会先短后长跳一下，还会白白惊动宽度 governor。
+            guard let s = sum else { segs.append(Seg(id: letter, text: "\(letter): —")); return }
             var parts: [String] = []
-            if tok  { parts.append(Fmt.tokens(s.tokensProcessed)) }
-            if cost { parts.append(Fmt.cost(s.cost)) }
-            guard !parts.isEmpty else { return }
+            if tok  { parts.append(Fmt.tokensCompact(s.tokensProcessed)) }
+            if cost { parts.append(Fmt.costCompact(s.cost)) }
             segs.append(Seg(id: letter, text: "\(letter): \(parts.joined(separator: "·"))"))
         }
         add("D", model.mbToday, model.mbTokToday, model.mbCostToday)
@@ -532,10 +534,11 @@ struct MenuBarLabel: View {
             var segs: [String] = []
             func add(_ letter: String, _ s: UsageSummary?, _ tokKey: String, _ costKey: String) {
                 let tok = model.chipOn(tokKey), cost = model.chipOn(costKey)
-                guard tok || cost, let s else { return }
+                guard tok || cost else { return }
+                guard let s else { segs.append("\(letter): —"); return }   // 同上：占位撑住宽度
                 var p: [String] = []
-                if tok  { p.append(Fmt.tokens(s.tokensProcessed)) }
-                if cost { p.append(Fmt.cost(s.cost)) }
+                if tok  { p.append(Fmt.tokensCompact(s.tokensProcessed)) }
+                if cost { p.append(Fmt.costCompact(s.cost)) }
                 segs.append("\(letter): \(p.joined(separator: "·"))")
             }
             add("D", sums?.today, "\(a).tokens.today", "\(a).cost.today")

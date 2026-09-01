@@ -35,6 +35,24 @@ public enum Fmt {
         return String(format: "$%.3f", v)
     }
 
+    /// 菜单栏专用：0 显示 "$0"（而不是难看的 "$0.000"），其余与 cost 同口径。
+    /// 菜单栏是常驻视野里最贵的一块地，格式只求一眼可读。
+    public static func costCompact(_ v: Double) -> String {
+        v == 0 ? "$0" : cost(v)
+    }
+
+    /// 菜单栏专用：M/B 只留 1 位小数（2.24M → 2.2M）。等宽数字下每省一位约 7pt，
+    /// 三段码片就是 20pt+，而菜单栏根本不需要这一位的精度（精确值看面板）。
+    public static func tokensCompact(_ n: Int64) -> String {
+        let d = Double(n)
+        switch abs(d) {
+        case 1_000_000_000...: return String(format: "%.1fB", d / 1_000_000_000)
+        case 1_000_000...:     return String(format: "%.1fM", d / 1_000_000)
+        case 1_000...:         return String(format: "%.1fK", d / 1_000)
+        default:               return "\(n)"
+        }
+    }
+
     public static func costPrecise(_ v: Double) -> String {
         String(format: "$%.4f", v)
     }
