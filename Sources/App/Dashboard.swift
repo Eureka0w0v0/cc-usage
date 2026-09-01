@@ -114,6 +114,8 @@ final class PanelModel: ObservableObject {
     private var hiddenTicks = 0                     // 连续不可见计数：≥2 才算真被挤，滤面板开合毛刺
     private var growTicks = 0                        // 可见但仍截断的连续计数：≥2 才尝试夺回空间
     private var visTimer: AnyCancellable?
+    private weak var statusWindow: NSWindow?     // 状态项窗口（长命），找到一次就留着
+    private var panelWindowClass: AnyClass?      // 面板窗口的类对象，比对指针即可，免去每秒建串
 
     /// composite 渲染时回报自然宽度（普通存储，不触发重绘）。
     func reportNaturalWidth(_ w: CGFloat) { naturalWidth = w }
@@ -224,15 +226,10 @@ final class PanelModel: ObservableObject {
     /// - 可见且自然宽度已 ≤ 上限 → 上限多余，立刻解除（全宽显示，有空间绝不截断）；
     /// - 可见但仍截断 → 每 2 拍向天花板方向夺回空间，越界再被挤会精确收回，快速收敛不震荡。
     private func checkStatusItemVisibility() {
-        guard let win = NSApp.windows.first(where: {
-            String(describing: type(of: $0)).contains("StatusBarWindow")
-        }) else { return }
+        guard let win = statusBarWindow() else { return }
         let menuBarPresent = NSScreen.screens.contains { $0.visibleFrame.maxY < $0.frame.maxY }
         guard menuBarPresent else { return }   // 全屏等菜单栏不在场时不误判为被挤
-        let panelOpen = NSApp.windows.contains {
-            String(describing: type(of: $0)).contains("MenuBarExtraWindow") && $0.isVisible
-        }
-        guard !panelOpen else { return }       // 面板开着时遮挡状态不稳，跳过
+        guard !panelOpen() else { return }     // 面板开着时遮挡状态不稳，跳过
 
         // 内容结构突变（增删码片/AI 段，宽度跳变 >30pt）→ 允许重新扩张，不受旧挤出宽度束缚
         if abs(naturalWidth - lastNatural) > 30 { growCeiling = .greatestFiniteMagnitude }
@@ -263,6 +260,26 @@ final class PanelModel: ObservableObject {
             growCeiling = newCap                              // 别再涨回刚被挤的宽度，防边界震荡
             mbWidthCap = newCap
             hiddenTicks = 0                                   // 收缩后重新计数，给渲染生效留时间
+        }
+    }
+
+    /// 状态项窗口：长命对象，弱引用缓存住。原来每拍都对所有窗口做
+    /// String(describing: type(of:)) 建串再子串匹配，1Hz 常驻白烧。
+    private func statusBarWindow() -> NSWindow? {
+        if let w = statusWindow { return w }
+        let found = NSApp.windows.first { String(describing: type(of: $0)).contains("StatusBarWindow") }
+        statusWindow = found
+        return found
+    }
+
+    /// 菜单栏面板是否开着。面板窗口按需创建，弱引用会随关闭失效，改缓存「类对象」：
+    /// 认过一次之后每拍只做指针比对，不再建字符串。
+    private func panelOpen() -> Bool {
+        NSApp.windows.contains { w in
+            if let cls = panelWindowClass { return type(of: w) == cls && w.isVisible }
+            guard String(describing: type(of: w)).contains("MenuBarExtraWindow") else { return false }
+            panelWindowClass = type(of: w)
+            return w.isVisible
         }
     }
 
