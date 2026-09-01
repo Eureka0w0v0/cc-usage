@@ -317,6 +317,10 @@ final class PanelModel: ObservableObject {
 
         let store = self.store
         let chips = mbAppChips   // 值拷贝进后台闭包，避免在途中被设置面板改动
+        // Codex 窗口列表：勾了码片要用，设置面板展开 Codex 分组也要用（得先有列表才能给出勾选项）。
+        // 扫描本身是主线程碰不得的活（~/.codex/sessions 递归枚举 + 尾读），一律在这条后台链上做。
+        let wantCodex = chips.contains { $0.hasPrefix("codex.quota.") }
+            || UserDefaults.standard.bool(forKey: "mb.group.codex")
 
         Task { [weak self] in
             let out = await Task.detached(priority: .userInitiated) { () -> ReloadOutput in
@@ -345,10 +349,8 @@ final class PanelModel: ObservableObject {
                         if need("month") { s.month = try? store.rangeSummary(UsageFilter(start: now - 30 * 86400, end: now, appType: app)) }
                         o.appSummaries[app] = s
                     }
-                    // codex.quota.<窗口标签>（如 codex.quota.5H / codex.quota.30D），任一勾选即扫描
-                    if chips.contains(where: { $0.hasPrefix("codex.quota.") }) {
-                        o.codexWindows = CodexQuota.latest()
-                    }
+                    // codex.quota.<窗口标签>（如 codex.quota.5H / codex.quota.30D）
+                    if wantCodex { o.codexWindows = CodexQuota.latest() }
                 } catch {
                     o.errorText = "\(error)"
                 }
@@ -755,7 +757,10 @@ struct MenuBarSettingsView: View {
                 appRows(.codex)
                 // 逐窗口勾选，交互与 Claude 对齐；窗口从本地快照发现（Plus=5H+Week，Free=30D）
                 row("Quota") {
-                    let windows = CodexQuota.latest()
+                    // 读 model 里后台扫好的快照。这里原来直接调 CodexQuota.latest()，
+                    // 而 group() 的内容闭包是立即求值的 —— 分组折叠着也会在主线程
+                    // 递归枚举 ~/.codex/sessions，面板每开一次就每 30s 卡一下。
+                    let windows = model.mbCodexQuota
                     if windows.isEmpty {
                         noQuota("No Codex data")
                     } else {
@@ -765,6 +770,9 @@ struct MenuBarSettingsView: View {
                         }
                     }
                 }
+            }
+            .onChange(of: expCodex) { _, on in
+                if on { model.reload() }   // 展开即补一轮，不必干等下一个 tick 才出勾选项
             }
             // Gemini 按天限请求数且不落盘、OpenCode 配额归背后 provider、Grok/xAI 无公开额度接口——
             // 都没有配额窗口可显示，Quota 行保留占位并如实标注
