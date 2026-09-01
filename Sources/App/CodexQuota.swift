@@ -95,7 +95,7 @@ enum CodexQuota {
         switch minutes {
         case ..<0:  return "?"
         case 300:   return "5H"
-        case 10080: return "W"
+        case 10080: return "7D"    // 不叫 W：菜单栏里 W 已是「本周用量」，撞车没法读
         case 43200: return "30D"
         default:
             return minutes % 1440 == 0 ? "\(minutes / 1440)D"

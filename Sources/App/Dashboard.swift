@@ -19,6 +19,7 @@ enum MBKey {
     static let quota5H   = "mb.quota.5h"
     static let quotaWeek = "mb.quota.week"
     static let icon      = "mb.icon"        // 菜单栏 ⚡ 图标开关（默认开）
+    static let quotaBar  = "mb.quotaBar"    // 额度画进度条（默认开）；关掉则显示百分比数字
     static let appChips  = "mb.appChips"    // 按 AI 分组的码片选中集（字符串数组）
     static let ctxBounds = "mb.ctxBounds"   // 按前台 app 分桶的容量边界 [bundleID: [下界, 上界]]
 }
@@ -80,6 +81,9 @@ final class PanelModel: ObservableObject {
     @Published var mbQuotaWeek: Bool { didSet { persist(MBKey.quotaWeek, mbQuotaWeek); if mbQuotaWeek { refreshQuotaNow() } } }
     /// 菜单栏 ⚡ 图标开关。全关 + 码片全空时 label 会兜底显示 "CC"，状态项不会隐身。
     @Published var mbShowIcon: Bool  { didSet { persist(MBKey.icon, mbShowIcon) } }
+    /// 额度码片画进度条（默认）还是写百分比数字。条更窄也更好扫，但精确值就看不到了，
+    /// 是主观取舍 → 给个开关，不替用户拍板。
+    @Published var mbQuotaBar: Bool  { didSet { persist(MBKey.quotaBar, mbQuotaBar) } }
 
     /// 按 AI 分组的码片选中集（"claude.tokens.today" / "codex.quota" …）。
     /// didSet 落盘 + 立即补一轮 reload，让新勾选的数字马上出现。
@@ -149,6 +153,7 @@ final class PanelModel: ObservableObject {
         mbQuota5H   = load(MBKey.quota5H,   false)
         mbQuotaWeek = load(MBKey.quotaWeek, false)
         mbShowIcon  = load(MBKey.icon,      true)
+        mbQuotaBar  = load(MBKey.quotaBar,   true)
         mbAppChips  = Set(d.stringArray(forKey: MBKey.appChips) ?? [])
         PanelModel.shared = self
         // 迁移：清掉旧版按 app 分桶持久化的容量记忆（陈旧窄上限会错误截断，已改为纯反应式）
@@ -157,6 +162,11 @@ final class PanelModel: ObservableObject {
         // 但实机 UserDefaults 里还躺着脏值（mb.maxSafeWidth / mb.squeezeWidth）。
         d.removeObject(forKey: "mb.maxSafeWidth")
         d.removeObject(forKey: "mb.squeezeWidth")
+        // 迁移：Codex 周窗口标签 W → 7D（W 让位给「本周用量」），码片 key 跟着变，别丢勾选
+        if mbAppChips.remove("codex.quota.W") != nil {
+            mbAppChips.insert("codex.quota.7D")
+            d.set(Array(mbAppChips).sorted(), forKey: MBKey.appChips)
+        }
         // embed 面板持久化的刷新间隔（ms，set_setting 写入）：启动时接管为全局节奏，
         // 菜单栏与面板从第一秒起就一致。没存过则维持默认 5s。
         if let ms = d.object(forKey: "embed.refreshIntervalMs") as? Int {
@@ -494,11 +504,11 @@ struct MenuBarLabel: View {
             guard tok || cost else { return }
             // 数据未到（冷启动、或刚勾上还没补到这一轮）时占位，别整段消失——
             // 否则 label 会先短后长跳一下，还会白白惊动宽度 governor。
-            guard let s = sum else { segs.append(Seg(id: letter, text: "\(letter): —")); return }
+            guard let s = sum else { segs.append(Seg(id: letter, text: "\(letter):—")); return }
             var parts: [String] = []
             if tok  { parts.append(Fmt.tokensCompact(s.tokensProcessed)) }
             if cost { parts.append(Fmt.costCompact(s.cost)) }
-            segs.append(Seg(id: letter, text: "\(letter): \(parts.joined(separator: "·"))"))
+            segs.append(Seg(id: letter, text: "\(letter):\(parts.joined(separator: "·"))"))
         }
         add("D", model.mbToday, model.mbTokToday, model.mbCostToday)
         add("W", model.mbWeek,  model.mbTokWeek,  model.mbCostWeek)
@@ -521,41 +531,61 @@ struct MenuBarLabel: View {
     }
 
     /// 一段菜单栏内容：品牌图标 + 该 AI 的文本。All 段无图标（⚡ 就是本应用标识）。
+    /// 一个额度码片。pct = nil 表示勾了但没数据（没装 / 未登录 / 扫不到快照）。
+    /// 额度不再混进文本段——它要自绘（进度条 / 危险胶囊），跟用量文本分开建模。
+    private struct QuotaChip {
+        let label: String        // 窗口时长（5H/7D/30D）或模型家族名
+        let pct: Double?
+        var speech: String {
+            guard let pct else { return label == "—" ? "quota unavailable" : "\(label) unavailable" }
+            return "\(label) \(Int(pct.rounded()))% used"
+        }
+    }
+
+    /// 一段菜单栏内容：品牌图标 + 用量文本 + 额度码片。All 段无图标（⚡ 就是本应用标识）。
     /// title = 该段的可读名（VoiceOver 用——图标念不出来）。All 段无图标也无名字。
-    private struct Piece { let icon: String?; let title: String?; let text: String }
+    private struct Piece {
+        let icon: String?
+        let title: String?
+        let text: String          // 用量段 D/W/M，可能为空
+        let quotas: [QuotaChip]
+    }
 
     private var pieces: [Piece] {
         var out: [Piece] = []
         let all = segments.map(\.text).joined(separator: "  ")
-        if !all.isEmpty { out.append(Piece(icon: nil, title: nil, text: all)) }
+        if !all.isEmpty { out.append(Piece(icon: nil, title: nil, text: all, quotas: [])) }
         for app in MBApp.allCases {
             let a = app.rawValue
             let sums = model.mbAppSummaries[a]
             var segs: [String] = []
+            var quotas: [QuotaChip] = []
             func add(_ letter: String, _ s: UsageSummary?, _ tokKey: String, _ costKey: String) {
                 let tok = model.chipOn(tokKey), cost = model.chipOn(costKey)
                 guard tok || cost else { return }
-                guard let s else { segs.append("\(letter): —"); return }   // 同上：占位撑住宽度
+                guard let s else { segs.append("\(letter):—"); return }   // 同上：占位撑住宽度
                 var p: [String] = []
                 if tok  { p.append(Fmt.tokensCompact(s.tokensProcessed)) }
                 if cost { p.append(Fmt.costCompact(s.cost)) }
-                segs.append("\(letter): \(p.joined(separator: "·"))")
+                segs.append("\(letter):\(p.joined(separator: "·"))")
             }
             add("D", sums?.today, "\(a).tokens.today", "\(a).cost.today")
             add("W", sums?.week,  "\(a).tokens.week",  "\(a).cost.week")
             add("M", sums?.month, "\(a).tokens.month", "\(a).cost.month")
             // 额度段跟在所属 AI 段内：Claude 走官方接口两档，Codex 走本地快照（窗口自适应）
             if app == .claude {
-                if model.mbQuota5H   { segs.append(quotaStr("5H", "five_hour")) }
-                if model.mbQuotaWeek { segs.append(quotaStr("W",  "seven_day")) }
+                // 窗口标签一律用时长。原来七日额度叫 "W"，而 All 组的 "W" 是「本周用量」——
+                // 两个 W 同屏含义不同，没法读，这里改 7D 彻底分开。
+                if model.mbQuota5H   { quotas.append(QuotaChip(label: "5H", pct: tier("five_hour")?.utilization)) }
+                if model.mbQuotaWeek { quotas.append(QuotaChip(label: "7D", pct: tier("seven_day")?.utilization)) }
             }
             if app == .codex {
                 let anyOn = model.mbAppChips.contains { $0.hasPrefix("codex.quota.") }
                 let sel = model.mbCodexQuota.filter { model.chipOn("codex.quota.\($0.label)") }
                 if anyOn && model.mbCodexQuota.isEmpty {
-                    segs.append("—")   // 勾了但没扫到快照（没装 Codex / 会话被清）
+                    quotas.append(QuotaChip(label: "—", pct: nil))   // 勾了但没扫到快照（没装 Codex / 会话被清）
                 } else {
-                    segs.append(contentsOf: sel.map { "\($0.label): \(Int($0.usedPercent.rounded()))%" })
+                    quotas.append(contentsOf: sel.map { QuotaChip(label: $0.label, pct: $0.usedPercent) })
                 }
             }
             if app == .antigravity {
@@ -564,13 +594,14 @@ struct MenuBarLabel: View {
                 let anyOn = model.mbAppChips.contains { $0.hasPrefix("antigravity.quota.") }
                 let sel = pools.filter { model.chipOn("antigravity.quota.\($0.family)") }
                 if anyOn && pools.isEmpty {
-                    segs.append("—")   // 勾了但没查到（没装 Antigravity / 未登录 / 网络失败）
+                    quotas.append(QuotaChip(label: "—", pct: nil))   // 勾了但没查到（没装 / 未登录 / 网络失败）
                 } else {
-                    segs.append(contentsOf: sel.map { "\($0.family): \(Int($0.usedPercent.rounded()))%" })
+                    quotas.append(contentsOf: sel.map { QuotaChip(label: $0.family, pct: $0.usedPercent) })
                 }
             }
-            if !segs.isEmpty {
-                out.append(Piece(icon: app.iconAsset, title: app.title, text: segs.joined(separator: " ")))
+            if !segs.isEmpty || !quotas.isEmpty {
+                out.append(Piece(icon: app.iconAsset, title: app.title,
+                                 text: segs.joined(separator: " "), quotas: quotas))
             }
         }
         return out
@@ -582,9 +613,14 @@ struct MenuBarLabel: View {
         let ps = pieces
         // 动态上限（窗口宽 → 图像宽留 ~12pt 状态项内边距余量）
         let cap = model.mbWidthCap.map { max(60, $0 - 12) } ?? .greatestFiniteMagnitude
-        // 成图只由这三样决定：内容、⚡ 开关、宽度上限。都没变就没必要重新测量+光栅化。
-        // \u{1} 作分隔符：图标名/文本里不可能出现控制字符，不会撞键。
-        let key = ps.reduce("\(model.mbShowIcon)|\(cap)") { "\($0)\u{1}\($1.icon ?? "")\u{1}\($1.text)" }
+        // 成图只由这几样决定：内容（含额度值）、⚡ 与进度条开关、宽度上限。
+        // 都没变就没必要重新测量+光栅化。\u{1} 系控制字符作分隔，正常内容里不会出现。
+        let key = ps.reduce("\(model.mbShowIcon)|\(model.mbQuotaBar)|\(cap)") { acc, p in
+            let qs = p.quotas
+                .map { "\($0.label)\u{2}\($0.pct.map { Int($0.rounded()) } ?? -1)" }
+                .joined(separator: "\u{3}")
+            return "\(acc)\u{1}\(p.icon ?? "")\u{1}\(p.text)\u{1}\(qs)"
+        }
         if let hit = MBLabelCache.hit(key) {
             model.reportNaturalWidth(hit.natural)   // governor 每秒读一次，命中也得续上
             return hit.image
@@ -595,13 +631,16 @@ struct MenuBarLabel: View {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .medium)
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
         let str = NSMutableAttributedString()
-        func appendIcon(_ img: NSImage) {
-            let h: CGFloat = 14
+        /// 把一张图当字形插进串里，按 cap height 垂直居中。
+        func appendImage(_ img: NSImage, height h: CGFloat) {
             let w = img.size.height > 0 ? img.size.width / img.size.height * h : h
             let att = NSTextAttachment()
             att.image = img
             att.bounds = CGRect(x: 0, y: (font.capHeight - h) / 2, width: w, height: h)
             str.append(NSAttributedString(attachment: att))
+        }
+        func appendIcon(_ img: NSImage) {          // 品牌 / ⚡ 图标：后面跟一个空格
+            appendImage(img, height: 14)
             str.append(NSAttributedString(string: " ", attributes: attrs))
         }
         if model.mbShowIcon, let bolt = MBIcons.bolt { appendIcon(bolt) }
@@ -611,7 +650,11 @@ struct MenuBarLabel: View {
             for p in ps {
                 if str.length > 0 { str.append(NSAttributedString(string: "  ", attributes: attrs)) }
                 if let name = p.icon, let img = MBIcons.brand(name) { appendIcon(img) }
-                str.append(NSAttributedString(string: p.text, attributes: attrs))
+                if !p.text.isEmpty { str.append(NSAttributedString(string: p.text, attributes: attrs)) }
+                for q in p.quotas {
+                    if str.length > 0 { str.append(NSAttributedString(string: " ", attributes: attrs)) }
+                    appendImage(quotaChip(q, font: font), height: Self.chipHeight)
+                }
             }
         }
         // 整串统一截断样式（含 attachment 段），超宽时 TextKit 在尾部画 "…"
@@ -638,17 +681,82 @@ struct MenuBarLabel: View {
         return img
     }
 
-    /// VoiceOver 文案："CC Usage · Claude D: 562.7K 5H: 0% W: 25%"。
+    /// VoiceOver 文案："CC Usage · Claude D:2.2M, 5H 0% used, 7D 25% used"。
+    /// 额度画成了图，念不出来，这里必须补回文字。
     private func voiceOverText(_ ps: [Piece]) -> String {
         guard !ps.isEmpty else { return "CC Usage" }
-        let body = ps.map { [$0.title, $0.text].compactMap { $0 }.joined(separator: " ") }
-            .joined(separator: ", ")
+        let body = ps.map { p -> String in
+            var parts: [String] = []
+            if let t = p.title { parts.append(t) }
+            if !p.text.isEmpty { parts.append(p.text) }
+            parts += p.quotas.map(\.speech)
+            return parts.joined(separator: " ")
+        }.joined(separator: ", ")
         return "CC Usage · \(body)"
     }
 
-    private func quotaStr(_ label: String, _ name: String) -> String {
-        let pct = tier(name).map { "\(Int($0.utilization.rounded()))%" } ?? "—"
-        return "\(label): \(pct)"
+    // MARK: 额度码片自绘
+
+    /// 危险线：到这个百分比就反白成实心胶囊。
+    private static let dangerPct: Double = 90
+    fileprivate static let chipHeight: CGFloat = 15
+
+    /// 一个额度码片的图：
+    /// - 默认「标签 + 进度条」（比 "5H: 25%" 窄约 14pt，且一眼看得出满没满）；
+    /// - 关掉进度条开关则是「标签:百分比」；
+    /// - ≥ dangerPct 反白成实心胶囊、数字抠空，并强制显示数字（快满了就得看到具体值）。
+    ///
+    /// 报警不用颜色：整条 label 是模板图，菜单栏底色随深浅色与壁纸变，非模板图很容易
+    /// 撞成看不清；实心胶囊在任何底色下都是一块高对比实块，是唯一到处都成立的做法。
+    private func quotaChip(_ q: QuotaChip, font: NSFont) -> NSImage {
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        guard let pct = q.pct else { return chipImage(q.label, bar: nil, danger: false, attrs: attrs) }
+        let danger = pct >= Self.dangerPct
+        if danger || !model.mbQuotaBar {
+            return chipImage("\(q.label):\(Int(pct.rounded()))%", bar: nil, danger: danger, attrs: attrs)
+        }
+        return chipImage(q.label, bar: pct, danger: false, attrs: attrs)
+    }
+
+    private func chipImage(_ text: String, bar: Double?, danger: Bool,
+                           attrs: [NSAttributedString.Key: Any]) -> NSImage {
+        let str = NSAttributedString(string: text, attributes: attrs)
+        let tw = ceil(str.size().width)
+        let barW: CGFloat = 18, barH: CGFloat = 6, gap: CGFloat = 3
+        let padX: CGFloat = danger ? 4 : 0
+        let w = padX * 2 + tw + (bar != nil ? gap + barW : 0)
+        let h = Self.chipHeight
+        return NSImage(size: NSSize(width: w, height: h), flipped: false) { rect in
+            let ty = (rect.height - str.size().height) / 2
+            if danger {
+                // 实心胶囊 + 抠字：模板图里就是一块菜单栏色实块、数字被挖空
+                NSColor.black.setFill()
+                NSBezierPath(roundedRect: rect.insetBy(dx: 0, dy: 0.5), xRadius: 4, yRadius: 4).fill()
+                NSGraphicsContext.current?.cgContext.setBlendMode(.destinationOut)
+                str.draw(at: NSPoint(x: padX, y: ty))
+                NSGraphicsContext.current?.cgContext.setBlendMode(.normal)
+            } else {
+                str.draw(at: NSPoint(x: padX, y: ty))
+            }
+            if let pct = bar {
+                let x = padX + tw + gap
+                let track = NSRect(x: x, y: (rect.height - barH) / 2, width: barW, height: barH)
+                let path = NSBezierPath(roundedRect: track, xRadius: barH / 2, yRadius: barH / 2)
+                NSColor.black.withAlphaComponent(0.25).setFill()
+                path.fill()
+                let frac = min(1, max(0, pct / 100))
+                if frac > 0.02 {                      // 0% 只留空槽
+                    // 裁到轨道再填平头矩形。直接画圆角矩形的话，低百分比会缩成一个圆点，
+                    // 看着像「某个东西亮着」而不是「填了多少」。
+                    NSGraphicsContext.saveGraphicsState()
+                    path.addClip()
+                    NSColor.black.setFill()
+                    NSRect(x: x, y: track.minY, width: barW * frac, height: barH).fill()
+                    NSGraphicsContext.restoreGraphicsState()
+                }
+            }
+            return true
+        }
     }
 }
 
@@ -760,6 +868,8 @@ struct MenuBarSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Show ⚡ icon in menu bar", isOn: $model.mbShowIcon)
                 .toggleStyle(.checkbox).font(.caption).foregroundStyle(Theme.textMain)
+            Toggle("Show quota as bar", isOn: $model.mbQuotaBar)
+                .toggleStyle(.checkbox).font(.caption).foregroundStyle(Theme.textMain)
 
             group("All", $expAll) {
                 row("Tokens") {
@@ -785,8 +895,7 @@ struct MenuBarSettingsView: View {
                         noQuota("No Codex data")
                     } else {
                         ForEach(windows, id: \.label) { w in
-                            check(w.label == "W" ? "Week" : w.label,
-                                  model.chipBinding("codex.quota.\(w.label)"))
+                            check(w.label, model.chipBinding("codex.quota.\(w.label)"))
                         }
                     }
                 }
@@ -830,7 +939,7 @@ struct MenuBarSettingsView: View {
                 if on { model.refreshAntigravityNow() }   // 展开分组即联网拉取模型列表
             }
 
-            Text("All = every AI combined; D/W/M = Day/Week/Month; Quota is % used. Length is unlimited; only if macOS squeezes the item out does it auto-shrink to fit, truncated with ….")
+            Text("All = every AI combined; D/W/M = Day/Week/Month. Quota windows are labelled by duration (5H/7D/30D) so they never clash with the W of Week, and show % used — as a bar unless you turn that off, filled solid once past 90%. Length is unlimited; only if macOS squeezes the item out does it auto-shrink to fit, truncated with ….")
                 .font(.caption2).foregroundStyle(Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
