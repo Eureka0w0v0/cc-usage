@@ -112,17 +112,13 @@ final class PanelModel: ObservableObject {
     /// 真被 macOS 挤掉时按溢出量精确收缩；内容变短到能放下就立刻解除上限。不做持久化、
     /// 不做跨 app 记忆（那会用陈旧的窄上限截断新的短内容——正是之前的 bug）。
     @Published var mbWidthCap: CGFloat? = nil
-    private var naturalWidth: CGFloat = 0          // 当前内容未截断的自然宽度（composite 每帧回报）
-    private var lastNatural: CGFloat = 0           // 上帧自然宽度，用于识别"内容结构变了"
+    private var lastNatural: CGFloat = 0           // 上次巡检时的自然宽度，用于识别"内容结构变了"
     private var growCeiling: CGFloat = .greatestFiniteMagnitude  // 增长天花板 = 上次被挤的宽度，防边界震荡
     private var hiddenTicks = 0                     // 连续不可见计数：≥2 才算真被挤，滤面板开合毛刺
     private var growTicks = 0                        // 可见但仍截断的连续计数：≥2 才尝试夺回空间
     private var visTimer: AnyCancellable?
     private weak var statusWindow: NSWindow?     // 状态项窗口（长命），找到一次就留着
     private var panelWindowClass: AnyClass?      // 面板窗口的类对象，比对指针即可，免去每秒建串
-
-    /// composite 渲染时回报自然宽度（普通存储，不触发重绘）。
-    func reportNaturalWidth(_ w: CGFloat) { naturalWidth = w }
 
     var mbAnyQuotaOn: Bool { mbQuota5H || mbQuotaWeek }
     private func persist(_ key: String, _ val: Bool) {
@@ -241,6 +237,9 @@ final class PanelModel: ObservableObject {
         guard menuBarPresent else { return }   // 全屏等菜单栏不在场时不误判为被挤
         guard !panelOpen() else { return }     // 面板开着时遮挡状态不稳，跳过
 
+        // 自然宽度（未截断的完整内容宽）由合成图缓存持有 —— 它本来就要存这个值，
+        // 再让 composite 在 getter 里回写 model 属于视图求值中改状态，白白多一条暗线。
+        let naturalWidth = MBLabelCache.currentNatural
         // 内容结构突变（增删码片/AI 段，宽度跳变 >30pt）→ 允许重新扩张，不受旧挤出宽度束缚
         if abs(naturalWidth - lastNatural) > 30 { growCeiling = .greatestFiniteMagnitude }
         lastNatural = naturalWidth
@@ -478,6 +477,9 @@ private enum MBLabelCache {
     private static var image: NSImage?
     private static var natural: CGFloat = 0
 
+    /// 当前内容未截断的自然宽度，供 PanelModel 的宽度 governor 判断。
+    static var currentNatural: CGFloat { natural }
+
     static func hit(_ k: String) -> (image: NSImage, natural: CGFloat)? {
         guard k == key, let image else { return nil }
         return (image, natural)
@@ -615,16 +617,13 @@ struct MenuBarLabel: View {
         let cap = model.mbWidthCap.map { max(60, $0 - 12) } ?? .greatestFiniteMagnitude
         // 成图只由这几样决定：内容（含额度值）、⚡ 与进度条开关、宽度上限。
         // 都没变就没必要重新测量+光栅化。\u{1} 系控制字符作分隔，正常内容里不会出现。
-        let key = ps.reduce("\(model.mbShowIcon)|\(model.mbQuotaBar)|\(cap)") { acc, p in
+        let key = ps.reduce("\(model.mbShowIcon)|\(model.mbQuotaBar)|\(cap)|\(Self.imageHeight)") { acc, p in
             let qs = p.quotas
                 .map { "\($0.label)\u{2}\($0.pct.map { Int($0.rounded()) } ?? -1)" }
                 .joined(separator: "\u{3}")
             return "\(acc)\u{1}\(p.icon ?? "")\u{1}\(p.text)\u{1}\(qs)"
         }
-        if let hit = MBLabelCache.hit(key) {
-            model.reportNaturalWidth(hit.natural)   // governor 每秒读一次，命中也得续上
-            return hit.image
-        }
+        if let hit = MBLabelCache.hit(key) { return hit.image }
 
         // 等宽数字：系统字体的比例数字会让 562.7K → 1.2M 这种纯数值变化也改宽度，
         // 状态项每刷新一轮就左右跳，还会误触 governor 的「自然宽度突变>30pt=内容结构变了」判定。
@@ -666,9 +665,8 @@ struct MenuBarLabel: View {
             with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin])
         let natural = ceil(bounds.width) + 1
-        model.reportNaturalWidth(natural)   // 回报未截断的自然宽度，供 governor 判断
         let width = min(natural, cap)
-        let img = NSImage(size: NSSize(width: width, height: 18), flipped: false) { rect in
+        let img = NSImage(size: NSSize(width: width, height: Self.imageHeight), flipped: false) { rect in
             // 高度限一行 → 超宽只会截断，不会折行
             str.draw(with: NSRect(x: 0, y: (rect.height - bounds.height) / 2 - bounds.minY,
                                   width: rect.width, height: bounds.height),
@@ -696,6 +694,10 @@ struct MenuBarLabel: View {
     }
 
     // MARK: 额度码片自绘
+
+    /// 合成图高度：跟随菜单栏实际厚度（刘海屏与后续系统版本都可能不是 22），
+    /// 留 4pt 上下余量；下限保住原先写死的 18，免得某些场景算出个过矮的值。
+    fileprivate static var imageHeight: CGFloat { max(18, NSStatusBar.system.thickness - 4) }
 
     /// 危险线：到这个百分比就反白成实心胶囊。
     private static let dangerPct: Double = 90
