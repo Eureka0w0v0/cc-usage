@@ -423,6 +423,44 @@ struct MainWindowView: View {
 
 // MARK: - 菜单栏常驻
 
+/// 菜单栏图标缓存：⚡ 每次 composite 走 `withSymbolConfiguration` 都会新建一张 NSImage，
+/// 品牌图标也没必要每帧再查一次命名表。两者进程内恒定，取一次留着。
+@MainActor
+private enum MBIcons {
+    static let bolt: NSImage? = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)?
+        .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold))
+
+    private static var brands: [String: NSImage] = [:]
+    static func brand(_ name: String) -> NSImage? {
+        if let hit = brands[name] { return hit }
+        guard let img = NSImage(named: name) else { return nil }
+        brands[name] = img
+        return img
+    }
+}
+
+/// 菜单栏合成图缓存。MenuBarLabel 以 @ObservedObject 订阅 PanelModel，任何 @Published 变动
+/// （含 label 根本不读的 snap/error/quotaTiers）都会重求 body，而内容绝大多数轮次没变。
+/// 按「内容 + ⚡ 开关 + 宽度上限」做 key：命中就复用同一个 NSImage 实例——省掉 TextKit 测量
+/// 与光栅化，也避免 SwiftUI 每轮拿到新实例去重设状态项、白白重排。只在主线程访问。
+@MainActor
+private enum MBLabelCache {
+    private static var key = ""
+    private static var image: NSImage?
+    private static var natural: CGFloat = 0
+
+    static func hit(_ k: String) -> (image: NSImage, natural: CGFloat)? {
+        guard k == key, let image else { return nil }
+        return (image, natural)
+    }
+
+    static func store(_ k: String, image: NSImage, natural: CGFloat) {
+        key = k
+        self.image = image
+        self.natural = natural
+    }
+}
+
 struct MenuBarLabel: View {
     @ObservedObject var model: PanelModel
 
@@ -516,6 +554,17 @@ struct MenuBarLabel: View {
     /// pieces → 单张黑色模板图：⚡（可关）+ [All 文本] + [品牌图标 文本]…，空段兜底 "CC"。
     /// 默认不限宽；仅当 PanelModel 检测到状态项被挤掉、给出动态上限时才尾部截断 "…"。
     private var composite: NSImage {
+        let ps = pieces
+        // 动态上限（窗口宽 → 图像宽留 ~12pt 状态项内边距余量）
+        let cap = model.mbWidthCap.map { max(60, $0 - 12) } ?? .greatestFiniteMagnitude
+        // 成图只由这三样决定：内容、⚡ 开关、宽度上限。都没变就没必要重新测量+光栅化。
+        // \u{1} 作分隔符：图标名/文本里不可能出现控制字符，不会撞键。
+        let key = ps.reduce("\(model.mbShowIcon)|\(cap)") { "\($0)\u{1}\($1.icon ?? "")\u{1}\($1.text)" }
+        if let hit = MBLabelCache.hit(key) {
+            model.reportNaturalWidth(hit.natural)   // governor 每秒读一次，命中也得续上
+            return hit.image
+        }
+
         // 等宽数字：系统字体的比例数字会让 562.7K → 1.2M 这种纯数值变化也改宽度，
         // 状态项每刷新一轮就左右跳，还会误触 governor 的「自然宽度突变>30pt=内容结构变了」判定。
         let font = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .medium)
@@ -530,18 +579,13 @@ struct MenuBarLabel: View {
             str.append(NSAttributedString(attachment: att))
             str.append(NSAttributedString(string: " ", attributes: attrs))
         }
-        if model.mbShowIcon,
-           let bolt = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)?
-               .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold)) {
-            appendIcon(bolt)
-        }
-        let ps = pieces
+        if model.mbShowIcon, let bolt = MBIcons.bolt { appendIcon(bolt) }
         if ps.isEmpty {
             str.append(NSAttributedString(string: "CC", attributes: attrs))
         } else {
             for p in ps {
                 if str.length > 0 { str.append(NSAttributedString(string: "  ", attributes: attrs)) }
-                if let name = p.icon, let img = NSImage(named: name) { appendIcon(img) }
+                if let name = p.icon, let img = MBIcons.brand(name) { appendIcon(img) }
                 str.append(NSAttributedString(string: p.text, attributes: attrs))
             }
         }
@@ -555,8 +599,6 @@ struct MenuBarLabel: View {
             options: [.usesLineFragmentOrigin])
         let natural = ceil(bounds.width) + 1
         model.reportNaturalWidth(natural)   // 回报未截断的自然宽度，供 governor 判断
-        // 动态上限（窗口宽 → 图像宽留 ~12pt 状态项内边距余量）
-        let cap = model.mbWidthCap.map { max(60, $0 - 12) } ?? .greatestFiniteMagnitude
         let width = min(natural, cap)
         let img = NSImage(size: NSSize(width: width, height: 18), flipped: false) { rect in
             // 高度限一行 → 超宽只会截断，不会折行
@@ -566,6 +608,7 @@ struct MenuBarLabel: View {
             return true
         }
         img.isTemplate = true
+        MBLabelCache.store(key, image: img, natural: natural)
         return img
     }
 
