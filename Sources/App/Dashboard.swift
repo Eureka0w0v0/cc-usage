@@ -151,6 +151,10 @@ final class PanelModel: ObservableObject {
         PanelModel.shared = self
         // 迁移：清掉旧版按 app 分桶持久化的容量记忆（陈旧窄上限会错误截断，已改为纯反应式）
         d.removeObject(forKey: MBKey.ctxBounds)
+        // 同批清理 v1.3 的安全宽度记忆：v1.4 改纯反应式后代码里已零引用，
+        // 但实机 UserDefaults 里还躺着脏值（mb.maxSafeWidth / mb.squeezeWidth）。
+        d.removeObject(forKey: "mb.maxSafeWidth")
+        d.removeObject(forKey: "mb.squeezeWidth")
         // embed 面板持久化的刷新间隔（ms，set_setting 写入）：启动时接管为全局节奏，
         // 菜单栏与面板从第一秒起就一致。没存过则维持默认 5s。
         if let ms = d.object(forKey: "embed.refreshIntervalMs") as? Int {
