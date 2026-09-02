@@ -36,7 +36,19 @@ if git -C "$CC_SWITCH_DIR" rev-parse --verify "$CC_SWITCH_REF^{commit}" >/dev/nu
   HEAD_SHA=$(git -C "$CC_SWITCH_DIR" rev-parse HEAD)
   REF_SHA=$(git -C "$CC_SWITCH_DIR" rev-parse "$CC_SWITCH_REF^{commit}")
   if [ "$HEAD_SHA" != "$REF_SHA" ]; then
-    if [ "${CC_SWITCH_CHECKOUT:-0}" = "1" ]; then
+    # 本地在钉子之上只叠了桥接层提交（下面铺进去的 5 个文件 + 依赖清单）不算偏离：
+    # 钉子须是 HEAD 的祖先，且 REF..HEAD 之间除桥接文件外零改动。
+    # Local commits on top of the pin that only touch the bridge files are not drift.
+    BRIDGE_ONLY=0
+    if git -C "$CC_SWITCH_DIR" merge-base --is-ancestor "$REF_SHA" HEAD 2>/dev/null; then
+      DRIFT=$(git -C "$CC_SWITCH_DIR" diff --name-only "$REF_SHA" HEAD -- . \
+        ':!src/usage-embed.tsx' ':!src/embed-invoke-shim.ts' ':!src/embed-tauri-stub.ts' \
+        ':!index-embed.html' ':!vite.embed.config.ts' ':!package.json' ':!pnpm-lock.yaml')
+      [ -z "$DRIFT" ] && BRIDGE_ONLY=1
+    fi
+    if [ "$BRIDGE_ONLY" = "1" ]; then
+      echo "ℹ️  cc-switch HEAD (${HEAD_SHA:0:12}) = 已验证提交 (${REF_SHA:0:12}) + 仅桥接层提交，视同已验证。"
+    elif [ "${CC_SWITCH_CHECKOUT:-0}" = "1" ]; then
       echo "↩️  切换 cc-switch 到已验证提交 / checking out pinned ref: ${REF_SHA:0:12}"
       git -C "$CC_SWITCH_DIR" checkout --quiet "$REF_SHA"
     else
@@ -55,9 +67,11 @@ cp embed/index-embed.html embed/vite.embed.config.ts "$CC_SWITCH_DIR/"
 cp embed/usage-embed.tsx embed/embed-invoke-shim.ts embed/embed-tauri-stub.ts "$CC_SWITCH_DIR/src/"
 
 # 2) 安装依赖 + 补打包插件 / install deps + the single-file plugin
+#    已在 package.json 里就不再 add；install 走非交互模式且不吞输出——
+#    早前 >/dev/null 把 ERR_PNPM_UNEXPECTED_STORE 之类的错误一并吞掉，只剩静默 exit 1。
 cd "$CC_SWITCH_DIR"
-pnpm add -D vite-plugin-singlefile@^2.3.3 >/dev/null
-pnpm install >/dev/null
+grep -q '"vite-plugin-singlefile"' package.json || pnpm add -D vite-plugin-singlefile@^2.3.3
+CI=1 pnpm install --reporter=append-only
 
 # 3) 构建，产物直写回本仓库 / build straight into this repo
 CC_USAGE_WEB_PANEL_OUT="$ROOT/Sources/App/web-panel" \
