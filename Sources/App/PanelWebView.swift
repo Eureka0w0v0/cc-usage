@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import os
 
 /// 真·1:1 面板:加载打包好的 cc-switch 真实前端(web-panel/index.html)。
 /// 前端调用的 Tauri `invoke(cmd,args)` 通过 WKScriptMessageHandlerWithReply 桥接到这里，
@@ -15,6 +16,9 @@ struct PanelWebView: NSViewRepresentable {
         // JS: window.webkit.messageHandlers.invoke.postMessage({cmd,args}) → 返回 Promise
         config.userContentController.addScriptMessageHandler(
             context.coordinator, contentWorld: .page, name: "invoke")
+        // 前端 window.onerror / unhandledrejection 往 embedError 报错（index-embed.html）。
+        // 没有这个 handler，面板白屏 / JS 异常就在 WKWebView 里静默吞掉，无从排查。
+        config.userContentController.add(context.coordinator, contentWorld: .page, name: "embedError")
 
         // 顶部留白改由 embed 最外层 wrapper 的 paddingTop 负责（usage-embed.tsx，可靠避开交通灯）。
         // 不再注入 `#root{padding-top}`：实测被 index.css / 时序覆盖不生效，且会与 embed padding 叠加。
@@ -30,10 +34,18 @@ struct PanelWebView: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 
+    /// 主窗每次关开都新建 WKWebView + Bridge；按惯例显式解注册，不留 handler 挂在死配置上。
+    static func dismantleNSView(_ nsView: WKWebView, coordinator: Bridge) {
+        let ucc = nsView.configuration.userContentController
+        ucc.removeScriptMessageHandler(forName: "invoke", contentWorld: .page)
+        ucc.removeScriptMessageHandler(forName: "embedError", contentWorld: .page)
+    }
+
     // MARK: - invoke 桥接
 
-    final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
+    final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessageHandler {
         private let store = UsageStore()
+        private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "embed")
         /// SQL/overlay 扫描全部下放到这条并发队列（UsageStore 每次查询独立连接、线程安全），
         /// 主线程只收发消息——面板高频刷新不再与 UI 抢主线程。
         private static let workQueue = DispatchQueue(
@@ -45,6 +57,12 @@ struct PanelWebView: NSViewRepresentable {
             let msg: String
             init(_ m: String) { msg = m }
             var errorDescription: String? { msg }
+        }
+
+        /// embedError：前端运行期错误，只记日志（`log stream --predicate 'subsystem == "com.ganxing.ccusage"'`）。
+        func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "embedError" else { return }
+            Self.log.error("panel JS error: \(String(describing: message.body), privacy: .public)")
         }
 
         func userContentController(_ ucc: WKUserContentController,
