@@ -48,6 +48,33 @@ final class ModelPricingFallbackTests: XCTestCase {
         XCTAssertNil(ModelPricing.lookup("unknown"))
     }
 
+    // Fable 5.1（2026-09-01 发布）：缓存读是 0.025x = $0.25，不是 Fable 5 的 $1。
+    // 照抄 fable-5 行会把缓存读多算 4 倍——Claude Code 会话九成以上 token 是缓存读。
+    // 负责杀的变异体：删掉 localExtras 里的 fable-5-1 行 / 把 0.25 抄成 1。
+    func testBuiltinTableHasFable51WithQuarterCacheRead() throws {
+        let row = try XCTUnwrap(ModelPricing.lookup("claude-fable-5-1"))
+        XCTAssertEqual(row.input, 10)
+        XCTAssertEqual(row.output, 50)
+        XCTAssertEqual(row.cacheRead, 0.25)
+        XCTAssertEqual(row.cacheCreation, 12.5)
+        XCTAssertEqual(ModelPricing.lookup("claude-fable-5-1[1m]")?.cacheRead, 0.25)
+        XCTAssertEqual(ModelPricing.lookup("anthropic/claude-fable-5-1")?.cacheRead, 0.25)
+        XCTAssertEqual(ModelPricing.lookup("claude-mythos-5-1")?.cacheRead, 0.25)
+        // 5-1 不是日期尾，不能被归一成 fable-5 再按 $1 计缓存读
+        XCTAssertNotEqual(ModelPricing.lookup("claude-fable-5-1")?.cacheRead,
+                          ModelPricing.lookup("claude-fable-5")?.cacheRead)
+    }
+
+    // 本地先行区只在上游 seed 缺席时存在：上游收录后本用例报红，提醒把本地行删掉
+    //（否则同一 id 两处各一份，下次改价容易漏）。顺带锁住「合并没把任何一边丢掉」。
+    // 负责杀的变异体：table 只取 upstream 忘了 merge / localExtras 里塞了上游已有的 id。
+    func testLocalExtrasAreAbsentUpstream() {
+        let dup = Set(ModelPricing.localExtras.keys).intersection(ModelPricing.upstream.keys)
+        XCTAssertTrue(dup.isEmpty, "上游已收录，请从 localExtras 删除：\(dup.sorted())")
+        XCTAssertEqual(ModelPricing.table.count,
+                       ModelPricing.upstream.count + ModelPricing.localExtras.count)
+    }
+
     // MARK: - 聚合成本补算
 
     func testUnpricedRowGetsFallbackCost() throws {

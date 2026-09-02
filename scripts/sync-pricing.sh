@@ -7,6 +7,7 @@
 # 「未定价」，且该值入库时就写死了。有了内置表，CC Usage 能自己补算，不必干等上游。
 #
 # 上游加了新模型或调价后，跑一次本脚本即可。全程只读 cc-switch 源码，不碰它的库。
+# 只重建 `upstream` 字面量；`localExtras`（本地先行区）不动。
 set -e
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
@@ -52,9 +53,9 @@ def num(s):
     return '%d' % int(d) if d == int(d) else '%g' % d
 
 out = open(out_path, encoding='utf-8').read()
-lit = re.search(r'(public static let table: \[String: Row\] = \[\n)(.*?)(\n    \])', out, re.S)
+lit = re.search(r'(static let upstream: \[String: Row\] = \[\n)(.*?)(\n    \])', out, re.S)
 if not lit:
-    sys.exit("❌ 未能在 ModelPricing.swift 中定位 table 字面量")
+    sys.exit("❌ 未能在 ModelPricing.swift 中定位 upstream 字面量")
 
 # 保留手写的「整行注释」：把每段注释挂到紧随其后的 model id 上，重建时原样放回。
 # 不保留行尾的 `// 名称`——那是从上游 display name 生成的，本就该被刷新；要给某条

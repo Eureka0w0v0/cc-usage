@@ -14,6 +14,7 @@ import SQLite3
 //
 // 数据来源：cc-switch `seed_model_pricing`（src-tauri/src/database/schema.rs），
 // 单位为每百万 token 的美元价。上游新增/调价后，重跑 scripts/sync-pricing.sh 同步。
+// 上游尚未收录的新模型放 `localExtras`（本地先行区，脚本不碰），上游收录后再删。
 public enum ModelPricing {
 
     public struct Row: Sendable {
@@ -29,7 +30,8 @@ public enum ModelPricing {
     }
 
     /// 对齐 cc-switch seed_model_pricing 的 192 条内置定价（同步至 v3.20.1）。
-    public static let table: [String: Row] = [
+    /// 由 scripts/sync-pricing.sh 生成，勿手改；新模型先放下面的 `localExtras`。
+    static let upstream: [String: Row] = [
         "claude-fable-5": R(10, 50, 1, 12.5),  // Claude Fable 5
         "claude-mythos-5": R(10, 50, 1, 12.5),  // Claude Mythos 5
         "claude-opus-5": R(5, 25, 0.5, 6.25),  // Claude Opus 5
@@ -229,6 +231,20 @@ public enum ModelPricing {
         "gpt-5-mini": R(0.25, 2, 0.025, 0),  // GPT-5 Mini
         "gpt-5-nano": R(0.05, 0.4, 0.005, 0),  // GPT-5 Nano
     ]
+
+    /// 本地先行区：上游 seed 尚未收录、但日志里已经出现的模型。脚本不碰这里；
+    /// 上游收录后 `testLocalExtrasAreAbsentUpstream` 会报红，届时删掉对应行即可。
+    /// 价格以 platform.claude.com/docs/en/about-claude/pricing 为准。
+    static let localExtras: [String: Row] = [
+        // 2026-09-01 发布。缓存读 0.025x（$0.25），不是 Fable 5 的 $1——照抄 fable-5 行会把
+        // 缓存读多算 4 倍，而 Claude Code 会话九成以上 token 是缓存读。
+        "claude-fable-5-1": R(10, 50, 0.25, 12.5),  // Claude Fable 5.1
+        "claude-mythos-5-1": R(10, 50, 0.25, 12.5),  // Claude Mythos 5.1
+    ]
+
+    /// 查价与 TEMP 兜底表用的全集。上游优先：用户在 cc-switch 改过的价、上游修正过的价
+    /// 都不该被本地行盖掉。
+    public static let table: [String: Row] = upstream.merging(localExtras) { up, _ in up }
 
     /// 按 SessionOverlay 的候选归一化（命名空间/日期尾/[1m] 等）查内置表。
     public static func lookup(_ modelId: String) -> Row? {

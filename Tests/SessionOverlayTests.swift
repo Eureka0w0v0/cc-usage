@@ -65,6 +65,21 @@ final class SessionOverlayTests: XCTestCase {
         XCTAssertEqual(r.totalCost, 0.0006, accuracy: 1e-12)
     }
 
+    // 库里没有该模型（上游 seed 尚未收录 Fable 5.1）→ 回落内置表，且缓存读按 $0.25 而非 $1。
+    // 负责杀的变异体：删掉内置表 fable-5-1 行（成本归 0）/ 缓存读抄成 1（成本 1.002）。
+    func testUnseededModelFallsBackToBuiltinWithQuarterCacheRead() throws {
+        _ = try writeSession([
+            #"{"type":"assistant","sessionId":"s1","timestamp":"2026-09-01T10:00:00Z","message":{"id":"f1","stop_reason":"end_turn","model":"claude-fable-5-1","usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":1000000,"cache_creation_input_tokens":0}}}"#,
+        ])
+        let rows = overlay.pendingRows(db: db)
+        XCTAssertEqual(rows.count, 1)
+        let r = try XCTUnwrap(rows.first)
+        XCTAssertEqual(r.model, "claude-fable-5-1")
+        XCTAssertEqual(r.cacheReadCost, 0.25, accuracy: 1e-12)
+        // 100×$10/1M + 20×$50/1M + 1M×$0.25/1M
+        XCTAssertEqual(r.totalCost, 0.252, accuracy: 1e-12)
+    }
+
     func testIncrementalAppendAndPruneOnceInDB() throws {
         let file = try writeSession([assistantLine(id: "m1", output: 10, stop: true)])
         XCTAssertEqual(overlay.pendingRows(db: db).count, 1)
