@@ -111,12 +111,15 @@ struct PanelWebView: NSViewRepresentable {
             let model = str(args["model"])
 
             switch cmd {
+            // 三条 Hero/走势路径都要吃 providerName：上游 get_usage_summary / _by_app / get_daily_trends
+            // 均按 provider 过滤；早前这里丢了它，工具栏选 Source 后 Hero 不动、三个 Tab 却动，同屏打架。
             case "get_usage_summary_by_app":
-                return try summaryByApp(start: start, end: end, model: model)
+                return try summaryByApp(start: start, end: end, providerName: providerName, model: model)
             case "get_usage_trends":
-                return try trends(start: start, end: end, appType: appType, model: model)
+                return try trends(start: start, end: end, appType: appType, providerName: providerName, model: model)
             case "get_usage_summary":
-                let s = try store.rangeSummary(UsageFilter(start: start, end: end, appType: appType, model: model))
+                let s = try store.rangeSummary(UsageFilter(start: start, end: end, appType: appType,
+                                                           providerName: providerName, model: model))
                 return summaryDict(s)
             case "get_usage_data_sources":
                 return try dataSources()
@@ -273,8 +276,10 @@ struct PanelWebView: NSViewRepresentable {
         // get_usage_summary_by_app → [{appType, summary}]（每个 app 一行）
         // 底层为 proxy_request_logs + usage_daily_rollups 两表合并的 GROUP BY app_type，
         // 故仅存在于历史聚合表的来源（如 codex）也会出现，且各 app 数字含历史。
-        private func summaryByApp(start: Int64?, end: Int64?, model: String?) throws -> [[String: Any]] {
-            let list = try store.summaryByApp(UsageFilter(start: start, end: end, model: model))
+        private func summaryByApp(start: Int64?, end: Int64?, providerName: String?,
+                                  model: String?) throws -> [[String: Any]] {
+            let list = try store.summaryByApp(UsageFilter(start: start, end: end,
+                                                          providerName: providerName, model: model))
             return list.map { item in
                 ["appType": item.appType, "summary": summaryDict(item.summary)]
             }
@@ -282,9 +287,11 @@ struct PanelWebView: NSViewRepresentable {
 
         // get_usage_trends → DailyStats[]（date rfc3339 + 各 token/cost 字段，camelCase）。
         // 走 trendBuckets 而非 snapshot——后者顺带算的「区间 + 累计」4 次聚合在这条路径全是白算。
-        private func trends(start: Int64?, end: Int64?, appType: String?, model: String?) throws -> [[String: Any]] {
+        private func trends(start: Int64?, end: Int64?, appType: String?, providerName: String?,
+                            model: String?) throws -> [[String: Any]] {
             let buckets = try store.trendBuckets(
-                filter: UsageFilter(start: start, end: end, appType: appType, model: model))
+                filter: UsageFilter(start: start, end: end, appType: appType,
+                                    providerName: providerName, model: model))
             let iso = Self.iso
             return buckets.map { b in
                 return [

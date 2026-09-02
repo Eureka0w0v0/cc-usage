@@ -35,6 +35,7 @@ enum Fixture {
     CREATE TABLE usage_daily_rollups(
       date TEXT,
       app_type TEXT DEFAULT 'claude',
+      provider_id TEXT DEFAULT '',
       model TEXT DEFAULT '',
       request_model TEXT,
       pricing_model TEXT,
@@ -143,15 +144,15 @@ enum Fixture {
                              requests: Int64 = 1, input: Int64 = 0, output: Int64 = 0,
                              cacheRead: Int64 = 0, cacheCreation: Int64 = 0,
                              cost: Double = 0, semantics: Int64? = nil,
-                             successes: Int64? = nil) throws {
+                             successes: Int64? = nil, providerId: String = "") throws {
         let semCols = semantics.map { _ in ", input_token_semantics" } ?? ""
         let semVals = semantics.map { ", \($0)" } ?? ""
         // 不传 successes 时按「全部成功」写，贴近 cc-switch 真实聚合行为。
         let ok = successes ?? requests
         try exec(path, """
-        INSERT INTO usage_daily_rollups(date, app_type, model, request_count, success_count,
+        INSERT INTO usage_daily_rollups(date, app_type, provider_id, model, request_count, success_count,
           input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, total_cost_usd\(semCols))
-        VALUES('\(date)','\(app)','\(model)',\(requests),\(ok),
+        VALUES('\(date)','\(app)','\(providerId)','\(model)',\(requests),\(ok),
           \(input),\(output),\(cacheRead),\(cacheCreation),'\(cost)'\(semVals));
         """)
     }

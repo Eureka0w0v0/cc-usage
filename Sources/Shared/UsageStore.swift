@@ -74,14 +74,18 @@ public enum UsageStoreError: Error, CustomStringConvertible {
 
 // MARK: - 数据仓库
 
-/// 查询过滤条件：时间窗 + 来源(app) + 模型。
+/// 查询过滤条件：时间窗 + 来源(app) + Provider + 模型（对齐上游 get_usage_summary /
+/// get_usage_summary_by_app / get_daily_trends 的入参，四个接口都吃 provider_name）。
 public struct UsageFilter: Sendable {
     public var start: Int64?
     public var end: Int64?
-    public var appType: String?   // nil = 全部；已折叠值，如 "claude"
-    public var model: String?     // nil = 全部
-    public init(start: Int64? = nil, end: Int64? = nil, appType: String? = nil, model: String? = nil) {
-        self.start = start; self.end = end; self.appType = appType; self.model = model
+    public var appType: String?       // nil = 全部；已折叠值，如 "claude"
+    public var providerName: String?  // nil = 全部；按展示名精确匹配（含 "Claude (Session)" 等占位名）
+    public var model: String?         // nil = 全部
+    public init(start: Int64? = nil, end: Int64? = nil, appType: String? = nil,
+                providerName: String? = nil, model: String? = nil) {
+        self.start = start; self.end = end; self.appType = appType
+        self.providerName = providerName; self.model = model
     }
 }
 
@@ -221,8 +225,7 @@ public final class UsageStore: @unchecked Sendable {
 
     /// 取符合过滤条件的增量行。overlay 行 pricing_model 为空 → 有效计价模型回落 model,
     /// 与库内 session 行口径一致。
-    private func overlayRows(_ db: OpaquePointer, start: Int64?, end: Int64?,
-                             appType: String?, model: String?) -> [OverlayRow] {
+    private func overlayRows(_ db: OpaquePointer, _ f: UsageFilter) -> [OverlayRow] {
         var rows = overlay.pendingRows(db: db)
         let ompRows = ompOverlay.pendingRows(db: db)
         if !ompRows.isEmpty {
@@ -233,10 +236,11 @@ public final class UsageStore: @unchecked Sendable {
                 rows.append(contentsOf: ompRows.filter { !seen.contains($0.requestId) })
             }
         }
-        if let at = appType { rows = rows.filter { $0.appType == at } }
-        if let s = start { rows = rows.filter { $0.createdAt >= s } }
-        if let e = end { rows = rows.filter { $0.createdAt <= e } }
-        if let m = model { rows = rows.filter { $0.model == m } }
+        if let at = f.appType { rows = rows.filter { $0.appType == at } }
+        if let s = f.start { rows = rows.filter { $0.createdAt >= s } }
+        if let e = f.end { rows = rows.filter { $0.createdAt <= e } }
+        if let pn = f.providerName { rows = rows.filter { $0.providerName == pn } }
+        if let m = f.model { rows = rows.filter { $0.model == m } }
         return rows
     }
 
@@ -244,9 +248,8 @@ public final class UsageStore: @unchecked Sendable {
     /// overlay 行状态码恒 200;provider 展示名由行自带("Claude (Session)" / "OMP (…)")。
     private func overlayLogRows(_ db: OpaquePointer, _ f: LogQueryFilter) -> [OverlayRow] {
         if let sc = f.statusCode, sc != 200 { return [] }
-        var rows = overlayRows(db, start: f.start, end: f.end, appType: f.appType, model: f.model)
-        if let pn = f.providerName { rows = rows.filter { $0.providerName == pn } }
-        return rows
+        return overlayRows(db, UsageFilter(start: f.start, end: f.end, appType: f.appType,
+                                           providerName: f.providerName, model: f.model))
     }
 
     /// 把增量行累加进汇总(claude 的 fresh_input = input,无 cache 扣减)。
@@ -320,6 +323,7 @@ public final class UsageStore: @unchecked Sendable {
         if let s = f.start { conds.append("l.created_at >= ?"); binds.append(.int(s)) }
         if let e = f.end { conds.append("l.created_at <= ?"); binds.append(.int(e)) }
         if let at = f.appType { conds.append("\(Self.foldedAppL) = ?"); binds.append(.text(at)) }
+        if let pn = f.providerName { conds.append("\(Self.providerNameCoalesce) = ?"); binds.append(.text(pn)) }
         if let m = f.model { conds.append("\(Self.effectiveModelL) = ?"); binds.append(.text(m)) }
         let sql = """
         SELECT COUNT(*),
@@ -329,7 +333,7 @@ public final class UsageStore: @unchecked Sendable {
                COALESCE(SUM(l.cache_creation_tokens),0),
                COALESCE(SUM(l.cache_read_tokens),0),
                COALESCE(SUM(CASE WHEN l.status_code >= 200 AND l.status_code < 300 THEN 1 ELSE 0 END),0)
-        FROM proxy_request_logs l
+        FROM proxy_request_logs l\(Self.providersJoinIf(f.providerName, log: "l", provider: "p"))
         WHERE \(conds.joined(separator: " AND "))
         """
         var stmt: OpaquePointer?
@@ -350,7 +354,7 @@ public final class UsageStore: @unchecked Sendable {
             s.successes = Int(sqlite3_column_int64(stmt, 6))
         }
         // 未入库增量:所有汇总路径(Hero/菜单栏/累计/数据源)都经此函数,一处叠加全局生效
-        addOverlay(&s, overlayRows(db, start: f.start, end: f.end, appType: f.appType, model: f.model))
+        addOverlay(&s, overlayRows(db, f))
         return s
     }
 
@@ -366,6 +370,7 @@ public final class UsageStore: @unchecked Sendable {
             if let e = b.end { conds.append("r.date <= ?"); binds.append(.text(e)) }
         }
         if let at = f.appType { conds.append("\(Self.foldedAppR) = ?"); binds.append(.text(at)) }
+        if let pn = f.providerName { conds.append("\(Self.providerNameSQL(log: "r", provider: "p2")) = ?"); binds.append(.text(pn)) }
         if let m = f.model { conds.append("\(Self.effectiveModelR) = ?"); binds.append(.text(m)) }
         let whereClause = conds.isEmpty ? "" : "WHERE " + conds.joined(separator: " AND ")
         let sql = """
@@ -376,7 +381,7 @@ public final class UsageStore: @unchecked Sendable {
                COALESCE(SUM(r.cache_creation_tokens),0),
                COALESCE(SUM(r.cache_read_tokens),0),
                COALESCE(SUM(r.success_count),0)
-        FROM usage_daily_rollups r
+        FROM usage_daily_rollups r\(Self.providersJoinIf(f.providerName, log: "r", provider: "p2"))
         \(whereClause)
         """
         var stmt: OpaquePointer?
@@ -427,6 +432,7 @@ public final class UsageStore: @unchecked Sendable {
         var binds: [Bind] = []
         if let s = filter.start { dConds.append("l.created_at >= ?"); binds.append(.int(s)) }
         if let e = filter.end { dConds.append("l.created_at <= ?"); binds.append(.int(e)) }
+        if let pn = filter.providerName { dConds.append("\(Self.providerNameCoalesce) = ?"); binds.append(.text(pn)) }
         if let m = filter.model { dConds.append("\(Self.effectiveModelL) = ?"); binds.append(.text(m)) }
 
         // rollup 条件：整日边界 + 模型
@@ -438,6 +444,7 @@ public final class UsageStore: @unchecked Sendable {
             if let s = rb.start { rConds.append("r.date >= ?"); binds.append(.text(s)) }
             if let e = rb.end { rConds.append("r.date <= ?"); binds.append(.text(e)) }
         }
+        if let pn = filter.providerName { rConds.append("\(Self.providerNameSQL(log: "r", provider: "p2")) = ?"); binds.append(.text(pn)) }
         if let m = filter.model { rConds.append("\(Self.effectiveModelR) = ?"); binds.append(.text(m)) }
 
         let rWhere = rConds.isEmpty ? "" : "WHERE " + rConds.joined(separator: " AND ")
@@ -453,7 +460,7 @@ public final class UsageStore: @unchecked Sendable {
                    COALESCE(SUM(l.cache_creation_tokens),0) AS cc,
                    COALESCE(SUM(l.cache_read_tokens),0) AS cr,
                    COALESCE(SUM(CASE WHEN l.status_code >= 200 AND l.status_code < 300 THEN 1 ELSE 0 END),0) AS ok
-            FROM proxy_request_logs l
+            FROM proxy_request_logs l\(Self.providersJoinIf(filter.providerName, log: "l", provider: "p"))
             WHERE \(dConds.joined(separator: " AND "))
             GROUP BY l.app_type
             UNION ALL
@@ -465,7 +472,7 @@ public final class UsageStore: @unchecked Sendable {
                    COALESCE(SUM(r.cache_creation_tokens),0),
                    COALESCE(SUM(r.cache_read_tokens),0),
                    COALESCE(SUM(r.success_count),0)
-            FROM usage_daily_rollups r
+            FROM usage_daily_rollups r\(Self.providersJoinIf(filter.providerName, log: "r", provider: "p2"))
             \(rWhere)
             GROUP BY r.app_type
         )
@@ -494,7 +501,8 @@ public final class UsageStore: @unchecked Sendable {
         }
         // 增量行按各自 app_type 并入(桶不存在则新建)。OMP 日志一个文件里混着
         // Claude 与 Grok，全塞进 claude 桶会让 Grok 的用量假装成 Claude 的。
-        let ov = overlayRows(db, start: filter.start, end: filter.end, appType: nil, model: filter.model)
+        var ovFilter = filter; ovFilter.appType = nil   // 按 app 分组、不按 app 过滤
+        let ov = overlayRows(db, ovFilter)
         if !ov.isEmpty {
             var byApp: [String: [OverlayRow]] = [:]
             for r in ov { byApp[r.appType, default: []].append(r) }
@@ -527,11 +535,12 @@ public final class UsageStore: @unchecked Sendable {
                COALESCE(SUM(l.cache_read_tokens),0),
                COALESCE(SUM(\(costL(db))),0),
                COUNT(*)
-        FROM proxy_request_logs l
+        FROM proxy_request_logs l\(Self.providersJoinIf(f.providerName, log: "l", provider: "p"))
         WHERE l.created_at >= ?1 AND l.created_at <= ?2 AND \(Self.effectiveUsageFilterL)
         """
         if f.appType != nil { sql += " AND \(Self.foldedAppL) = ?4" }
         if f.model != nil { sql += " AND \(Self.effectiveModelL) = ?5" }
+        if f.providerName != nil { sql += " AND \(Self.providerNameCoalesce) = ?6" }
         sql += " GROUP BY bucket ORDER BY bucket"
 
         var stmt: OpaquePointer?
@@ -544,6 +553,7 @@ public final class UsageStore: @unchecked Sendable {
         sqlite3_bind_int64(stmt, 3, bucketSeconds)
         if let a = f.appType { sqlite3_bind_text(stmt, 4, a, -1, SQLITE_TRANSIENT_DEST) }
         if let m = f.model { sqlite3_bind_text(stmt, 5, m, -1, SQLITE_TRANSIENT_DEST) }
+        if let pn = f.providerName { sqlite3_bind_text(stmt, 6, pn, -1, SQLITE_TRANSIENT_DEST) }
 
         let count = max(1, Int((end - start + bucketSeconds - 1) / bucketSeconds))
         var buckets = (0..<count).map { i in
@@ -563,7 +573,8 @@ public final class UsageStore: @unchecked Sendable {
             buckets[idx].requestCount += Int(sqlite3_column_int64(stmt, 6))
         }
         // 未入库增量落进对应小时桶(越界钳到末桶,与 DB 行同规则)
-        for r in overlayRows(db, start: start, end: end, appType: f.appType, model: f.model) {
+        var ovFilter = f; ovFilter.start = start; ovFilter.end = end
+        for r in overlayRows(db, ovFilter) {
             var idx = Int((r.createdAt - start) / bucketSeconds)
             if idx < 0 { continue }
             if idx >= count { idx = count - 1 }
@@ -590,6 +601,7 @@ public final class UsageStore: @unchecked Sendable {
         var lConds: [String] = ["l.created_at >= ?", "l.created_at <= ?", Self.effectiveUsageFilterL]
         var lBinds: [Bind] = [.int(startTs), .int(endTs)]
         if let at = f.appType { lConds.append("\(Self.foldedAppL) = ?"); lBinds.append(.text(at)) }
+        if let pn = f.providerName { lConds.append("\(Self.providerNameCoalesce) = ?"); lBinds.append(.text(pn)) }
         if let m = f.model { lConds.append("\(Self.effectiveModelL) = ?"); lBinds.append(.text(m)) }
         let lSQL = """
         SELECT date(l.created_at,'unixepoch','localtime') AS d,
@@ -599,7 +611,7 @@ public final class UsageStore: @unchecked Sendable {
                COALESCE(SUM(l.cache_creation_tokens),0),
                COALESCE(SUM(l.cache_read_tokens),0),
                COALESCE(SUM(\(costL(db))),0)
-        FROM proxy_request_logs l
+        FROM proxy_request_logs l\(Self.providersJoinIf(f.providerName, log: "l", provider: "p"))
         WHERE \(lConds.joined(separator: " AND "))
         GROUP BY d
         """
@@ -630,6 +642,7 @@ public final class UsageStore: @unchecked Sendable {
             if let e = rb.end { rConds.append("r.date <= ?"); rBinds.append(.text(e)) }
         }
         if let at = f.appType { rConds.append("\(Self.foldedAppR) = ?"); rBinds.append(.text(at)) }
+        if let pn = f.providerName { rConds.append("\(Self.providerNameSQL(log: "r", provider: "p2")) = ?"); rBinds.append(.text(pn)) }
         if let m = f.model { rConds.append("\(Self.effectiveModelR) = ?"); rBinds.append(.text(m)) }
         let rWhere = rConds.isEmpty ? "" : "WHERE " + rConds.joined(separator: " AND ")
         let rSQL = """
@@ -640,7 +653,7 @@ public final class UsageStore: @unchecked Sendable {
                COALESCE(SUM(r.cache_creation_tokens),0),
                COALESCE(SUM(r.cache_read_tokens),0),
                COALESCE(SUM(\(costR(db))),0)
-        FROM usage_daily_rollups r
+        FROM usage_daily_rollups r\(Self.providersJoinIf(f.providerName, log: "r", provider: "p2"))
         \(rWhere)
         GROUP BY r.date
         """
@@ -670,7 +683,8 @@ public final class UsageStore: @unchecked Sendable {
         fmt.dateFormat = "yyyy-MM-dd"
 
         // 未入库增量按本地日并入(与 logs 的 date(...,'localtime') 分组同口径)
-        for r in overlayRows(db, start: startTs, end: endTs, appType: f.appType, model: f.model) {
+        var ovFilter = f; ovFilter.start = startTs; ovFilter.end = endTs
+        for r in overlayRows(db, ovFilter) {
             let d = fmt.string(from: Date(timeIntervalSince1970: TimeInterval(r.createdAt)))
             var a = map[d] ?? Acc()
             a.req += 1
@@ -716,7 +730,7 @@ public final class UsageStore: @unchecked Sendable {
             sqlite3_finalize(stmt)
         }
         // 「最后活动」把未入库增量也算上(cc-switch 关闭时菜单栏的 "刚刚" 才是真的)
-        let ovTs = overlayRows(db, start: nil, end: nil, appType: nil, model: nil)
+        let ovTs = overlayRows(db, UsageFilter())
             .map(\.createdAt).max()
         switch (dbTs, ovTs) {
         case (let a?, let b?): return max(a, b)
@@ -868,9 +882,24 @@ public final class UsageStore: @unchecked Sendable {
             hasSemantics: hasSemantics(db), hasFallbackTable: hasFallbackPricing(db),
             hasRequestModel: hasColumn(db, "usage_daily_rollups", "request_model"))
     }
-    /// provider 展示名：providers.name 优先，会话占位 provider_id 映射为可读名。
-    static let providerNameCoalesce = "COALESCE(p.name, CASE l.provider_id WHEN '_session' THEN 'Claude (Session)' WHEN '_codex_session' THEN 'Codex (Session)' WHEN '_gemini_session' THEN 'Gemini (Session)' WHEN '_opencode_session' THEN 'OpenCode (Session)' WHEN '_grok_session' THEN 'Grok Build (Session)' WHEN '_pi_session' THEN 'Pi (Session)' ELSE l.provider_id END)"
-    static let providersJoinL = "LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type"
+    /// provider 展示名：providers.name 优先，会话占位 provider_id 映射为可读名
+    /// （对齐 usage_stats.rs::provider_name_coalesce）。proxy_request_logs 与 usage_daily_rollups
+    /// 的 (provider_id, app_type) 同形，两张表都能当 log 别名。
+    static func providerNameSQL(log l: String, provider p: String) -> String {
+        "COALESCE(\(p).name, CASE \(l).provider_id WHEN '_session' THEN 'Claude (Session)' WHEN '_codex_session' THEN 'Codex (Session)' WHEN '_gemini_session' THEN 'Gemini (Session)' WHEN '_opencode_session' THEN 'OpenCode (Session)' WHEN '_grok_session' THEN 'Grok Build (Session)' WHEN '_pi_session' THEN 'Pi (Session)' ELSE \(l).provider_id END)"
+    }
+    /// providers 表 LEFT JOIN（对齐 providers_join）：主键即 (id, app_type)，至多 1:1，不放大行数。
+    static func providersJoin(log l: String, provider p: String) -> String {
+        "LEFT JOIN providers \(p) ON \(l).provider_id = \(p).id AND \(l).app_type = \(p).app_type"
+    }
+    /// 只有传了 provider 筛选才 JOIN（对齐上游 detail_join / rollup_join 的条件拼接）；
+    /// 不传时 SQL 与旧版逐字相同。
+    static func providersJoinIf(_ providerName: String?, log l: String, provider p: String) -> String {
+        providerName == nil ? "" : " " + providersJoin(log: l, provider: p)
+    }
+    /// 明细表侧（别名 l / p）的现成片段，Tabs 查询恒带 JOIN。
+    static let providerNameCoalesce = providerNameSQL(log: "l", provider: "p")
+    static let providersJoinL = providersJoin(log: "l", provider: "p")
 
     // ── usage_daily_rollups(别名 r) 侧的对应片段，供两表合并的 summary/trend/by-app 使用 ──
     /// 折叠 claude-desktop→claude（rollups 侧）。
@@ -1275,7 +1304,7 @@ public final class UsageStore: @unchecked Sendable {
         }
         // 未入库增量按各自来源并入（SessionOverlay=session_log 会与库内同名桶合并，
         // 补录后自动收敛；OmpOverlay=omp_session 单列）。
-        for r in overlayRows(db, start: nil, end: nil, appType: nil, model: nil) {
+        for r in overlayRows(db, UsageFilter()) {
             var a = acc[r.dataSource] ?? (0, 0)
             a.req += 1
             a.cost += r.totalCost
