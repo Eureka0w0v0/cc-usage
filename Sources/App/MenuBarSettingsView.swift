@@ -6,13 +6,13 @@ import AppKit
 /// （Claude = 官方接口 5H/Week，Codex = 本地会话快照、窗口自适应）。折叠状态持久化，默认只展开 All。
 struct MenuBarSettingsView: View {
     @ObservedObject var model: PanelModel
-    @AppStorage("mb.group.all")      private var expAll = true
-    @AppStorage("mb.group.claude")   private var expClaude = false
-    @AppStorage("mb.group.codex")    private var expCodex = false
-    @AppStorage("mb.group.gemini")   private var expGemini = false
-    @AppStorage("mb.group.opencode") private var expOpencode = false
-    @AppStorage("mb.group.antigravity") private var expAntigravity = false
-    @AppStorage("mb.group.grok")     private var expGrok = false
+    @AppStorage(MBKey.groupAll)         private var expAll = true
+    @AppStorage(MBKey.groupClaude)      private var expClaude = false
+    @AppStorage(MBKey.groupCodex)       private var expCodex = false
+    @AppStorage(MBKey.groupGemini)      private var expGemini = false
+    @AppStorage(MBKey.groupOpencode)    private var expOpencode = false
+    @AppStorage(MBKey.groupAntigravity) private var expAntigravity = false
+    @AppStorage(MBKey.groupGrok)        private var expGrok = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

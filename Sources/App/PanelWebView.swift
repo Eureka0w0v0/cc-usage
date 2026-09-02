@@ -6,7 +6,11 @@ import os
 /// 前端调用的 Tauri `invoke(cmd,args)` 通过 WKScriptMessageHandlerWithReply 桥接到这里，
 /// 由 Swift 读 ~/.cc-switch/cc-switch.db 返回数据。字段名对齐 cc-switch(camelCase)。
 struct PanelWebView: NSViewRepresentable {
-    func makeCoordinator() -> Bridge { Bridge() }
+    /// embed 面板改了刷新间隔（set_setting refreshIntervalMs）时回调，宿主拿去同步菜单栏节奏。
+    /// 回调注入，而不是让桥接层反向认识 PanelModel（早前靠 static weak var shared 这条全局暗线）。
+    var onRefreshIntervalChanged: @MainActor (Int) -> Void = { _ in }
+
+    func makeCoordinator() -> Bridge { Bridge(onRefreshIntervalChanged: onRefreshIntervalChanged) }
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -45,7 +49,13 @@ struct PanelWebView: NSViewRepresentable {
 
     final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessageHandler {
         private let store = UsageStore()
+        private let onRefreshIntervalChanged: @MainActor (Int) -> Void
         private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "embed")
+
+        init(onRefreshIntervalChanged: @escaping @MainActor (Int) -> Void) {
+            self.onRefreshIntervalChanged = onRefreshIntervalChanged
+            super.init()
+        }
         /// SQL/overlay 扫描全部下放到这条并发队列（UsageStore 每次查询独立连接、线程安全），
         /// 主线程只收发消息——面板高频刷新不再与 UI 抢主线程。
         private static let workQueue = DispatchQueue(
@@ -174,24 +184,26 @@ struct PanelWebView: NSViewRepresentable {
             // 设置键/值必须原样透传。
             case "get_setting":
                 guard let key = args["key"] as? String, !key.isEmpty else { return NSNull() }
-                return UserDefaults.standard.object(forKey: "embed.\(key)") ?? NSNull()
+                return UserDefaults.standard.object(forKey: EmbedKey.setting(key)) ?? NSNull()
             case "set_setting":
                 guard let key = args["key"] as? String, !key.isEmpty else { return NSNull() }
                 let value = args["value"]
+                let dkey = EmbedKey.setting(key)
                 if value == nil || value is NSNull {
-                    UserDefaults.standard.removeObject(forKey: "embed.\(key)")
+                    UserDefaults.standard.removeObject(forKey: dkey)
                 } else if let v = value as? NSNumber {
-                    UserDefaults.standard.set(v, forKey: "embed.\(key)")
+                    UserDefaults.standard.set(v, forKey: dkey)
                 } else if let v = value as? String {
-                    UserDefaults.standard.set(v, forKey: "embed.\(key)")
+                    UserDefaults.standard.set(v, forKey: dkey)
                 } else {
                     // UserDefaults 只吃 plist 类型，喂进 NSNull（JS 的 [null] / {a:null}
                     // 桥接过来就是）会抛 ObjC 异常——Swift 捕获不了，整个进程当场终止。
                     // 面板真正用到的设置只有标量，其余一律拒绝，走既有错误路径回给前端。
                     throw Err("set_setting: unsupported value type for key \(key)")
                 }
-                if key == "refreshIntervalMs", let ms = (value as? NSNumber)?.intValue {
-                    Task { @MainActor in PanelModel.shared?.applyEmbedRefreshInterval(ms: ms) }
+                if key == EmbedKey.refreshIntervalName, let ms = (value as? NSNumber)?.intValue {
+                    let notify = onRefreshIntervalChanged
+                    Task { @MainActor in notify(ms) }
                 }
                 return NSNull()
 

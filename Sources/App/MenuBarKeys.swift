@@ -18,7 +18,23 @@ enum MBKey {
     static let icon      = "mb.icon"        // 菜单栏 ⚡ 图标开关（默认开）
     static let quotaBar  = "mb.quotaBar"    // 额度画进度条（默认开）；关掉则显示百分比数字
     static let appChips  = "mb.appChips"    // 按 AI 分组的码片选中集（字符串数组）
-    static let ctxBounds = "mb.ctxBounds"   // 按前台 app 分桶的容量边界 [bundleID: [下界, 上界]]
+    // 设置面板各分组的展开状态（MenuBarSettingsView 的 @AppStorage；reload 也读 codex 这个决定是否扫描）
+    static let groupAll         = "mb.group.all"
+    static let groupClaude      = "mb.group.claude"
+    static let groupCodex       = "mb.group.codex"
+    static let groupGemini      = "mb.group.gemini"
+    static let groupOpencode    = "mb.group.opencode"
+    static let groupAntigravity = "mb.group.antigravity"
+    static let groupGrok        = "mb.group.grok"      // 历史键名保留（对应 MBApp.grokbuild）
+}
+
+/// embed 面板经 set_setting 写进 UserDefaults 的键（PanelWebView 桥接与 PanelModel 启动接管共用）。
+enum EmbedKey {
+    static let prefix = "embed."
+    /// 面板传来的裸键（如 "refreshIntervalMs"）→ UserDefaults 键。
+    static func setting(_ name: String) -> String { prefix + name }
+    static let refreshIntervalName = "refreshIntervalMs"
+    static let refreshIntervalMs = setting(refreshIntervalName)
 }
 
 /// 菜单栏可分组展示的 AI 来源。All（全部合计）不在此枚举里——它就是 MBKey 那组旧开关。

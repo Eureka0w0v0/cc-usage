@@ -7,10 +7,6 @@ import AppKit
 
 @MainActor
 final class PanelModel: ObservableObject {
-    /// 进程内唯一实例（App 以 @StateObject 持有）。PanelWebView 桥接的 set_setting
-    /// 经它把 embed 面板选的刷新间隔写穿过来，让菜单栏与面板同节奏。
-    static weak var shared: PanelModel?
-
     @Published var snap: UsageSnapshot?
     @Published var error: String?
 
@@ -107,22 +103,23 @@ final class PanelModel: ObservableObject {
         mbShowIcon  = load(MBKey.icon,      true)
         mbQuotaBar  = load(MBKey.quotaBar,   true)
         mbAppChips  = Set(d.stringArray(forKey: MBKey.appChips) ?? [])
-        PanelModel.shared = self
-        // 迁移：清掉旧版按 app 分桶持久化的容量记忆（陈旧窄上限会错误截断，已改为纯反应式）
-        d.removeObject(forKey: MBKey.ctxBounds)
-        // 同批清理 v1.3 的安全宽度记忆：v1.4 改纯反应式后代码里已零引用，
-        // 但实机 UserDefaults 里还躺着脏值（mb.maxSafeWidth / mb.squeezeWidth）。
-        d.removeObject(forKey: "mb.maxSafeWidth")
-        d.removeObject(forKey: "mb.squeezeWidth")
-        // 迁移：Codex 周窗口标签 W → 7D（W 让位给「本周用量」），码片 key 跟着变，别丢勾选
-        if mbAppChips.remove("codex.quota.W") != nil {
-            mbAppChips.insert("codex.quota.7D")
-            d.set(Array(mbAppChips).sorted(), forKey: MBKey.appChips)
-        }
+        Self.migrateLegacyDefaults(d, chips: &mbAppChips)
         // embed 面板持久化的刷新间隔（ms，set_setting 写入）：启动时接管为全局节奏，
         // 菜单栏与面板从第一秒起就一致。没存过则维持默认 5s。
-        if let ms = d.object(forKey: "embed.refreshIntervalMs") as? Int {
+        if let ms = d.object(forKey: EmbedKey.refreshIntervalMs) as? Int {
             intervalSeconds = max(0, ms / 1000)
+        }
+    }
+
+    /// 旧版遗留 UserDefaults 的一次性清理 / 键迁移（启动即跑，幂等）。
+    private static func migrateLegacyDefaults(_ d: UserDefaults, chips: inout Set<String>) {
+        // v1.4 改纯反应式后零引用的宽度记忆：按 app 分桶的容量边界（mb.ctxBounds）与
+        // v1.3 的安全宽度（mb.maxSafeWidth / mb.squeezeWidth）——陈旧的窄上限会错误截断新内容
+        for legacy in ["mb.ctxBounds", "mb.maxSafeWidth", "mb.squeezeWidth"] { d.removeObject(forKey: legacy) }
+        // Codex 周窗口标签 W → 7D（W 让位给「本周用量」），码片 key 跟着变，别丢勾选
+        if chips.remove("codex.quota.W") != nil {
+            chips.insert("codex.quota.7D")
+            d.set(Array(chips).sorted(), forKey: MBKey.appChips)
         }
     }
 
@@ -236,7 +233,7 @@ final class PanelModel: ObservableObject {
         // Codex 窗口列表：勾了码片要用，设置面板展开 Codex 分组也要用（得先有列表才能给出勾选项）。
         // 扫描本身是主线程碰不得的活（~/.codex/sessions 递归枚举 + 尾读），一律在这条后台链上做。
         let wantCodex = chips.contains { $0.hasPrefix("codex.quota.") }
-            || UserDefaults.standard.bool(forKey: "mb.group.codex")
+            || UserDefaults.standard.bool(forKey: MBKey.groupCodex)
 
         Task { [weak self] in
             let out = await Task.detached(priority: .userInitiated) { () -> ReloadOutput in

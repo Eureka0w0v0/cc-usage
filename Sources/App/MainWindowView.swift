@@ -8,7 +8,9 @@ struct MainWindowView: View {
     var body: some View {
         ZStack(alignment: .top) {
             Theme.bg.ignoresSafeArea()
-            PanelWebView().ignoresSafeArea()          // 真面板边到边铺满整窗
+            // 真面板边到边铺满整窗；面板改刷新间隔时经回调同步菜单栏节奏（不再走全局单例）
+            PanelWebView(onRefreshIntervalChanged: { model.applyEmbedRefreshInterval(ms: $0) })
+                .ignoresSafeArea()
             WindowDragArea()                          // 顶部留白带原生拖拽区（隐藏标题栏后可拖窗口）
                 .frame(maxWidth: .infinity).frame(height: 46)
                 .ignoresSafeArea(edges: .top)
