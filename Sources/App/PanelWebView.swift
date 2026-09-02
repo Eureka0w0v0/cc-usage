@@ -112,7 +112,6 @@ struct PanelWebView: NSViewRepresentable {
 
         private func int64(_ v: Any?) -> Int64? {
             if let n = v as? NSNumber { return n.int64Value }
-            if let d = v as? Double { return Int64(d) }
             if let s = v as? String { return Int64(s) }
             return nil
         }

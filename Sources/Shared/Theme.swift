@@ -8,13 +8,7 @@ public enum Theme {
     public static let cost     = Color(hex: 0xF43F5E) // Cost 红(虚线) #f43f5e
     public static let input    = Color(hex: 0x3B82F6) // Input 蓝 #3b82f6
     public static let output   = Color(hex: 0x22C55E) // Output 绿 #22c55e
-    // 卡片图标强调色（对齐 UsageHero MiniStat + tailwind.config 覆盖色）
-    public static let amber     = Color(hex: 0xF59E0B) // Creation 图标 amber-500
-    public static let emerald   = Color(hex: 0x10B981) // Hit 图标 + 命中率 + TOTAL COST(green-500 被覆盖成 #10b981)
-    public static let appleBlue = Color(hex: 0x0A84FF) // Fresh Input / Activity 图标 blue-500(被覆盖)
     public static let accent    = Color(hex: 0x148AFF) // --primary(闪电)
-
-    public static let muted     = Color(hex: 0x2C2C30) // --muted(≈药丸底 / 命中率轨道)
 
     // 主题变量（精确对齐 index.css .dark，用实心色而非白色透明叠加）
     public static let bg        = Color(hex: 0x1D1D20) // --background

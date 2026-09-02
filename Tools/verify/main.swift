@@ -1,8 +1,8 @@
 import Foundation
 
 // 命令行验证：跑 UsageStore 对着真实 cc-switch.db，打印数字，人工比对面板。
-// 编译: swiftc Sources/Shared/UsageStore.swift Sources/Shared/SessionOverlay.swift \
-//         Sources/Shared/Formatting.swift Tools/verify/main.swift -o /tmp/ccverify -lsqlite3
+// 编译: swiftc -O Sources/Shared/*.swift Tools/verify/main.swift -o /tmp/ccverify -lsqlite3
+//      （Shared 内部互相引用，必须整目录一起编，单列文件会缺 OmpOverlay / ModelPricing）
 
 func fmtTokens(_ n: Int64) -> String { Fmt.tokens(n) }
 

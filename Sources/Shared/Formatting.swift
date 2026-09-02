@@ -53,10 +53,6 @@ public enum Fmt {
         }
     }
 
-    public static func costPrecise(_ v: Double) -> String {
-        String(format: "$%.4f", v)
-    }
-
     // tooltip 用，对齐 cc-switch fmtUsd(value, 6)
     public static func cost6(_ v: Double) -> String {
         String(format: "$%.6f", v)
@@ -65,10 +61,6 @@ public enum Fmt {
     public static func percent(_ ratio: Double) -> String {
         let pct = max(0, min(100, ratio * 100))   // 对齐 cc-switch: clamp[0,100]，≥99.95 取整
         return String(format: pct >= 99.95 ? "%.0f%%" : "%.1f%%", pct)
-    }
-
-    public static func requests(_ n: Int) -> String {
-        n >= 1000 ? String(format: "%.1fK", Double(n) / 1000) : "\(n)"
     }
 
     /// "3m ago"（UI 统一英文，与面板/菜单栏其余文案一致）
