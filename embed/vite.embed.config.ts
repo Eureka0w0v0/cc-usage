@@ -30,6 +30,14 @@ function renameEmbedHtml(): Plugin {
 // Output dir for the single-file panel consumed by the native WKWebView.
 // scripts/build-embed.sh sets CC_USAGE_WEB_PANEL_OUT; defaults to ./dist-embed.
 const OUT_DIR = process.env.CC_USAGE_WEB_PANEL_OUT ?? r("./dist-embed");
+// 安全阀：emptyOutDir 会清空整个目录。只接受约定的产物目录名，环境变量写错
+// （比如指到 Sources/App）时直接拒绝，而不是把源码树删掉。
+// Guard: emptyOutDir wipes the target. Refuse anything but the agreed output dir names.
+if (!["web-panel", "dist-embed"].includes(path.basename(OUT_DIR))) {
+  throw new Error(
+    `CC_USAGE_WEB_PANEL_OUT must end with "web-panel" or "dist-embed" (emptyOutDir wipes it), got: ${OUT_DIR}`,
+  );
+}
 
 export default defineConfig({
   // root 保持仓库根目录（默认），index-embed.html 在此处
