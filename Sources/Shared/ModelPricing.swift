@@ -267,9 +267,12 @@ public enum ModelPricing {
     /// 在连接上建 TEMP 兜底定价表，供聚合 SQL 现场补算未定价行。
     /// 只读连接同样可建 temp 表（temp 库独立于主库）。
     ///
-    /// 返回值**必须**被调用方用来决定 `costSQL(hasFallbackTable:)`：相关子查询在
-    /// prepare 阶段就解析表名，表不在会让每一条查询直接抛错。早前注释说「用
-    /// LEFT JOIN，表缺失自动回落 0」是错的——从来没有 LEFT JOIN。
+    /// 返回是否建成。调用方（`UsageStore.openRO`）不用返回值，而是每次查询前探
+    /// `sqlite_temp_master` 来决定 `costSQL(hasFallbackTable:)`——相关子查询在 prepare
+    /// 阶段就解析表名，表不在会让每一条查询直接抛错。早前注释说「用 LEFT JOIN，表缺失
+    /// 自动回落 0」是错的——从来没有 LEFT JOIN。
+    /// 同一连接重复调用：静态表只灌一次，但别名预解析每次都跑——库里新出现的模型 id
+    /// 才进得来（早前 `alreadyFilled` 直接早返，复用连接时新别名永远缺席）。
     @discardableResult
     public static func installFallbackTable(_ db: OpaquePointer) -> Bool {
         let ddl = """
@@ -287,7 +290,7 @@ public enum ModelPricing {
             alreadyFilled = sqlite3_step(countStmt) == SQLITE_ROW
         }
         sqlite3_finalize(countStmt)
-        if alreadyFilled { return true }
+        if alreadyFilled { seedResolvedAliases(db); return true }
 
         let sql = "INSERT OR IGNORE INTO \(fallbackTable) VALUES (?,?,?,?,?)"
         var stmt: OpaquePointer?
