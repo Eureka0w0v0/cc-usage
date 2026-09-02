@@ -95,6 +95,11 @@ public enum ISO8601Lenient {
         return fractional.date(from: s)
     }
 
+    /// RFC3339 → epoch 秒。两个 overlay 冷启动逐行调用，是热路径（formatter 静态复用）。
+    public static func epochSeconds(_ s: String) -> Int64? {
+        date(s).map { Int64($0.timeIntervalSince1970) }
+    }
+
     /// "…56.123456+00:00" → "…56+00:00"（手写扫描，免去每次调用编译正则）
     private static func stripFractionalSeconds(_ s: String) -> String {
         guard let dot = s.firstIndex(of: ".") else { return s }

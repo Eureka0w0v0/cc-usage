@@ -229,7 +229,7 @@ public final class OmpOverlay {
         let ts: Int64
         if let ms = message["timestamp"] as? NSNumber {
             ts = ms.int64Value / 1000
-        } else if let s = obj["timestamp"] as? String, let t = SessionOverlay.parseRFC3339(s) {
+        } else if let s = obj["timestamp"] as? String, let t = ISO8601Lenient.epochSeconds(s) {
             ts = t
         } else {
             ts = Int64(Date().timeIntervalSince1970)

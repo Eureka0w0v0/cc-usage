@@ -60,7 +60,7 @@ final class SessionOverlayTests: XCTestCase {
         let r = try XCTUnwrap(rows.first)
         XCTAssertEqual(r.requestId, "session:m1")
         XCTAssertEqual(r.output, 20)
-        XCTAssertEqual(r.createdAt, SessionOverlay.parseRFC3339("2026-07-08T10:00:00Z"))
+        XCTAssertEqual(r.createdAt, ISO8601Lenient.epochSeconds("2026-07-08T10:00:00Z"))
         // 100×$3/1M + 20×$15/1M
         XCTAssertEqual(r.totalCost, 0.0006, accuracy: 1e-12)
     }

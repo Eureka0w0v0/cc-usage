@@ -248,12 +248,12 @@ public enum ModelPricing {
 
     /// 按 SessionOverlay 的候选归一化（命名空间/日期尾/[1m] 等）查内置表。
     public static func lookup(_ modelId: String) -> Row? {
-        for candidate in SessionOverlay.pricingCandidates(modelId) {
+        for candidate in ModelId.pricingCandidates(modelId) {
             if let row = table[candidate] { return row }
         }
         // 前缀兜底：与 find_model_pricing_row 同门槛，取最短命中。
-        for candidate in SessionOverlay.pricingCandidates(modelId)
-        where SessionOverlay.shouldTryPrefixMatch(candidate) {
+        for candidate in ModelId.pricingCandidates(modelId)
+        where ModelId.shouldTryPrefixMatch(candidate) {
             if let hit = prefixIds.first(where: { $0.hasPrefix(candidate + "-") }) {
                 return table[hit]
             }
