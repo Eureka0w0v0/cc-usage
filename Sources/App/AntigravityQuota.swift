@@ -180,7 +180,8 @@ actor AntigravityQuota {
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["metadata": ["ideType": "ANTIGRAVITY"]])
         guard let obj = await json(req) else { return nil }
         let p = obj["cloudaicompanionProject"] as? String ?? ""
-        projectID = p
+        // 空 project（onboarding 未完成 / 瞬时错误）不缓存，否则整个进程生命周期不再重查。
+        if !p.isEmpty { projectID = p }
         return p
     }
 
@@ -190,7 +191,6 @@ actor AntigravityQuota {
         let body: [String: Any] = project.isEmpty ? [:] : ["project": project]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         guard let obj = await json(req), let map = obj["models"] as? [String: Any] else { return nil }
-        let iso = ISO8601DateFormatter()
         var out: [Model] = []
         var seen = Set<String>()
         for (name, v) in map {
@@ -204,7 +204,8 @@ actor AntigravityQuota {
             let rf = (qi?["remainingFraction"] as? Double) ?? (qi == nil ? nil : 0)
             guard let remaining = rf else { continue }
             guard seen.insert(display).inserted else { continue }
-            let reset = (qi?["resetTime"] as? String).flatMap { iso.date(from: $0) }
+            // protobuf Timestamp 的 JSON 带 3/6/9 位小数秒，裸 ISO8601DateFormatter 一律解析失败
+            let reset = (qi?["resetTime"] as? String).flatMap { ISO8601Lenient.date($0) }
             out.append(Model(label: display, usedPercent: max(0, min(100, (1 - remaining) * 100)), resetAt: reset))
         }
         return out.sorted { $0.label < $1.label }
