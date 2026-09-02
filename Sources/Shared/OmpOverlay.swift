@@ -242,7 +242,8 @@ public final class OmpOverlay {
         let cost = usage["cost"] as? NSDictionary
         let ic = double(cost?["input"]), oc = double(cost?["output"])
         let crc = double(cost?["cacheRead"]), ccc = double(cost?["cacheWrite"])
-        let total = cost?["total"] != nil ? double(cost?["total"]) : ic + oc + crc + ccc
+        // "total": null 桥成 NSNull（!= nil 为真），必须同样走求和兜底，否则成本静默记 0。
+        let total = (cost?["total"] as? NSNumber)?.doubleValue ?? (ic + oc + crc + ccc)
 
         // 同 responseId 重复出现(重试/分叉写入)→ 取 output 更大的那条
         if let old = rows[requestId], output <= old.output { return }

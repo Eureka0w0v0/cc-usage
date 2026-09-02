@@ -258,4 +258,17 @@ final class OmpOverlayTests: XCTestCase {
         XCTAssertEqual(s.requests, 1, "同一 msg_id 被两层各看见一次，合流后必须只算一次")
         XCTAssertEqual(s.output, 100)
     }
+
+    // MARK: - 成本字段边界 / 来源桶一致性
+
+    /// OMP 偶有 `"cost":{…,"total":null}`：JSON null 桥成 NSNull，`!= nil` 为真却取不出数——
+    /// 旧实现把成本静默记 0。负责杀的变异体：total 判空回退到 `!= nil`。
+    func testNullTotalCostFallsBackToSumOfParts() throws {
+        let line = #"""
+        {"type":"message","id":"e1","timestamp":"2026-07-26T13:28:12.890Z","message":{"role":"assistant","provider":"anthropic","model":"claude-opus-5","responseId":"r-null","timestamp":1785072483377,"usage":{"input":10,"output":100,"cacheRead":0,"cacheWrite":0,"totalTokens":110,"cost":{"input":0.1,"output":0.2,"cacheRead":0.15,"cacheWrite":0.05,"total":null}}}}
+        """#
+        try write([line])
+        let r = try XCTUnwrap(overlay.pendingRows(db: db).first)
+        XCTAssertEqual(r.totalCost, 0.5, accuracy: 1e-12, "total 为 null 必须回落四维求和")
+    }
 }
