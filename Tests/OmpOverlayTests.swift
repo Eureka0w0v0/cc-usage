@@ -271,4 +271,15 @@ final class OmpOverlayTests: XCTestCase {
         let r = try XCTUnwrap(overlay.pendingRows(db: db).first)
         XCTAssertEqual(r.totalCost, 0.5, accuracy: 1e-12, "total 为 null 必须回落四维求和")
     }
+
+    /// Request Logs 行的 dataSource 与「按来源」分组用的是同一个字段：两条路径必须落同一桶。
+    /// （不变式测试：早前 requestLogs 按 providerId 反推来源，与 dataSourceBreakdown 是两份真值。）
+    func testRequestLogRowDataSourceMatchesBreakdownBucket() throws {
+        try write([msgLine(rid: "r1", provider: "anthropic", model: "claude-opus-5")])
+        let store = UsageStore(path: dbPath, overlay: try Fixture.emptyOverlay(), ompOverlay: overlay)
+        let row = try XCTUnwrap(store.requestLogs(LogQueryFilter(), page: 0, pageSize: 10).rows.first)
+        let buckets = try store.dataSourceBreakdown().map(\.dataSource)
+        XCTAssertEqual(row.dataSource, "omp_session")
+        XCTAssertEqual(buckets, ["omp_session"])
+    }
 }

@@ -1083,7 +1083,7 @@ public final class UsageStore: @unchecked Sendable {
                 totalCostUsd: fmt6(r.totalCost),
                 isStreaming: true, latencyMs: 0, firstTokenMs: nil, durationMs: nil,
                 statusCode: 200, errorMessage: nil, createdAt: r.createdAt,
-                dataSource: r.providerId == "_session" ? "session_log" : "omp_session"
+                dataSource: r.dataSource   // 与 dataSourceBreakdown 同一真值，不按 providerId 反推
             )
         }
 
