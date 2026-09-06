@@ -67,7 +67,8 @@ final class PanelModel: ObservableObject {
     var lastNatural: CGFloat = 0           // 上次巡检时的自然宽度，用于识别"内容结构变了"
     var growCeiling: CGFloat = .greatestFiniteMagnitude  // 增长天花板 = 上次被挤的宽度，防边界震荡
     var hiddenTicks = 0                     // 连续不可见计数：≥2 才算真被挤，滤面板开合毛刺
-    var growTicks = 0                        // 可见但仍截断的连续计数：≥2 才尝试夺回空间
+    var pinnedTicks = 0                     // 天花板钉住后的计数：刘海屏每 30 拍无痛重量一次空位
+    var concealReasons: Set<String> = []    // 锁屏/屏保/息屏/睡眠：非空 = 遮蔽中，不可见不算被挤
     private var visTimer: AnyCancellable?
     weak var statusWindow: NSWindow?     // 状态项窗口（长命），找到一次就留着
     var panelWindowClass: AnyClass?      // 面板窗口的类对象，比对指针即可，免去每秒建串
@@ -153,7 +154,8 @@ final class PanelModel: ObservableObject {
         if mbAnyQuotaOn { refreshQuotaNow() }   // 启动时若已开启额度码片，立即取一次
         if mbAppChips.contains(where: { $0.hasPrefix("antigravity.quota.") }) { refreshAntigravityNow() }
         updater.start()
-        // 状态项可见性巡检：被挤掉后 2s 内一步压回安全宽度
+        // 状态项可见性巡检：真被挤掉后 2s 内按实测空位一步压回；全屏/锁屏等遮蔽不动宽度
+        observeMenuBarConcealment()
         visTimer = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.checkStatusItemVisibility() }
@@ -170,7 +172,7 @@ final class PanelModel: ObservableObject {
         // 前台 app 变化：菜单栏可用空间可能被让出来了，值得重新争取——但只抬天花板，
         // 不动 mbWidthCap。清掉 cap 会让 label 立刻回全宽、随即被挤掉，而恢复要等
         // checkStatusItemVisibility 攒够 hiddenTicks（1Hz 巡检）→ 每切一次 app 就隐身
-        // 两秒多。夺回空间交给 checkStatusItemVisibility 的增长分支即可，全程不失可见。
+        // 两秒多。夺回空间交给它的增长分支：刘海屏实测空位只涨到刚好，全程不失可见。
         let raiseCeiling: @Sendable () -> Void = { [weak self] in
             Task { @MainActor in self?.growCeiling = .greatestFiniteMagnitude }
         }

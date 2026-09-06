@@ -72,10 +72,8 @@ struct MenuBarLabel: View {
 
     private func tier(_ name: String) -> QuotaTier? { model.quotaTiers.first { $0.name == name } }
 
-    /// 状态项宽度锁：只增不减（本次运行内）。SwiftUI MenuBarExtra 的已知毛病——
-    /// label 运行中变窄（如取消勾选码片）时，状态项会被系统整个隐藏，变宽才恢复。
-    /// 锁住最大已见宽度后，取消勾选只是右侧留白、绝不收窄 → 不再触发隐藏；
-    /// 重启后按当前勾选恢复精确宽度。
+    /// 默认全宽；只有 PanelModel 的宽度 governor（MenuBarWidthGovernor.swift）判定状态项
+    /// 真被 macOS 挤出菜单栏时才给出 mbWidthCap，由 composite 尾部截断。
     var body: some View {
         // 整条 label 合成为单张模板 NSImage（其自身宽度即上限，收缩由 composite 内截断实现）。
         // MenuBarExtra label 实测只有「单 Image」可靠——多段 Text 会被截断、SF Symbol 塞 Text

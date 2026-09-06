@@ -55,10 +55,12 @@
 		7EFE2736BE80418E3B599C60 /* UsageStore+Tabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 578EA2EB8DDB1CFEEEAACBE1 /* UsageStore+Tabs.swift */; };
 		80090AAACF2B93A81A1F657A /* FallbackTableSeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581B74090E8AD015CE9C4DBE /* FallbackTableSeedTests.swift */; };
 		8489854C9B2CFB5F223BCDF5 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B630AB07F7C1A6EB7B7A1D56 /* UpdateChecker.swift */; };
+		8694E39C29B428CB8A2B9AB0 /* MenuBarStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E66BA024EC17C0383C62FD /* MenuBarStrip.swift */; };
 		87C3041DB6F00AC702CC5176 /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B7394AA86628D94994BEE1 /* UsageStore+Summary.swift */; };
 		8F340496A2BAA0556D64AA3C /* MenuBarKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79D23CC551C0C16F95DCFD40 /* MenuBarKeys.swift */; };
 		90C0B88B080D42446840B0E1 /* AntigravityQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */; };
 		94E0C286A069D61FA18F185B /* ModelId.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D2EACA64431BC2B2245A81B /* ModelId.swift */; };
+		95AE0E2B462B23B7C6B989A1 /* MenuBarStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E66BA024EC17C0383C62FD /* MenuBarStrip.swift */; };
 		95F4FDE148D12D8EA048820D /* MenuBarWidthGovernor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD92AB9ED76B0ADA5CD07CC /* MenuBarWidthGovernor.swift */; };
 		99E489EF52A92F4BEE5B8C08 /* DataSourceBreakdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450359DFC5AEC0C170B78D45 /* DataSourceBreakdownTests.swift */; };
 		A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */ = {isa = PBXBuildFile; fileRef = 7C5506EFDDB250B8217B59FD /* brand-gemini.png */; };
@@ -68,8 +70,10 @@
 		A99CCBF14FF6DCD2F03D296C /* SyncCursorCompatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B0A19B0E75AF7C4A2A7B928 /* SyncCursorCompatTests.swift */; };
 		A9F586A54F2D6C657E1E698E /* UsageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C0D5712E669F0035EB83C1 /* UsageModels.swift */; };
 		A9FED5E7C3C42C8FA79EDDA7 /* ProviderFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93814BF68F4EABE02C4D6FB7 /* ProviderFilterTests.swift */; };
+		AB4712B67D094A87FB5133FB /* MenuBarStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E66BA024EC17C0383C62FD /* MenuBarStrip.swift */; };
 		B37D66ED135407352107CDAE /* brand-claude.png in Resources */ = {isa = PBXBuildFile; fileRef = CAA25E78D961070EDBD05FBD /* brand-claude.png */; };
 		B3AAFCB633407D12F38BE394 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
+		B5EF96527E45E39772554752 /* MenuBarStripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B329187C6B1B870A6A8E90 /* MenuBarStripTests.swift */; };
 		B690D5FE64B100264FED2361 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = 0FA0E5873AE44221C5F8E764 /* index.html */; };
 		B709318DC2A0E03EE7054593 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
 		BBF3D589661BD58666A648E8 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
@@ -173,6 +177,7 @@
 		C843DC8A24FE2FC77A32C289 /* Sample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sample.swift; sourceTree = "<group>"; };
 		CAA25E78D961070EDBD05FBD /* brand-claude.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-claude.png"; sourceTree = "<group>"; };
 		CE330C4F84DEDFFC2BB8CE6C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D1B329187C6B1B870A6A8E90 /* MenuBarStripTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarStripTests.swift; sourceTree = "<group>"; };
 		D26B720C71341EDAF0A5BF0D /* MenuBarSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarSettingsView.swift; sourceTree = "<group>"; };
 		D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelWebView.swift; sourceTree = "<group>"; };
 		DC3977B07E56C3EEC6F0A704 /* CCUsageWidget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CCUsageWidget.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -180,6 +185,7 @@
 		E1AB14D881996E7BEEB26551 /* FormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormattingTests.swift; sourceTree = "<group>"; };
 		E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-openai.png"; sourceTree = "<group>"; };
 		E20D62ABBAC169F3225CD479 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		F0E66BA024EC17C0383C62FD /* MenuBarStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarStrip.swift; sourceTree = "<group>"; };
 		F6EBED98C0A4EED2EDD79A8D /* UsageStore+Trend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+Trend.swift"; sourceTree = "<group>"; };
 		FE46559B13C9C8A264B5681B /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -234,6 +240,7 @@
 			isa = PBXGroup;
 			children = (
 				C0D5177768EABBA97BE2A6C7 /* Formatting.swift */,
+				F0E66BA024EC17C0383C62FD /* MenuBarStrip.swift */,
 				1D2EACA64431BC2B2245A81B /* ModelId.swift */,
 				97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */,
 				852F6FC486224DEFA66DC312 /* OmpOverlay.swift */,
@@ -259,6 +266,7 @@
 				450359DFC5AEC0C170B78D45 /* DataSourceBreakdownTests.swift */,
 				581B74090E8AD015CE9C4DBE /* FallbackTableSeedTests.swift */,
 				E1AB14D881996E7BEEB26551 /* FormattingTests.swift */,
+				D1B329187C6B1B870A6A8E90 /* MenuBarStripTests.swift */,
 				A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */,
 				4FD962A14316054D9A982BE4 /* OmpOverlayTests.swift */,
 				462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */,
@@ -477,6 +485,7 @@
 			files = (
 				A61F23745122D8A4D9FC74BA /* CCUsageWidgetBundle.swift in Sources */,
 				60B00681B5B422EF73D89690 /* Formatting.swift in Sources */,
+				8694E39C29B428CB8A2B9AB0 /* MenuBarStrip.swift in Sources */,
 				6A9F7029D04FB2869C19EE7F /* ModelId.swift in Sources */,
 				095C61E167A7253744FED7A8 /* ModelPricing.swift in Sources */,
 				430272EA72A336833DA9941E /* OmpOverlay.swift in Sources */,
@@ -508,6 +517,7 @@
 				79DF1F59109D2C6A54E0C8D7 /* MenuBarLabel.swift in Sources */,
 				F4342FBA8A4CA98A394C52D6 /* MenuBarPanel.swift in Sources */,
 				D8ED16440C920A8A54D36E37 /* MenuBarSettingsView.swift in Sources */,
+				AB4712B67D094A87FB5133FB /* MenuBarStrip.swift in Sources */,
 				95F4FDE148D12D8EA048820D /* MenuBarWidthGovernor.swift in Sources */,
 				94E0C286A069D61FA18F185B /* ModelId.swift in Sources */,
 				E5DE774E75BA5998B16892CF /* ModelPricing.swift in Sources */,
@@ -540,6 +550,8 @@
 				80090AAACF2B93A81A1F657A /* FallbackTableSeedTests.swift in Sources */,
 				D0CED0E83C8A971F5437B63C /* Formatting.swift in Sources */,
 				68B805CE1560AC2AF4047FC6 /* FormattingTests.swift in Sources */,
+				95AE0E2B462B23B7C6B989A1 /* MenuBarStrip.swift in Sources */,
+				B5EF96527E45E39772554752 /* MenuBarStripTests.swift in Sources */,
 				22985D97C9AF72DDF79CFFD9 /* ModelId.swift in Sources */,
 				59EB4F7EB26C0A9D3CAEC104 /* ModelPricing.swift in Sources */,
 				1EB76A1AAF9DEB820C81DC05 /* ModelPricingFallbackTests.swift in Sources */,
