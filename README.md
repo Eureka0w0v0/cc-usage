@@ -2,147 +2,148 @@
 
 # CC Usage
 
-**macOS 菜单栏里的 Claude Code / Codex / Gemini 用量实时看板**
+**Real-time Claude Code / Codex / Gemini usage in your macOS menu bar**
 
-基于 [cc-switch](https://github.com/farion1231/cc-switch) Usage 面板二次开发的原生伴侣应用
+A native companion app derived from the Usage dashboard of [cc-switch](https://github.com/farion1231/cc-switch)
 
-简体中文 | [English](README.en.md)
+English | [简体中文](README.zh-CN.md)
 
-<img src="docs/screenshots/menu-bar.png" alt="菜单栏码片" width="420">
+<img src="docs/screenshots/menu-bar.png" alt="Menu bar chips" width="420">
 
 </div>
 
 ---
 
-## 这是什么
+## What is this
 
-[cc-switch](https://github.com/farion1231/cc-switch) 的「用量统计」面板很好用,但它藏在主程序的一个标签页里。CC Usage 把它搬出来**常驻**:
+The Usage dashboard in [cc-switch](https://github.com/farion1231/cc-switch) is great, but it lives inside a tab of the main app. CC Usage makes it **always visible**:
 
-- **菜单栏码片**:今日 tokens·花费、5H/Week 官方订阅额度百分比,一眼可见,5 秒实时刷新;
-- **独立主窗口**:内嵌 cc-switch **真实前端**(不是仿制)的完整 Usage 面板,数字、图表、交互与原版逐像素一致。
+- **Menu bar chips**: today's tokens & cost plus your official 5H / Weekly subscription quota, refreshed every 5 seconds;
+- **A standalone main window** embedding cc-switch's **real frontend** (not a lookalike) — numbers, charts and interactions are pixel-identical to upstream.
 
 <div align="center">
-<img src="docs/screenshots/main-window.png" alt="主窗口" width="720">
+<img src="docs/screenshots/main-window.png" alt="Main window" width="720">
 <br><br>
-<img src="docs/screenshots/menu-bar-panel.png" alt="菜单栏弹窗" width="340">
+<img src="docs/screenshots/menu-bar-panel.png" alt="Menu bar panel" width="340">
 </div>
 
-## 功能
+## Features
 
-- ⚡ **菜单栏码片自由组合**:今日 / 近 7 天 / 近 30 天的 Tokens 与花费(D/W/M),外加 5H / Week 官方额度百分比,想看哪个勾哪个;支持按 AI 分组(Claude / Codex / Gemini / OpenCode / Grok / Antigravity)
-- 🧩 **Grok 分组**:可勾选 `grokbuild` 用量 Tokens/Cost;xAI **无公开 remaining/utilization 查询接口**,Quota 行与 Gemini/OpenCode 一样标注 `No quota API`(不做伪造百分比)
-- 📊 **1:1 真面板**:主窗口直接运行 cc-switch 前端构建产物——Usage Hero、真 Recharts 趋势图(悬停提示与原版一致)、来源/模型筛选、日期范围、Request Logs / Provider Stats / Model Stats 三个标签页
-- 🔄 **5 秒实时刷新**:间隔可选 5/10/30/60 秒或关闭,选择持久化;菜单栏与主窗口共享同一个刷新节奏,数字永远一致
-- 🔋 **官方订阅额度**:读取本机 Claude Code 的 OAuth 凭据查询官方 `/api/oauth/usage`,5 分钟节流 + 进程内共享缓存,绝不打爆接口(429);首屏即显,无需等待
-- 🔌 **cc-switch 关闭也照常实时**:内置只读「未入库增量」叠加层,直接增量解析 Claude Code 会话日志并按 cc-switch 的价格表现场定价;cc-switch 补录入库时自动去重收敛,实测数字无缝交接
-- 🧬 **OMP 用量不再漏算**:[Oh My Pi](https://github.com/sst/omp) 把会话写在 `~/.omp/agent/sessions`,cc-switch 不认识这个目录、**永远不会**入库——本应用直接只读解析,并**按模型家族归位**:走 Claude 的算进 Claude,走 Grok 的算进 Grok,不混成一坨;成本用 OMP 自己算好的(自定义网关在 cc-switch 价格表里根本不存在)
-- 🪟 **克制的窗口行为**:主窗口全局唯一,关掉后菜单栏继续常驻
+- ⚡ **Composable menu bar chips**: Tokens & cost for today / last 7 days / last 30 days (D/W/M), plus official 5H / Weekly quota percentages — pick any combination; per-AI groups (Claude / Codex / Gemini / OpenCode / Grok / Antigravity)
+- 🧩 **Grok group**: Tokens/Cost chips for `grokbuild` usage; xAI has **no public remaining/utilization API**, so Quota shows `No quota API` like Gemini/OpenCode (no fabricated percentages)
+- 📊 **The real dashboard, 1:1**: the main window runs cc-switch's actual frontend build — Usage Hero, genuine Recharts trend chart (hover tooltips identical to upstream), source/model filters, date ranges, and the Request Logs / Provider Stats / Model Stats tabs
+- 🔄 **5-second live refresh**: choose 5/10/30/60s or off; the choice persists, and the menu bar and main window share one refresh cadence so they never disagree
+- 🔋 **Official subscription quota**: queries Anthropic's `/api/oauth/usage` with your local Claude Code OAuth credentials, throttled to once per 5 minutes with an in-process shared cache (no 429s); shown from the very first paint
+- 🔌 **Live even with cc-switch closed**: a built-in read-only overlay incrementally parses Claude Code session logs and prices them with cc-switch's own pricing table; when cc-switch imports those rows later the overlay drains via exact request-id dedup — verified seamless handoff, zero double counting
+- 🧬 **OMP usage no longer missing**: [Oh My Pi](https://github.com/sst/omp) writes its sessions to `~/.omp/agent/sessions`, a directory cc-switch knows nothing about and will **never** import — the app parses it read-only and **routes each row by model family**: Claude requests count as Claude, Grok requests count as Grok, never lumped together; costs come from OMP's own figures (custom gateways simply don't exist in cc-switch's pricing table)
+- 🪟 **Well-behaved windowing**: a single unique main window; closing it keeps the menu bar resident
 
-## 前置条件(必读)
+## Prerequisites (read this)
 
 > [!IMPORTANT]
 >
-> 1. **macOS 14 (Sonoma) 及以上**;
-> 2. 已安装 [cc-switch](https://github.com/farion1231/cc-switch)(建议 ≥ 3.16)——历史数据、价格表与数据库都由它建立维护,本应用对其库**只读**;
->    **cc-switch 不需要保持运行**:它关闭时,应用会直接增量解析 Claude Code 的会话日志(`~/.claude/projects`),把尚未入库的用量实时叠加显示,等 cc-switch 回来补录时按 request_id 精确去重、无缝交接不双算(Codex / Gemini 的**新增**用量仍需 cc-switch 运行导入);
->    装了 [OMP](https://github.com/sst/omp) 的话,它的用量同样不需要 cc-switch——见下方「工作原理」;
-> 3. 额度徽标(5H/Week)需要本机登录过 Claude Code(从 Keychain / `~/.claude/.credentials.json` 读取 OAuth 凭据)。
+> 1. **macOS 14 (Sonoma) or later**;
+> 2. [cc-switch](https://github.com/farion1231/cc-switch) (≥ 3.16 recommended) installed — it owns the local database, history and pricing table; this app reads its database **read-only**.
+>    **cc-switch does NOT need to be running**: while it's closed, the app incrementally parses Claude Code's session logs (`~/.claude/projects`) itself and overlays the not-yet-imported usage in real time; when cc-switch comes back and imports those rows, the overlay deduplicates by request id and hands off seamlessly with no double counting (importing **new** Codex / Gemini usage still requires cc-switch to run);
+>    If you use [OMP](https://github.com/sst/omp), its usage likewise needs no cc-switch — see "How it works" below;
+> 3. The quota chips/badges require a Claude Code login on this machine (OAuth credentials are read from the Keychain / `~/.claude/.credentials.json`).
 
-## 安装
+## Install
 
-### 方式一:下载 Release(推荐)
+### Option 1: download a Release (recommended)
 
-1. 从 [Releases](https://github.com/Eureka0w0v0/cc-usage/releases) 下载 `CC.Usage.app.zip` 并解压;
-2. 把 `CC Usage.app` 拖进「应用程序」;
-3. 应用是 ad-hoc 签名(个人开源项目,没有付费开发者证书),首次打开前需要去掉隔离属性:
+1. Grab `CC.Usage.app.zip` from [Releases](https://github.com/Eureka0w0v0/cc-usage/releases) and unzip;
+2. Drag `CC Usage.app` into Applications;
+3. The app is ad-hoc signed (personal open-source project, no paid developer certificate), so clear the quarantine flag before first launch:
 
 ```bash
 xattr -d com.apple.quarantine "/Applications/CC Usage.app"
 ```
 
-### 方式二:源码构建
+### Option 2: build from source
 
-需要完整 Xcode 与 [XcodeGen](https://github.com/yonaskolb/XcodeGen)(`brew install xcodegen`):
+Requires full Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`):
 
 ```bash
 git clone https://github.com/Eureka0w0v0/cc-usage.git
 cd cc-usage
-bash scripts/build.sh   # 生成工程 → Release 构建 → 安装到 /Applications 并启动
+bash scripts/build.sh   # generate project → Release build → install to /Applications and launch
 ```
 
-## 使用说明
+## Usage notes
 
-- **菜单栏显示项**:点菜单栏 ⚡ 图标 → 展开「Menu Bar Display」→ 勾选想要的码片(Tokens/Cost 各含 Day/Week/Month,Quota 含 5H/Week)。菜单栏显示格式如 `D: 42.9M·$34.9 5H: 10%`;
-- **刷新间隔**:主窗口工具栏的 ⟳ 下拉选择,菜单栏与面板同步生效并持久化;
-- **额度的更新节奏**:5H/Week 的百分比**最快 5 分钟变一次**——官方接口按 cc-switch 同款设计做了 5 分钟节流,防止账号被限流。本地库的 tokens/花费才是真·5 秒一变;
-- **日期/来源/模型筛选、三个统计标签页**:与 cc-switch 原版完全一致。
+- **Menu bar chips**: click the ⚡ icon → expand "Menu Bar Display" → tick what you want (Tokens/Cost each offer Day/Week/Month; Quota offers 5H/Week). The label renders like `D: 42.9M·$34.9 5H: 10%`;
+- **Refresh interval**: the ⟳ dropdown in the main-window toolbar; it applies to both the panel and the menu bar, and persists across restarts;
+- **Quota update cadence**: the 5H/Week percentages change **at most once per 5 minutes** — the official endpoint is throttled exactly like cc-switch does to avoid rate-limiting your account. Tokens/cost from the local database are the truly-every-5-seconds numbers;
+- Date/source/model filters and the three stats tabs behave exactly like upstream cc-switch.
 
-## 工作原理
+## How it works
 
 ```mermaid
 flowchart TB
     subgraph app["CC Usage.app"]
-        menubar["菜单栏码片 + 弹窗<br/>(SwiftUI)"]
-        panel["主窗口(WKWebView)<br/>cc-switch 真前端单文件 bundle<br/>invoke(cmd, args) 桥接"]
-        subgraph layer["Swift 数据层"]
-            UsageStore["UsageStore<br/>只读 SQLite"]
-            SessionOverlay["SessionOverlay<br/>未入库增量 · 内存叠加"]
-            OmpOverlay["OmpOverlay<br/>OMP 用量 · 按模型家族归位"]
-            QuotaCache["QuotaCache<br/>5 分钟节流 + 在途去重"]
+        menubar["Menu bar chips + panel<br/>(SwiftUI)"]
+        panel["Main window (WKWebView)<br/>cc-switch real-frontend bundle<br/>invoke(cmd, args) bridge"]
+        subgraph layer["Swift data layer"]
+            UsageStore["UsageStore<br/>read-only SQLite"]
+            SessionOverlay["SessionOverlay<br/>pending rows · in-memory overlay"]
+            OmpOverlay["OmpOverlay<br/>OMP usage · routed by model family"]
+            QuotaCache["QuotaCache<br/>5-min throttle + in-flight dedup"]
         end
         menubar --> layer
         panel --> layer
     end
     db[("~/.cc-switch/cc-switch.db")]
-    jsonl[("~/.claude/projects<br/>会话 JSONL")]
-    ompjsonl[("~/.omp/agent/sessions<br/>OMP 会话 JSONL")]
+    jsonl[("~/.claude/projects<br/>session JSONL")]
+    ompjsonl[("~/.omp/agent/sessions<br/>OMP session JSONL")]
     api(["api.anthropic.com<br/>/api/oauth/usage"])
-    ccswitch["cc-switch 本体<br/>(历史归档 + Codex/Gemini 导入)"]
+    ccswitch["cc-switch itself<br/>(history archive + Codex/Gemini import)"]
 
-    UsageStore -->|"只读"| db
-    SessionOverlay -->|"只读尾部增量"| jsonl
-    OmpOverlay -->|"只读尾部增量"| ompjsonl
-    QuotaCache -->|"OAuth 凭据"| api
-    jsonl -->|"运行时解析"| ccswitch
-    ccswitch -->|"唯一写入方"| db
+    UsageStore -->|"read-only"| db
+    SessionOverlay -->|"read-only tail parsing"| jsonl
+    OmpOverlay -->|"read-only tail parsing"| ompjsonl
+    QuotaCache -->|"OAuth credentials"| api
+    jsonl -->|"parsed while running"| ccswitch
+    ccswitch -->|"the only writer"| db
 ```
 
-- 主窗口不是仿制界面,而是把 cc-switch 的前端源码加一层 `invoke` 桥接(`embed/`)后用 Vite 编译成单文件 `index.html`,跑在 WKWebView 里;前端发出的 Tauri `invoke` 调用被 Swift 拦下,直接查本地 SQLite 返回——统计口径逐条复刻 cc-switch 的 `usage_stats.rs`;
-- cc-switch 不在运行时,`SessionOverlay` 按 cc-switch 记录的行偏移(`session_log_sync`)只读续解析会话 JSONL,解析与定价规则逐条对齐其导入器(`session_usage.rs`);这些「未入库增量」在内存里并进所有查询,cc-switch 回来入库时按 `request_id` 精确去重、自动收敛为零——全程不写库,绝无双算;
-- OMP 的用量是另一回事:cc-switch 压根不扫 `~/.omp/agent/sessions`,那批数字**永远不会**自己进库,所以 `OmpOverlay` 不是「等补录的临时叠加」而是它们的唯一来源。归属按**模型家族**判定而非 provider 名——同一个 provider 可以配多个家族的模型,而这笔账该算谁头上取决于打的是谁的模型,所以 Claude 模型的消耗必须落进 Claude 分组(若 OMP 与 Claude Code 用的是同一个订阅账号,它花的还是 5H/Week 徽标那份额度,分组错了面板就会出现「额度百分比在涨、Tokens 却纹丝不动」的自相矛盾);走自定义网关的 Grok 则落进 Grok 分组。成本直接采用 OMP 自己算好的值(它的 `models.yml` 里才有那些自定义端点的价)。响应 id 是 Anthropic 的 `msg_xxx` 时,request_id 复用 cc-switch 同一套 `session:<msg_id>` 命名空间——既防与 `SessionOverlay` 自相双算,万一将来真被入库也会自动收敛;
-- 订阅额度走你本机的 Claude Code OAuth 凭据,查询结果在进程内共享缓存,菜单栏与面板读同一份,所以两边永远一致。
+- The main window is not a re-implementation: cc-switch's frontend source plus a thin `invoke` bridge (`embed/`) is compiled by Vite into a single-file `index.html` running in a WKWebView. Tauri `invoke` calls from the frontend are intercepted in Swift and answered straight from the local SQLite database — aggregation semantics faithfully reimplement cc-switch's `usage_stats.rs`;
+- While cc-switch is closed, `SessionOverlay` resumes from the line offsets cc-switch recorded in `session_log_sync` and read-only parses the session JSONL tails, mirroring its importer (`session_usage.rs`) rule by rule — parsing, dedup and pricing alike. The pending rows are merged into every query in memory and drain to zero via exact `request_id` dedup once cc-switch imports them: nothing is ever written, nothing is ever counted twice;
+- OMP usage is a different story: cc-switch never scans `~/.omp/agent/sessions`, so those rows will **never** land in the database on their own — `OmpOverlay` is not a stopgap awaiting import, it is their only source. Attribution is decided by **model family**, not provider name: one provider can serve models from several families, and which ledger a request belongs to depends on whose model it hit, so Claude models must land in the Claude bucket (and if OMP shares a subscription account with Claude Code, that spend is the very quota the 5H/Week badge reports — get the bucket wrong and the panel contradicts itself with a rising quota percentage next to motionless token counts). Grok through a custom gateway lands in the Grok bucket. Costs are taken verbatim from OMP (only its `models.yml` prices those custom endpoints). When the response id is an Anthropic `msg_xxx`, the request id reuses cc-switch's own `session:<msg_id>` namespace — which both prevents double counting against `SessionOverlay` and lets the row drain automatically should it ever get imported;
+- Subscription quota uses your local Claude Code OAuth credentials; results live in one in-process shared cache read by both the menu bar and the panel, which is why the two always agree.
 
-## 重建面板前端(可选)
+## Rebuilding the panel frontend (optional)
 
-仓库已内置编译好的 `Sources/App/web-panel/index.html`,普通构建**不需要**这一步。cc-switch 上游更新后想跟进面板时:
+A prebuilt `Sources/App/web-panel/index.html` ships with the repo, so normal builds **don't need this**. To track upstream cc-switch updates:
 
 ```bash
-git clone https://github.com/farion1231/cc-switch ../cc-switch   # 或指向你已有的 clone
+git clone https://github.com/farion1231/cc-switch ../cc-switch   # or point to your existing clone
 CC_SWITCH_DIR=../cc-switch bash scripts/build-embed.sh
 ```
 
-脚本会把 `embed/` 下的桥接文件(全部为新增文件,不改动上游任何源文件;`pnpm add` 会更新其 package.json/lockfile 以引入打包插件)铺进 cc-switch 源码树,用 pnpm + Vite 构建单文件面板并写回本仓库。
+The script copies the bridge files under `embed/` into the cc-switch tree (all additive — no upstream source file is modified; `pnpm add` does update its package.json/lockfile to pull in the bundling plugin), builds the single-file panel with pnpm + Vite and writes it back into this repo.
 
 > [!NOTE]
-> 桥接层是对着 cc-switch 的**特定提交**验证的(见脚本内 `CC_SWITCH_REF`)。若本地 checkout 不在该提交上,脚本会给出警告;`CC_SWITCH_CHECKOUT=1` 可自动切换,或在验证新上游后更新 `CC_SWITCH_REF`。
+> The bridge layer is verified against a **specific cc-switch commit** (see `CC_SWITCH_REF` in the script). If your checkout is on a different commit the script warns; set `CC_SWITCH_CHECKOUT=1` to switch automatically, or bump `CC_SWITCH_REF` after verifying a newer upstream.
 
-## 开发
+## Development
 
 ```bash
-bash scripts/test.sh    # 单元测试:定价匹配 / rollup 边界 / 两表合并防双算 /
-                        # overlay 解析 / OMP 归属分流与去重等
-                        # 全部对着临时 sqlite 与临时目录,不读写真实数据
+bash scripts/test.sh    # unit tests: pricing candidates / rollup bounds / two-table
+                        # merge without double counting / overlay parsing /
+                        # OMP attribution routing and dedup, etc.
+                        # All run against temp sqlite + temp dirs — real data untouched.
 ```
 
-推送与 PR 会触发 GitHub Actions 的 smoke build + 测试(`.github/workflows/build.yml`)。
+Pushes and PRs trigger a GitHub Actions smoke build + tests (`.github/workflows/build.yml`).
 
-## 隐私
+## Privacy
 
-- 所有用量数据**只在本机**:只读 cc-switch 的 SQLite 库与本地会话日志(`~/.claude/projects`、`~/.omp/agent/sessions`),不上传任何内容,也不写这些文件;
-- 唯一的网络请求是 Anthropic 官方额度接口 `api.anthropic.com/api/oauth/usage`(仅在勾选额度码片/徽标时,5 分钟最多一次);
-- OAuth 凭据仅在本机读取使用,不落盘、不外发。
+- All usage data stays **on your machine**: the app reads cc-switch's SQLite database and local session logs (`~/.claude/projects`, `~/.omp/agent/sessions`) read-only, writes to none of them, and uploads nothing;
+- The only network request is Anthropic's official quota endpoint `api.anthropic.com/api/oauth/usage` (only when a quota chip/badge is enabled, at most once per 5 minutes);
+- OAuth credentials are read locally, never persisted elsewhere, never sent anywhere else.
 
-## 致谢与许可
+## Credits & License
 
-- 本项目是 [cc-switch](https://github.com/farion1231/cc-switch)(MIT, © [@farion1231](https://github.com/farion1231))的二次开发:主窗口面板由其前端源码直接构建,统计口径与其后端逐条对齐。感谢原作者的优秀工作;
-- 本项目以 [MIT](LICENSE) 许可开源,随附的第三方代码声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- This project is a derivative work of [cc-switch](https://github.com/farion1231/cc-switch) (MIT, © [@farion1231](https://github.com/farion1231)): the main-window panel is built directly from its frontend source, and the statistics semantics mirror its backend line by line. Huge thanks to the original author;
+- Released under the [MIT License](LICENSE); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for bundled third-party code.
