@@ -101,7 +101,7 @@ const encodeOptionValue = (name: string) => `${DYNAMIC_OPTION_PREFIX}${name}`;
 const decodeOptionValue = (value: string) =>
   value === "all" ? undefined : value.slice(DYNAMIC_OPTION_PREFIX.length);
 
-/* ───────── 5H / Week 官方额度徽标（渲染进面板工具栏，数据来自原生 get_quota） ───────── */
+/* ───────── 官方额度徽标（渲染进面板工具栏，数据来自原生 get_quota） ───────── */
 
 type QuotaTierData = {
   name: string;
@@ -180,6 +180,19 @@ function useQuotaTiers(pollMs: number): QuotaTierData[] {
   return tiers;
 }
 
+// 徽标清单。顺序即展示序，与原生 ClaudeQuotaParser.knownTiers 一致——那边已按同序
+// 排好，这里再显式列一遍是为了不把布局押在后端数组顺序上。
+//
+// `always`：5H / Week 是所有套餐都有的窗口，无数据时也占位显示 "—"；模型专属的
+// Fable / Opus / Sonnet 走 `limits[]`，接口只在账号真有该额度时才返回，故按需出现。
+const QUOTA_BADGES: { name: string; label: string; always: boolean }[] = [
+  { name: "five_hour", label: "5H", always: true },
+  { name: "seven_day", label: "Week", always: true },
+  { name: "seven_day_fable", label: "Fable", always: false },
+  { name: "seven_day_opus", label: "Opus", always: false },
+  { name: "seven_day_sonnet", label: "Sonnet", always: false },
+];
+
 function QuotaBadge({ label, tier }: { label: string; tier?: QuotaTierData }) {
   const pct = tier ? Math.round(tier.utilization) : null;
   const frac = tier ? Math.min(1, Math.max(0, tier.utilization / 100)) : 0;
@@ -239,12 +252,15 @@ function QuotaBadges({ pollMs }: { pollMs: number }) {
     const id = window.setInterval(() => setTick((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
-  const fiveHour = tiers.find((t) => t.name === "five_hour");
-  const weekly = tiers.find((t) => t.name === "seven_day");
   return (
     <div className="flex items-center gap-1.5">
-      <QuotaBadge label="5H" tier={fiveHour} />
-      <QuotaBadge label="Week" tier={weekly} />
+      {QUOTA_BADGES.map(({ name, label, always }) => {
+        const tier = tiers.find((t) => t.name === name);
+        // 模型专属档只在接口真给了数据时才出现：没订到 Fable 的账号不该看见一排 "—"。
+        // 5H / Week 则始终占位，否则首屏 tiers 还空着时工具栏会先塌再弹。
+        if (!tier && !always) return null;
+        return <QuotaBadge key={name} label={label} tier={tier} />;
+      })}
     </div>
   );
 }

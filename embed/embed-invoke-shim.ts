@@ -101,12 +101,17 @@ function mockInvoke(cmd: string, args?: InvokeArgs): unknown {
   }
 }
 
-// 浏览器预览用的 5H / Week 假额度（WKWebView 里由原生 get_quota 覆盖）
+// 浏览器预览用的假额度（WKWebView 里由原生 get_quota 覆盖）。
+// 顺序与 name 对齐 ClaudeQuotaParser.knownTiers；模型专属档取自新版 `limits[]`，
+// 这里带上 fable/opus 是为了让预览能看到按需出现的那几个徽标（sonnet 故意缺席，
+// 用来确认「没数据就不渲染」这条确实生效）。
 function mockQuota() {
   const iso = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
   return [
     { name: "five_hour", utilization: 42, resetsAt: iso(2), planLabel: "max" },
     { name: "seven_day", utilization: 78, resetsAt: iso(50), planLabel: "max" },
+    { name: "seven_day_fable", utilization: 12, resetsAt: iso(50), planLabel: "max" },
+    { name: "seven_day_opus", utilization: 47.5, resetsAt: iso(50), planLabel: "max" },
   ];
 }
 
