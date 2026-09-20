@@ -23,15 +23,19 @@ if [ ! -f "$SCHEMA" ]; then
   exit 1
 fi
 
+# 基准 ref 由 git describe 生成后传给下面的 python，注释里的「同步至 X」不再手写——
+# 手写必然写错：本轮就把 main（v3.20.3 + 14 提交）误记成 v3.20.3，而两者的
+# SCHEMA_VERSION 并不相同（18 vs 19），据此判断升级影响会跑偏。
+CC_SWITCH_REF_DESC="unknown"
 if [ -d "$CC_SWITCH_DIR/.git" ]; then
-  echo "📌 cc-switch @ $(git -C "$CC_SWITCH_DIR" rev-parse --short HEAD) \
-($(git -C "$CC_SWITCH_DIR" describe --tags --always 2>/dev/null || echo untagged))"
+  CC_SWITCH_REF_DESC=$(git -C "$CC_SWITCH_DIR" describe --tags --always 2>/dev/null || echo untagged)
+  echo "📌 cc-switch @ $(git -C "$CC_SWITCH_DIR" rev-parse --short HEAD) ($CC_SWITCH_REF_DESC)"
 fi
 
-python3 - "$SCHEMA" "$OUT" <<'PY'
+python3 - "$SCHEMA" "$OUT" "$CC_SWITCH_REF_DESC" <<'PY'
 import re, sys
 
-schema_path, out_path = sys.argv[1], sys.argv[2]
+schema_path, out_path, ref_desc = sys.argv[1], sys.argv[2], sys.argv[3]
 src = open(schema_path, encoding='utf-8').read()
 
 start = src.index('let pricing_data = [', src.index('fn seed_model_pricing')) + len('let pricing_data = [')
@@ -82,8 +86,8 @@ if orphan:
     print("⚠️  这些条目已从上游消失，挂在它们上面的注释一并丢弃：" + ", ".join(orphan))
 
 new = out[:lit.start(2)] + table + out[lit.end(2):]
-new = re.sub(r'对齐 cc-switch seed_model_pricing 的 \d+ 条内置定价',
-             f'对齐 cc-switch seed_model_pricing 的 {len(rows)} 条内置定价', new)
+new = re.sub(r'对齐 cc-switch seed_model_pricing 的 \d+ 条内置定价（同步至 [^）]*）',
+             f'对齐 cc-switch seed_model_pricing 的 {len(rows)} 条内置定价（同步至 {ref_desc}）', new)
 open(out_path, 'w', encoding='utf-8').write(new)
 print(f"✅ 已同步 {len(rows)} 条定价 → {out_path}")
 PY
