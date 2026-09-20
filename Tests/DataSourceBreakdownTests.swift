@@ -66,4 +66,30 @@ final class DataSourceBreakdownTests: XCTestCase {
         XCTAssertEqual(stats.first?.providerName, "Grok Build (Session)")
         XCTAssertEqual(stats.first?.requestCount, 1)
     }
+
+    /// v3.20.3 新增会话来源（MiniMax Code）：同 Grok 那条，占位 provider_id 必须
+    /// 映射成可读名，否则 Provider Stats 里会直接露出 `_mcode_session`。
+    /// 负责杀的变异体：providerNameSQL 漏掉 `_mcode_session` 分支。
+    func testMcodeSessionProviderRendersReadableName() throws {
+        let t = Fixture.ts(2026, 6, 10, 12)
+        try Fixture.insertLog(dbPath, id: "m1", app: "mcode", model: "minimax-m2.7",
+                              input: 100, output: 10, cost: 1.5, createdAt: t,
+                              dataSource: "mcode_session", providerId: "_mcode_session")
+
+        let stats = try store.providerStats(LogQueryFilter())
+        XCTAssertEqual(stats.count, 1)
+        XCTAssertEqual(stats.first?.providerName, "MiniMax Code (Session)")
+        XCTAssertEqual(stats.first?.requestCount, 1)
+    }
+
+    /// Pi 会话来源（v3.20 已在 SQL 里，这里补上回归锁）。
+    func testPiSessionProviderRendersReadableName() throws {
+        let t = Fixture.ts(2026, 6, 10, 12)
+        try Fixture.insertLog(dbPath, id: "p1", app: "pi", model: "claude-sonnet-5",
+                              input: 100, output: 10, cost: 1.5, createdAt: t,
+                              dataSource: "pi_session", providerId: "_pi_session")
+
+        let stats = try store.providerStats(LogQueryFilter())
+        XCTAssertEqual(stats.first?.providerName, "Pi (Session)")
+    }
 }

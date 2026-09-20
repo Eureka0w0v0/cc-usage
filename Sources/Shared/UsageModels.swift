@@ -146,7 +146,8 @@ public struct ModelStatRow: Sendable {
 
 /// 「按来源」一行。dataSource 取值空间同 proxy_request_logs.data_source
 /// （session_log / codex_session / gemini_session / opencode_session / grok_session /
-/// proxy），外加本 app 独有的 omp_session（cc-switch 不导入 OMP）。
+/// mcode_session / pi_session / proxy），外加本 app 独有的 omp_session
+/// （cc-switch 不导入 OMP）。
 public struct DataSourceStat: Sendable {
     public var dataSource: String
     public var requestCount: Int64
