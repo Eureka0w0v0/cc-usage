@@ -14,24 +14,18 @@ import Foundation
 //   Header: Authorization: Bearer <token>
 //           anthropic-beta: oauth-2025-04-20
 //           Accept: application/json
-//   响应：{ "five_hour": {utilization, resets_at, ...}, "seven_day": {...}, "extra_usage": {...}, ... }
-//   其中 5 小时窗口 = "five_hour"，每周窗口 = "seven_day"（utilization 为 0–100）。
+//   响应：{ "five_hour": {utilization, resets_at, ...}, "seven_day": {...},
+//          "limits": [ {kind, group, percent, scope:{model:{display_name}}, ...}, ... ],
+//          "extra_usage": {...}, ... }
+//   其中 5 小时窗口 = "five_hour"，每周窗口 = "seven_day"（utilization 为 0–100）；
+//   模型专属周限额（Fable/Opus/Sonnet）在新版里改走顶层 `limits[]`，用 `percent`。
+//
+// 响应体的解析规则全部在 `Sources/Shared/ClaudeQuotaParsing.swift`（纯函数，可测）；
+// 本文件只负责凭据、网络与缓存。
 
 // MARK: - 数据模型
 
-/// 单个限流窗口（对齐 cc-switch QuotaTier）
-struct QuotaTier: Identifiable, Sendable {
-    /// 窗口标识：five_hour / seven_day / seven_day_opus / seven_day_sonnet …
-    let name: String
-    /// 已用百分比 0–100
-    let utilization: Double
-    /// 窗口重置时间
-    let resetsAt: Date?
-    /// 套餐标签（来自凭据 subscriptionType，如 "max"）
-    var planLabel: String?
-
-    var id: String { name }
-}
+// QuotaTier 定义见 Sources/Shared/ClaudeQuotaParsing.swift。
 
 /// 凭据/查询状态，驱动徽标降级显示（作为 Result 的 Failure，需符合 Error）
 enum QuotaStatus: Error, Equatable, Sendable {
@@ -225,11 +219,6 @@ enum ClaudeCredentialReader {
 enum ClaudeUsageAPI {
     static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 
-    /// 已知窗口名（对齐 cc-switch KNOWN_TIERS），非窗口键跳过。
-    private static let nonTierKeys: Set<String> = [
-        "extra_usage", "limits", "spend", "member_dashboard_available",
-    ]
-
     static func query(token: String) async -> Result<[QuotaTier], QuotaStatus> {
         var req = URLRequest(url: endpoint)
         req.httpMethod = "GET"
@@ -259,21 +248,6 @@ enum ClaudeUsageAPI {
             return .failure(.failed("解析 API 响应失败"))
         }
 
-        // 遍历所有窗口键：凡是带 utilization 的对象都收进来（对齐 cc-switch
-        // 「已知 + 未知窗口」两段解析的合并效果）。null / 非对象 / 无 utilization 的键跳过。
-        var tiers: [QuotaTier] = []
-        for (key, value) in root {
-            if nonTierKeys.contains(key) { continue }
-            guard let window = value as? [String: Any],
-                  let util = window["utilization"] as? NSNumber else { continue }
-            let resetsAt = (window["resets_at"] as? String).flatMap { ISO8601Lenient.date($0) }
-            tiers.append(QuotaTier(
-                name: key,
-                utilization: util.doubleValue,
-                resetsAt: resetsAt,
-                planLabel: nil
-            ))
-        }
-        return .success(tiers)
+        return .success(ClaudeQuotaParser.parse(root))
     }
 }
