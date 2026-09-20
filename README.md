@@ -126,6 +126,15 @@ The script copies the bridge files under `embed/` into the cc-switch tree (all a
 > [!NOTE]
 > The bridge layer is verified against a **specific cc-switch commit** (see `CC_SWITCH_REF` in the script). If your checkout is on a different commit the script warns; set `CC_SWITCH_CHECKOUT=1` to switch automatically, or bump `CC_SWITCH_REF` after verifying a newer upstream.
 
+Two more read-only scripts round out an upstream sync — neither writes to cc-switch:
+
+```bash
+CC_SWITCH_DIR=../cc-switch bash scripts/sync-pricing.sh      # rebuild the built-in pricing fallback
+CC_SWITCH_DIR=../cc-switch bash scripts/check-app-types.sh   # diff app types / session provider names
+```
+
+`check-app-types.sh` cross-checks three truth sources that upstream touches whenever it adds a harness — the usage app set (`KNOWN_APP_TYPES`), the session placeholder `provider_id` → display-name map, and the cache-inclusive app whitelist. Nothing used to flag a drift here, which is exactly how `pi` and `mcode` each went a release without being picked up.
+
 ## Development
 
 ```bash

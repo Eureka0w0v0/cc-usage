@@ -126,6 +126,15 @@ CC_SWITCH_DIR=../cc-switch bash scripts/build-embed.sh
 > [!NOTE]
 > 桥接层是对着 cc-switch 的**特定提交**验证的(见脚本内 `CC_SWITCH_REF`)。若本地 checkout 不在该提交上,脚本会给出警告;`CC_SWITCH_CHECKOUT=1` 可自动切换,或在验证新上游后更新 `CC_SWITCH_REF`。
 
+一轮上游同步还有另外两个只读脚本,都不会写 cc-switch:
+
+```bash
+CC_SWITCH_DIR=../cc-switch bash scripts/sync-pricing.sh      # 重建内置定价兜底表
+CC_SWITCH_DIR=../cc-switch bash scripts/check-app-types.sh   # 对拍 app 全集与会话来源占位名
+```
+
+`check-app-types.sh` 对拍上游每加一种 harness 都会动的三处真理源:用量 app 全集(`KNOWN_APP_TYPES`)、会话占位 `provider_id` → 可读名映射、以及 cache-inclusive 白名单。此前没有任何机制会在这里报警,`pi` 与 `mcode` 各漏了一轮才被发现。
+
 ## 开发
 
 ```bash
