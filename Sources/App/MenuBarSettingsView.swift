@@ -13,6 +13,8 @@ struct MenuBarSettingsView: View {
     @AppStorage(MBKey.groupOpencode)    private var expOpencode = false
     @AppStorage(MBKey.groupAntigravity) private var expAntigravity = false
     @AppStorage(MBKey.groupGrok)        private var expGrok = false
+    @AppStorage(MBKey.groupPi)          private var expPi = false
+    @AppStorage(MBKey.groupMcode)       private var expMcode = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -66,6 +68,17 @@ struct MenuBarSettingsView: View {
             // Grok/xAI 无公开 remaining/utilization 查询接口，Quota 与 Gemini/OpenCode 同占位
             group("Grok", $expGrok, icon: MBApp.grokbuild.iconAsset) {
                 appRows(.grokbuild)
+                row("Quota") { noQuota("No quota API") }
+            }
+            // Pi / MiniMax Code：用量经各自的会话导入器进 cc-switch 的库（无代理通道），
+            // 额度归背后 provider，本应用无从查起 —— Quota 行与上面几家同占位。
+            // Pi 没有可用品牌图标（上游亦然），分组标题只有文字。
+            group("Pi", $expPi, icon: MBApp.pi.iconAsset) {
+                appRows(.pi)
+                row("Quota") { noQuota("No quota API") }
+            }
+            group("MiniMax Code", $expMcode, icon: MBApp.mcode.iconAsset) {
+                appRows(.mcode)
                 row("Quota") { noQuota("No quota API") }
             }
             // Antigravity 各模型实时配额（联网查询，无本地用量库），逐模型勾选、显示已用 %

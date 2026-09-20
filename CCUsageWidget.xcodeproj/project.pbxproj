@@ -95,6 +95,7 @@
 		DA72E63B29AE992A43BA0E77 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = FE46559B13C9C8A264B5681B /* libsqlite3.tbd */; };
 		DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */; };
 		DF73068A06C4D63F6DC7C0E4 /* ClaudeQuotaParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 734B59D76CAC08CBDFB54649 /* ClaudeQuotaParsing.swift */; };
+		E34D5CCE71FDDE308668470A /* brand-minimax.png in Resources */ = {isa = PBXBuildFile; fileRef = E50FA82869360DF5BE4941CF /* brand-minimax.png */; };
 		E5DE774E75BA5998B16892CF /* ModelPricing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */; };
 		EA76484909B3172F0696D31D /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
 		F064B71605FDB5C2DC91E88E /* UsageStore+Tabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 578EA2EB8DDB1CFEEEAACBE1 /* UsageStore+Tabs.swift */; };
@@ -190,6 +191,7 @@
 		E1AB14D881996E7BEEB26551 /* FormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormattingTests.swift; sourceTree = "<group>"; };
 		E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-openai.png"; sourceTree = "<group>"; };
 		E20D62ABBAC169F3225CD479 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		E50FA82869360DF5BE4941CF /* brand-minimax.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-minimax.png"; sourceTree = "<group>"; };
 		F0E66BA024EC17C0383C62FD /* MenuBarStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarStrip.swift; sourceTree = "<group>"; };
 		F6A6BC20DF49E1A6989FCF94 /* ClaudeQuotaParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeQuotaParsingTests.swift; sourceTree = "<group>"; };
 		F6EBED98C0A4EED2EDD79A8D /* UsageStore+Trend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+Trend.swift"; sourceTree = "<group>"; };
@@ -361,6 +363,7 @@
 				CAA25E78D961070EDBD05FBD /* brand-claude.png */,
 				7C5506EFDDB250B8217B59FD /* brand-gemini.png */,
 				3B12A88A474853068E9E3317 /* brand-grok.png */,
+				E50FA82869360DF5BE4941CF /* brand-minimax.png */,
 				E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */,
 				09D1E9749B8E07DB4B72929A /* brand-opencode.png */,
 			);
@@ -478,6 +481,7 @@
 				B37D66ED135407352107CDAE /* brand-claude.png in Resources */,
 				A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */,
 				0DB32A66B84D5E260ECB71C5 /* brand-grok.png in Resources */,
+				E34D5CCE71FDDE308668470A /* brand-minimax.png in Resources */,
 				4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */,
 				71893AB2B92CBF17DDB60DEF /* brand-opencode.png in Resources */,
 				B690D5FE64B100264FED2361 /* index.html in Resources */,
