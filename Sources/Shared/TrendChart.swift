@@ -11,20 +11,12 @@ struct TrendChart: View {
     // 只在布局变化时更新（非悬停），供覆盖层做坐标换算
     @State private var plotRect: CGRect = .zero
 
-    // 取整齐的坐标轴上限
-    private func niceCeil(_ x: Double) -> Double {
-        guard x > 0 else { return 1 }
-        let e = floor(log10(x)); let base = pow(10, e); let f = x / base
-        let nice: Double = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 3 ? 3 : f <= 4 ? 4 : f <= 5 ? 5 : f <= 6 ? 6 : f <= 8 ? 8 : 10
-        return nice * base
+    /// 两根纵轴的上限（tokens / 花费）。与主窗口 Recharts 同一套取整（NiceScale），两图的
+    /// 曲线比例才一致；tokens 轴取四条 token 线的最大值，对应主窗口 yAxisId="tokens" 的四个 Area。
+    static func axisMaxes(_ buckets: [TrendBucket]) -> (tokens: Double, cost: Double) {
+        let tokens = buckets.map { max(max($0.hit, $0.creation), max($0.input, $0.output)) }.max() ?? 0
+        return (NiceScale.axisMax(Double(tokens)), NiceScale.axisMax(buckets.map(\.cost).max() ?? 0))
     }
-    private var tokenMax: Double {
-        let m = buckets.map { max(max($0.hit, $0.creation), max($0.input, $0.output)) }.max() ?? 1
-        return niceCeil(max(1, Double(m)))
-    }
-    private var costMax: Double { niceCeil(max(0.0001, buckets.map { $0.cost }.max() ?? 0.0001)) }
-    private var factor: Double { tokenMax / costMax }
-    private var yTicks: [Double] { (0...4).map { tokenMax * Double($0) / 4 } }
 
     private func date(_ b: TrendBucket) -> Date { Date(timeIntervalSince1970: TimeInterval(b.startTs)) }
     private var xStart: Double { Double(buckets.first?.startTs ?? 0) }
@@ -53,14 +45,18 @@ struct TrendChart: View {
             .overlay {
                 if interactive && plotRect != .zero {
                     CrosshairLayer(buckets: buckets, plot: plotRect,
-                                   tokenMax: tokenMax, xStart: xStart, xEnd: xEnd)
+                                   tokenMax: Self.axisMaxes(buckets).tokens, xStart: xStart, xEnd: xEnd)
                 }
             }
     }
 
     // 静态图表：不含任何悬停状态，故悬停期间不会重绘
     private var chart: some View {
-        Chart {
+        // 每次渲染只算一次轴顶：花费线要逐点乘 factor 换算到 tokens 轴上画
+        let axes = Self.axisMaxes(buckets)
+        let factor = axes.tokens / axes.cost
+        let yTicks = (0..<NiceScale.tickCount).map { axes.tokens * Double($0) / Double(NiceScale.tickCount - 1) }
+        return Chart {
             ForEach(Array(buckets.enumerated()), id: \.offset) { _, b in
                 let x = date(b)
                 AreaMark(x: .value("时间", x), y: .value("Hit", b.hit))
@@ -78,26 +74,8 @@ struct TrendChart: View {
             }
         }
         .chartXScale(domain: xDomain)
-        .chartYScale(domain: 0...tokenMax)
-        .chartYAxis {
-            if showAxes {
-                AxisMarks(position: .leading, values: yTicks) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 1, dash: [3, 3])).foregroundStyle(Theme.track)
-                    AxisValueLabel {
-                        if let t = value.as(Double.self) {
-                            Text(Fmt.tokensAxis(Int64(t))).font(.system(size: 10)).foregroundStyle(Theme.textDim)
-                        }
-                    }
-                }
-                AxisMarks(position: .trailing, values: yTicks) { value in
-                    AxisValueLabel {
-                        if let t = value.as(Double.self) {
-                            Text("$\(Int((t / factor).rounded()))").font(.system(size: 10)).foregroundStyle(Theme.textDim)
-                        }
-                    }
-                }
-            } else { AxisMarks { _ in } }
-        }
+        .chartYScale(domain: 0...axes.tokens)
+        .chartYAxis { yAxis(yTicks, factor: factor) }
         .chartXAxis {
             if showAxes {
                 AxisMarks(values: .automatic(desiredCount: 6)) { value in
@@ -110,6 +88,28 @@ struct TrendChart: View {
             } else { AxisMarks { _ in } }
         }
         .chartLegend(.hidden)
+    }
+
+    /// 左 tokens / 右花费两列刻度共用同一组位置；花费刻度 = tokens 刻度 ÷ factor。
+    @AxisContentBuilder
+    private func yAxis(_ ticks: [Double], factor: Double) -> some AxisContent {
+        if showAxes {
+            AxisMarks(position: .leading, values: ticks) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 1, dash: [3, 3])).foregroundStyle(Theme.track)
+                AxisValueLabel {
+                    if let t = value.as(Double.self) {
+                        Text(Fmt.tokensAxis(Int64(t))).font(.system(size: 10)).foregroundStyle(Theme.textDim)
+                    }
+                }
+            }
+            AxisMarks(position: .trailing, values: ticks) { value in
+                AxisValueLabel {
+                    if let t = value.as(Double.self) {
+                        Text(Fmt.costAxis(t / factor)).font(.system(size: 10)).foregroundStyle(Theme.textDim)
+                    }
+                }
+            }
+        } else { AxisMarks { _ in } }
     }
 
     private func lineMark(_ x: Date, _ y: Int64, _ name: String, _ color: Color) -> some ChartContent {

@@ -45,6 +45,18 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(Fmt.tokensAxis(1_500), "2k")
     }
 
+    // 对齐主窗口 Recharts 的 `$${value}`。
+    // 负责杀的变异体：退回 Int(rounded)（1.25→$1、0.3→$0）/ 带千分位 / 浮点尾巴外露。
+    func testCostAxis() {
+        XCTAssertEqual(Fmt.costAxis(0), "$0")
+        XCTAssertEqual(Fmt.costAxis(8), "$8")
+        XCTAssertEqual(Fmt.costAxis(1.25), "$1.25")
+        XCTAssertEqual(Fmt.costAxis(0.1 + 0.2), "$0.3")
+        XCTAssertEqual(Fmt.costAxis(2.6 * 3 / 4), "$1.95")
+        XCTAssertEqual(Fmt.costAxis(0.0000025), "$0.0000025")
+        XCTAssertEqual(Fmt.costAxis(1200), "$1200")
+    }
+
     func testRelative() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         XCTAssertEqual(Fmt.relative(nil, now: now), "—")

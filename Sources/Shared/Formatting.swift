@@ -17,6 +17,21 @@ public enum Fmt {
         String(format: "%.0fk", Double(n) / 1000)
     }
 
+    /// 走势图 $ 轴刻度，对齐主窗口 Recharts 的 `$${value}`：整数不带小数点、小数按需显示、
+    /// 不加千分位。最多 10 位小数只为吃掉 1.9500000000000002 这类浮点尾巴。
+    /// 早前是 `Int(rounded)`：刻度 1.25 / 2.5 被标成 $1 / $3，花费不足 $1 时整排 $0。
+    public static func costAxis(_ v: Double) -> String {
+        "$" + (costAxisFormatter.string(from: NSNumber(value: v)) ?? "\(v)")
+    }
+    private static let costAxisFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.numberStyle = .decimal
+        f.usesGroupingSeparator = false
+        f.maximumFractionDigits = 10
+        return f
+    }()
+
     /// 千分位分隔，还原「153,980,903」。formatter 静态复用（tooltip 每悬停帧调 4 次）。
     public static func grouped(_ n: Int64) -> String {
         groupedFormatter.string(from: NSNumber(value: n)) ?? "\(n)"
