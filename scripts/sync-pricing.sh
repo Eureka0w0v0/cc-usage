@@ -27,7 +27,9 @@ fi
 # 手写必然写错：本轮就把 main（v3.20.3 + 14 提交）误记成 v3.20.3，而两者的
 # SCHEMA_VERSION 并不相同（18 vs 19），据此判断升级影响会跑偏。
 CC_SWITCH_REF_DESC="unknown"
-if [ -d "$CC_SWITCH_DIR/.git" ]; then
+# 用 rev-parse 判断而非 `[ -d .git ]`：git worktree 里的 .git 是文件，目录判断会漏掉，
+# 基准静默落成 "unknown"（2026-09-23 对着上游 worktree 同步时踩过）。
+if git -C "$CC_SWITCH_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   CC_SWITCH_REF_DESC=$(git -C "$CC_SWITCH_DIR" describe --tags --always 2>/dev/null || echo untagged)
   echo "📌 cc-switch @ $(git -C "$CC_SWITCH_DIR" rev-parse --short HEAD) ($CC_SWITCH_REF_DESC)"
 fi
