@@ -17,7 +17,7 @@ SCHEMA="$CC_SWITCH_DIR/src-tauri/src/database/schema.rs"
 OUT="Sources/Shared/ModelPricing.swift"
 
 if [ ! -f "$SCHEMA" ]; then
-  echo "❌ 未找到 cc-switch 源码（$SCHEMA）。先 clone / clone it first:"
+  echo "❌ 未找到 cc-switch 源码（${SCHEMA}）。先 clone / clone it first:"
   echo "    git clone https://github.com/farion1231/cc-switch.git \"$CC_SWITCH_DIR\""
   echo "    或用 CC_SWITCH_DIR=/path/to/cc-switch $0"
   exit 1

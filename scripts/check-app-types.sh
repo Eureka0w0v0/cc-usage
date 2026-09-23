@@ -14,7 +14,7 @@ ROOT=$(pwd)
 CC_SWITCH_DIR="${CC_SWITCH_DIR:-$ROOT/../cc-switch}"
 
 if [ ! -d "$CC_SWITCH_DIR/src" ]; then
-  echo "❌ 未找到 cc-switch 源码（$CC_SWITCH_DIR）。先 clone / clone it first:"
+  echo "❌ 未找到 cc-switch 源码（${CC_SWITCH_DIR}）。先 clone / clone it first:"
   echo "   git clone https://github.com/farion1231/cc-switch \"$CC_SWITCH_DIR\""
   exit 1
 fi

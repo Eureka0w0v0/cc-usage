@@ -24,7 +24,7 @@ CC_SWITCH_DIR="${CC_SWITCH_DIR:-$ROOT/../cc-switch}"
 CC_SWITCH_REF="${CC_SWITCH_REF:-fdbe3a85b269ed40695ded5981b6ba8288d30ac3}"
 
 if [ ! -d "$CC_SWITCH_DIR/src" ]; then
-  echo "❌ 未找到 cc-switch 源码（$CC_SWITCH_DIR）。先执行 / clone it first:"
+  echo "❌ 未找到 cc-switch 源码（${CC_SWITCH_DIR}）。先执行 / clone it first:"
   echo "   git clone https://github.com/farion1231/cc-switch \"$CC_SWITCH_DIR\""
   exit 1
 fi
@@ -58,7 +58,7 @@ if git -C "$CC_SWITCH_DIR" rev-parse --verify "$CC_SWITCH_REF^{commit}" >/dev/nu
     fi
   fi
 else
-  echo "⚠️  cc-switch 本地没有提交 $CC_SWITCH_REF（浅克隆/旧仓？），跳过版本校验。"
+  echo "⚠️  cc-switch 本地没有提交 ${CC_SWITCH_REF}（浅克隆/旧仓？），跳过版本校验。"
 fi
 
 # 1) 把 embed 桥接文件铺进 cc-switch 源码树（均为新增文件，不覆盖上游文件）
