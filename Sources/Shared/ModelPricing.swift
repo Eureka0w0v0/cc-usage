@@ -29,7 +29,7 @@ public enum ModelPricing {
         Row(input: i, output: o, cacheRead: cr, cacheCreation: cw)
     }
 
-    /// 对齐 cc-switch seed_model_pricing 的 201 条内置定价（同步至 v3.20.3-15-g082be036）。
+    /// 对齐 cc-switch seed_model_pricing 的 206 条内置定价（同步至 v3.20.4-1-g8e478b2b）。
     /// 由 scripts/sync-pricing.sh 生成，勿手改；新模型先放下面的 `localExtras`。
     static let upstream: [String: Row] = [
         "claude-fable-5-1": R(10, 50, 0.25, 12.5),  // Claude Fable 5.1
@@ -151,7 +151,7 @@ public enum ModelPricing {
         "deepseek-v4-flash": R(0.3, 1.2, 0.006, 0),  // DeepSeek V4 Flash
         "deepseek-v4-flash-0731": R(0.3, 1.2, 0.006, 0),  // DeepSeek V4 Flash
         "deepseek-v4-flash-vision-exp": R(0.3, 1.2, 0.006, 0),  // DeepSeek V4 Flash Vision Exp
-        "deepseek-v4-pro": R(0.3, 1.2, 0.006, 0),  // DeepSeek V4 Pro
+        "deepseek-v4-pro": R(1.32, 3.96, 0.044, 0),  // DeepSeek V4 Pro
         "kimi-k2-thinking": R(0.55, 2.2, 0.1, 0),  // Kimi K2 Thinking
         "kimi-k2-0905": R(0.55, 2.2, 0.1, 0),  // Kimi K2
         "kimi-k2-turbo": R(1.11, 8.06, 0.14, 0),  // Kimi K2 Turbo
@@ -164,6 +164,7 @@ public enum ModelPricing {
         "k3": R(3, 15, 0.3, 0),  // Kimi K3
         "hunyuan-hy3": R(0.14, 0.56, 0.035, 0),  // Hunyuan Hy3
         "hy3": R(0.14, 0.56, 0.035, 0),  // Hunyuan Hy3
+        "hy4-preview": R(0.84, 2.52, 0.042, 0),  // Hunyuan Hy4 Preview
         "minimax-m2.1": R(0.3, 1.2, 0.03, 0.375),  // MiniMax M2.1
         "minimax-m2.1-lightning": R(0.27, 2.33, 0.03, 0),  // MiniMax M2.1 Lightning
         "minimax-m2": R(0.3, 1.2, 0.03, 0.375),  // MiniMax M2
@@ -180,6 +181,7 @@ public enum ModelPricing {
         "glm-5.2": R(1.4, 4.4, 0.26, 0),  // GLM-5.2
         "glm-5.3": R(1.4, 4.4, 0.26, 0),  // GLM-5.3
         "glm-5.3-flash": R(0.15, 0.5, 0.03, 0),  // GLM-5.3-Flash
+        "glm-5.3-flashx": R(0.37, 1.25, 0.075, 0),  // GLM-5.3-FlashX
         "glm-5-turbo": R(1.2, 4, 0.24, 0),  // GLM-5-Turbo
         "glm-5v-turbo": R(1.2, 4, 0.24, 0),  // GLM-5V-Turbo
         "mimo-v2-flash": R(0.09, 0.29, 0.009, 0),  // MiMo V2 Flash
@@ -188,6 +190,8 @@ public enum ModelPricing {
         "mimo-v2.5-pro": R(0.435, 0.87, 0.0036, 0),  // MiMo V2.5 Pro
         "qwen3.8-max": R(2, 6, 0.25, 2.5),  // Qwen3.8 Max
         "qwen3.8-flash": R(0.15, 0.47, 0.016, 0.2),  // Qwen3.8 Flash
+        "qwen3.8-2.4t-a95b": R(2, 6, 0.25, 2.5),  // Qwen3.8 2.4T A95B
+        "qwen3.8-27b": R(0.5, 3, 0.1, 0.625),  // Qwen3.8 27B
         "qwen3.7-max": R(2.5, 7.5, 0.25, 0),  // Qwen3.7 Max
         "qwen3.7-plus": R(0.4, 1.6, 0.08, 0),  // Qwen3.7 Plus
         "qwen3.6-plus": R(0.325, 1.95, 0.065, 0),  // Qwen3.6 Plus
@@ -203,6 +207,7 @@ public enum ModelPricing {
         "qwq-plus": R(0.8, 2.4, 0, 0),  // QwQ Plus
         "qwq-32b": R(0.2, 0.6, 0, 0),  // QwQ 32B
         "qwen3-32b": R(0.16, 0.64, 0, 0),  // Qwen3 32B
+        "grok-4.7": R(2, 6, 0.5, 0),  // Grok 4.7
         "grok-4.6": R(2, 6, 0.5, 0),  // Grok 4.6
         "grok-4.5": R(2, 6, 0.3, 0),  // Grok 4.5
         // Grok Build 的 cache read 实测 0.30（上游按 costUsdTicks 反推），非挂牌 0.50
