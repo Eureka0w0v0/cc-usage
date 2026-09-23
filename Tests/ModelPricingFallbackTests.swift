@@ -65,6 +65,23 @@ final class ModelPricingFallbackTests: XCTestCase {
                           ModelPricing.lookup("claude-fable-5")?.cacheRead)
     }
 
+    // Opus 5.5（2026-09-23 发布）：$4 / $20，缓存读是 0.05x = $0.20——既不是常规 0.1x 的
+    // $0.40，也不是 Opus 5 的 $0.50；缓存写照常 1.25x = $5（$8 是 1 小时档，本表只有 5 分钟一列）。
+    // 负责杀的变异体：删掉 localExtras 里的 opus-5-5 行 / 缓存读按 0.1x 写成 0.4 /
+    // 整行照抄 opus-5 / 缓存写误录 1 小时档 8。
+    func testBuiltinTableHasOpus55WithTwentiethCacheRead() throws {
+        let row = try XCTUnwrap(ModelPricing.lookup("claude-opus-5-5"))
+        XCTAssertEqual(row.input, 4)
+        XCTAssertEqual(row.output, 20)
+        XCTAssertEqual(row.cacheRead, 0.2)
+        XCTAssertEqual(row.cacheCreation, 5)
+        XCTAssertEqual(ModelPricing.lookup("claude-opus-5-5[1m]")?.cacheRead, 0.2)
+        XCTAssertEqual(ModelPricing.lookup("anthropic/claude-opus-5-5")?.cacheRead, 0.2)
+        // 5-5 不是日期尾，不能被归一成 opus-5 再按 $5 / $25 计价
+        XCTAssertNotEqual(ModelPricing.lookup("claude-opus-5-5")?.input,
+                          ModelPricing.lookup("claude-opus-5")?.input)
+    }
+
     // 本地先行区只在上游 seed 缺席时存在：上游收录后本用例报红，提醒把本地行删掉
     //（否则同一 id 两处各一份，下次改价容易漏）。顺带锁住「合并没把任何一边丢掉」。
     // 负责杀的变异体：table 只取 upstream 忘了 merge / localExtras 里塞了上游已有的 id。

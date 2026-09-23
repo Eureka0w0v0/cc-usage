@@ -245,9 +245,15 @@ public enum ModelPricing {
     /// 上游收录后 `testLocalExtrasAreAbsentUpstream` 会报红，届时删掉对应行即可。
     /// 价格以 platform.claude.com/docs/en/about-claude/pricing 为准。
     ///
-    /// 当前为空：`claude-fable-5-1` / `claude-mythos-5-1` 已被上游 v3.20.2 收录，且缓存读
-    /// 取值（$0.25）与本地先行值一致，2026-09-21 同步时移除。空字典是正常状态，不是遗漏。
-    static let localExtras: [String: Row] = [:]
+    /// `claude-opus-5-5`（2026-09-23 发布，上游 v3.20.4 未收录）：缓存读是 0.05x = $0.20，
+    /// 不是常规 0.1x 的 $0.40，也不是 Opus 5 的 $0.50——照抄 opus-5 行会把缓存读多算 2.5 倍，
+    /// 而 Claude Code 会话九成以上 token 是缓存读。缓存写取 5 分钟档 1.25x = $5（1 小时档 $8 无列）。
+    ///
+    /// 历史：`claude-fable-5-1` / `claude-mythos-5-1` 曾在此先行，上游 v3.20.2 收录后于
+    /// 2026-09-21 移除。本区清空时空字典是正常状态，不是遗漏。
+    static let localExtras: [String: Row] = [
+        "claude-opus-5-5": R(4, 20, 0.2, 5),  // Claude Opus 5.5
+    ]
 
     /// 查价与 TEMP 兜底表用的全集。上游优先：用户在 cc-switch 改过的价、上游修正过的价
     /// 都不该被本地行盖掉。
