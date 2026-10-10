@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import {
   QueryClientProvider,
+  keepPreviousData,
   useQueryClient,
 } from "@tanstack/react-query";
 
@@ -98,6 +99,24 @@ const APP_FILTER_ICON: Record<AppType, string> = {
   pi: "pi",
   mcode: "minimax",
 };
+
+// 统计类查询在换筛选、时间范围、翻页时先留着上一份数据，新数据到了再换，不让指标闪成「…」、
+// 请求日志表塌成骨架。对齐上游 v4.0.0 在这 6 类 hook 上加的 placeholderData: keepPreviousData；
+// 钉住的上游版本还没有这个改动，又不能改上游文件（钉子校验只放行桥接文件），所以按 key 前缀
+// 统一挂默认值。detail / pricing / limits 与上游一样不挂（换一条请求不该先显示上一条的详情）。
+const KEEP_PREVIOUS_DATA_SEGMENTS = [
+  "summary",
+  "summary-by-app",
+  "trends",
+  "provider-stats",
+  "model-stats",
+  "logs",
+] as const;
+for (const segment of KEEP_PREVIOUS_DATA_SEGMENTS) {
+  queryClient.setQueryDefaults([...usageKeys.all, segment], {
+    placeholderData: keepPreviousData,
+  });
+}
 
 const DYNAMIC_OPTION_PREFIX = "v:";
 const encodeOptionValue = (name: string) => `${DYNAMIC_OPTION_PREFIX}${name}`;
