@@ -25,6 +25,7 @@
 		2FB870100920324A6F8DB6F1 /* CodexQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36764B37F900CFF7A2CD31CB /* CodexQuota.swift */; };
 		30D0267489B6604D1EDBBFDE /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
 		430272EA72A336833DA9941E /* OmpOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852F6FC486224DEFA66DC312 /* OmpOverlay.swift */; };
+		43884E8A3CE005F12FEB30E4 /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */; };
 		44B723727A3908575C51CA2C /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B7394AA86628D94994BEE1 /* UsageStore+Summary.swift */; };
 		47E0CBABCC006AB76D0520DE /* CodexRateLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 865223228D5DC112DC2B943E /* CodexRateLimits.swift */; };
 		487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */; };
@@ -79,17 +80,20 @@
 		A9FED5E7C3C42C8FA79EDDA7 /* ProviderFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93814BF68F4EABE02C4D6FB7 /* ProviderFilterTests.swift */; };
 		AA65FF229239D601D92498A3 /* ClaudeQuotaParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 734B59D76CAC08CBDFB54649 /* ClaudeQuotaParsing.swift */; };
 		AB4712B67D094A87FB5133FB /* MenuBarStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E66BA024EC17C0383C62FD /* MenuBarStrip.swift */; };
+		B05EF786E95DADBCD5B13469 /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */; };
 		B37D66ED135407352107CDAE /* brand-claude.png in Resources */ = {isa = PBXBuildFile; fileRef = CAA25E78D961070EDBD05FBD /* brand-claude.png */; };
 		B3AAFCB633407D12F38BE394 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
 		B5EF96527E45E39772554752 /* MenuBarStripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B329187C6B1B870A6A8E90 /* MenuBarStripTests.swift */; };
 		B690D5FE64B100264FED2361 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = 0FA0E5873AE44221C5F8E764 /* index.html */; };
 		B709318DC2A0E03EE7054593 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
+		B7B683091718E966E12425FA /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */; };
 		BBF3D589661BD58666A648E8 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		C3EFCC6A9C5C2CD15868F98F /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD0BC76597EA7B1CA061A1A /* TestSupport.swift */; };
 		C4C3DBC1912494D05F4ACE68 /* CodexRateLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 865223228D5DC112DC2B943E /* CodexRateLimits.swift */; };
 		CA273B275122E65E0AE9BB7D /* OmpOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852F6FC486224DEFA66DC312 /* OmpOverlay.swift */; };
 		CC32B07C89892E0DCBBD0587 /* WidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B3E5D981FBFF4D027390E89 /* WidgetViews.swift */; };
 		CCBC5F29DF2F3BE14EF8DAE4 /* PricingCandidatesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A79728DAD95A349D54CBC66 /* PricingCandidatesTests.swift */; };
+		CE20EC32EEFDDE1325AAD048 /* QuotaWarningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F920755A53E1290F9C2A48 /* QuotaWarningTests.swift */; };
 		CE399796C4B4086C431AAC2F /* MainWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ABB3C3707EC50D4E1A3A1C9 /* MainWindowView.swift */; };
 		CEA127E6F6FD4420DFA5F5B1 /* UsageStore+Tabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 578EA2EB8DDB1CFEEEAACBE1 /* UsageStore+Tabs.swift */; };
 		D0CED0E83C8A971F5437B63C /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D5177768EABBA97BE2A6C7 /* Formatting.swift */; };
@@ -142,6 +146,7 @@
 /* Begin PBXFileReference section */
 		015B95E0A6E30643E43E6880 /* CCUsageWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCUsageWidgetBundle.swift; sourceTree = "<group>"; };
 		02EC91B3D0364F51E74D43D4 /* CrossSourceDedupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossSourceDedupTests.swift; sourceTree = "<group>"; };
+		06F920755A53E1290F9C2A48 /* QuotaWarningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWarningTests.swift; sourceTree = "<group>"; };
 		09D1E9749B8E07DB4B72929A /* brand-opencode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-opencode.png"; sourceTree = "<group>"; };
 		0FA0E5873AE44221C5F8E764 /* index.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
 		1023FC76A66DAD31754F57CB /* MenuBarPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanel.swift; sourceTree = "<group>"; };
@@ -157,6 +162,7 @@
 		3ABB3C3707EC50D4E1A3A1C9 /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
 		3B0A19B0E75AF7C4A2A7B928 /* SyncCursorCompatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCursorCompatTests.swift; sourceTree = "<group>"; };
 		3B12A88A474853068E9E3317 /* brand-grok.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-grok.png"; sourceTree = "<group>"; };
+		3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWarning.swift; sourceTree = "<group>"; };
 		3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOverlay.swift; sourceTree = "<group>"; };
 		40B7394AA86628D94994BEE1 /* UsageStore+Summary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+Summary.swift"; sourceTree = "<group>"; };
 		40C9249F54B1DB05E9E9CC84 /* UsageSQL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSQL.swift; sourceTree = "<group>"; };
@@ -271,6 +277,7 @@
 				97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */,
 				E4AA5CE26A92288C346C292B /* NiceScale.swift */,
 				852F6FC486224DEFA66DC312 /* OmpOverlay.swift */,
+				3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */,
 				C843DC8A24FE2FC77A32C289 /* Sample.swift */,
 				3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */,
 				205E593B8BA7C6E8FFA9B329 /* SQLiteSupport.swift */,
@@ -302,6 +309,7 @@
 				462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */,
 				4A79728DAD95A349D54CBC66 /* PricingCandidatesTests.swift */,
 				93814BF68F4EABE02C4D6FB7 /* ProviderFilterTests.swift */,
+				06F920755A53E1290F9C2A48 /* QuotaWarningTests.swift */,
 				31C6399E4E6DDB98439F8769 /* RollupBoundsTests.swift */,
 				58B7579031ABBBFE04A53F94 /* SessionOverlayTests.swift */,
 				64A17EA95052E02B82E244B1 /* StatsRealTotalTokensTests.swift */,
@@ -526,6 +534,7 @@
 				095C61E167A7253744FED7A8 /* ModelPricing.swift in Sources */,
 				EDF2674C1654E5556470D38C /* NiceScale.swift in Sources */,
 				430272EA72A336833DA9941E /* OmpOverlay.swift in Sources */,
+				43884E8A3CE005F12FEB30E4 /* QuotaWarning.swift in Sources */,
 				5C6F71164593F58EBA7DCD7C /* SQLiteSupport.swift in Sources */,
 				4D4D7C0D1F59343D57277E53 /* Sample.swift in Sources */,
 				02EC6FAF4D8399AC5EB17794 /* SessionOverlay.swift in Sources */,
@@ -565,6 +574,7 @@
 				D235AF54DE908310AA3C85D7 /* PanelModel.swift in Sources */,
 				DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */,
 				77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */,
+				B05EF786E95DADBCD5B13469 /* QuotaWarning.swift in Sources */,
 				5CD50F8CC7B3020983CAB217 /* SQLiteSupport.swift in Sources */,
 				213C0F0038E91DFADFA61B44 /* Sample.swift in Sources */,
 				B3AAFCB633407D12F38BE394 /* SessionOverlay.swift in Sources */,
@@ -606,6 +616,8 @@
 				487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */,
 				CCBC5F29DF2F3BE14EF8DAE4 /* PricingCandidatesTests.swift in Sources */,
 				A9FED5E7C3C42C8FA79EDDA7 /* ProviderFilterTests.swift in Sources */,
+				B7B683091718E966E12425FA /* QuotaWarning.swift in Sources */,
+				CE20EC32EEFDDE1325AAD048 /* QuotaWarningTests.swift in Sources */,
 				F6A65301583E710CE61822B6 /* RollupBoundsTests.swift in Sources */,
 				D75B6DEE30954D9970BE096C /* SQLiteSupport.swift in Sources */,
 				7768945481BA8CEC1034946D /* Sample.swift in Sources */,

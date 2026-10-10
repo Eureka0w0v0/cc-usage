@@ -102,7 +102,7 @@ struct MenuBarSettingsView: View {
                 if on { model.refreshAntigravityNow() }   // 展开分组即联网拉取模型列表
             }
 
-            Text("All = every AI combined; D/W/M = Day/Week/Month. Quota windows are labelled by duration (5H/7D/30D) so they never clash with the W of Week, and show % used — as a bar unless you turn that off, filled solid once past 90%. Length is unlimited; only if macOS squeezes the item out does it auto-shrink to fit, truncated with ….")
+            Text("All = every AI combined; D/W/M = Day/Week/Month. Quota windows are labelled by duration (5H/7D/30D) so they never clash with the W of Week, and show % used — as a bar unless you turn that off, filled solid once past 80% (under 20% left, same as CC Switch). Length is unlimited; only if macOS squeezes the item out does it auto-shrink to fit, truncated with ….")
                 .font(.caption2).foregroundStyle(Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
