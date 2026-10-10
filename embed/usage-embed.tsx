@@ -86,7 +86,9 @@ function loadStoredRefreshIntervalMs(): number {
   return DEFAULT_REFRESH_INTERVAL_MS;
 }
 
-// 与 AppSwitcher 的 appIconName 保持一致（codex 复用 openai 图标）
+// 与 AppSwitcher 的 appIconName 保持一致（codex 复用 openai 图标）；上游 UsageDashboard 的
+// 同名映射是对照基准。vite 构建只转译不查类型，缺键要靠 build-embed.sh 里的 tsc 一步拦住
+// （mcode 曾漏到运行时，按钮退化成灰底首字母）。
 const APP_FILTER_ICON: Record<AppType, string> = {
   claude: "claude",
   codex: "openai",
@@ -94,6 +96,7 @@ const APP_FILTER_ICON: Record<AppType, string> = {
   grokbuild: "grok",
   opencode: "opencode",
   pi: "pi",
+  mcode: "minimax",
 };
 
 const DYNAMIC_OPTION_PREFIX = "v:";

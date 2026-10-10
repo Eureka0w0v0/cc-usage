@@ -73,7 +73,13 @@ cd "$CC_SWITCH_DIR"
 grep -q '"vite-plugin-singlefile"' package.json || pnpm add -D vite-plugin-singlefile@^2.3.3
 CI=1 pnpm install --reporter=append-only
 
-# 3) 构建，产物直写回本仓库 / build straight into this repo
+# 3) 类型检查 / typecheck：vite（esbuild）只转译不查类型，`Record<AppType, …>` 缺键这类错误
+#    会一路漏到运行时（MiniMax Code 筛选按钮退化成灰底首字母就是这么来的）。上游 tsconfig
+#    覆盖 src/**/*，含上面拷进去的桥接文件；整仓约 7s。失败即中止（set -e）。
+#    vite only transpiles; run tsc so a missing key fails the build instead of the UI.
+pnpm exec tsc --noEmit -p tsconfig.json
+
+# 4) 构建，产物直写回本仓库 / build straight into this repo
 CC_USAGE_WEB_PANEL_OUT="$ROOT/Sources/App/web-panel" \
   pnpm exec vite build --config vite.embed.config.ts
 
