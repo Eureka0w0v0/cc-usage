@@ -29,15 +29,18 @@ public enum ModelPricing {
         Row(input: i, output: o, cacheRead: cr, cacheCreation: cw)
     }
 
-    /// 对齐 cc-switch seed_model_pricing 的 206 条内置定价（同步至 v3.20.4-1-g8e478b2b）。
+    /// 对齐 cc-switch seed_model_pricing 的 222 条内置定价（同步至 v4.0.6-7-g3da322eb）。
     /// 由 scripts/sync-pricing.sh 生成，勿手改；新模型先放下面的 `localExtras`。
     static let upstream: [String: Row] = [
         "claude-fable-5-1": R(10, 50, 0.25, 12.5),  // Claude Fable 5.1
         "claude-mythos-5-1": R(10, 50, 0.25, 12.5),  // Claude Mythos 5.1
         "claude-fable-5": R(10, 50, 1, 12.5),  // Claude Fable 5
         "claude-mythos-5": R(10, 50, 1, 12.5),  // Claude Mythos 5
+        "claude-opus-5-5": R(4, 20, 0.2, 5),  // Claude Opus 5.5
         "claude-opus-5": R(5, 25, 0.5, 6.25),  // Claude Opus 5
         "claude-opus-4-8": R(5, 25, 0.5, 6.25),  // Claude Opus 4.8
+        "claude-sonnet-5-5": R(2, 10, 0.1, 2.5),  // Claude Sonnet 5.5
+        "claude-haiku-5-5": R(0.1, 0.5, 0.01, 0.125),  // Claude Haiku 5.5
         "claude-sonnet-5": R(2, 10, 0.2, 2.5),  // Claude Sonnet 5
         "claude-opus-4-7": R(5, 25, 0.5, 6.25),  // Claude Opus 4.7
         // 裸 id 行覆盖无日期后缀的日志变体，与 dated 行同价
@@ -54,10 +57,14 @@ public enum ModelPricing {
         "claude-3-5-haiku-20241022": R(0.8, 4, 0.08, 1),  // Claude 3.5 Haiku
         "claude-3-5-sonnet-20241022": R(3, 15, 0.3, 3.75),  // Claude 3.5 Sonnet
         "gpt-6-astra": R(10, 50, 1, 12.5),  // GPT-6 Astra
+        "gpt-6.1-sol": R(2, 10, 0.1, 2.5),  // GPT-6.1 Sol
+        "gpt-6-sol": R(2, 10, 0.2, 2.5),  // GPT-6 Sol
+        "gpt-6-luna": R(0.1, 0.5, 0.01, 0.125),  // GPT-6 Luna
         "gpt-5.6-sol": R(4, 20, 0.4, 5),  // GPT-5.6 Sol
         // 2026-07-30 OpenAI 降价：luna -80%、terra -20%（sol 不变）
         "gpt-5.6-terra": R(2, 12, 0.2, 2.5),  // GPT-5.6 Terra
         "gpt-5.6-luna": R(0.2, 1.2, 0.02, 0.25),  // GPT-5.6 Luna
+        "gpt-5.6-cyber": R(12.5, 75, 1.25, 15.625),  // GPT-5.6 Cyber
         "gpt-5.6": R(4, 20, 0.4, 5),  // GPT-5.6 Sol
         "gpt-5.6-low": R(4, 20, 0.4, 5),  // GPT-5.6 Sol
         "gpt-5.6-medium": R(4, 20, 0.4, 5),  // GPT-5.6 Sol
@@ -116,6 +123,11 @@ public enum ModelPricing {
         "gpt-4.1": R(2, 8, 0.5, 0),  // GPT-4.1
         "gpt-4.1-mini": R(0.4, 1.6, 0.1, 0),  // GPT-4.1 Mini
         "gpt-4.1-nano": R(0.1, 0.4, 0.025, 0),  // GPT-4.1 Nano
+        "gpt-5.5-pro": R(30, 180, 0, 0),  // GPT-5.5 Pro
+        "gpt-5.4-pro": R(30, 180, 0, 0),  // GPT-5.4 Pro
+        "gpt-5.2-pro": R(21, 168, 0, 0),  // GPT-5.2 Pro
+        "gpt-4o": R(2.5, 10, 1.25, 0),  // GPT-4o
+        "gpt-4o-mini": R(0.15, 0.6, 0.075, 0),  // GPT-4o Mini
         "gemini-3.8-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.8 Flash
         "gemini-3.7-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.7 Flash
         "gemini-3.6-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.6 Flash
@@ -130,6 +142,7 @@ public enum ModelPricing {
         "gemini-2.5-flash": R(0.3, 2.5, 0.03, 0),  // Gemini 2.5 Flash
         "gemini-2.5-flash-lite": R(0.1, 0.4, 0.01, 0),  // Gemini 2.5 Flash Lite
         "gemini-2.0-flash": R(0.1, 0.4, 0.025, 0),  // Gemini 2.0 Flash
+        "step-5-preview": R(0.98, 2.8, 0.05, 0),  // Step 5 Preview
         "step-3.7-flash": R(0.19, 1.13, 0.04, 0),  // Step 3.7 Flash
         "step-3.5-flash": R(0.1, 0.3, 0.02, 0),  // Step 3.5 Flash
         "step-3.5-flash-2603": R(0.1, 0.3, 0.02, 0),  // Step 3.5 Flash 2603
@@ -186,7 +199,7 @@ public enum ModelPricing {
         "glm-5v-turbo": R(1.2, 4, 0.24, 0),  // GLM-5V-Turbo
         "mimo-v2-flash": R(0.09, 0.29, 0.009, 0),  // MiMo V2 Flash
         "mimo-v2-pro": R(0.435, 0.87, 0.0036, 0),  // MiMo V2 Pro
-        "mimo-v2.5": R(0.14, 0.29, 0.0028, 0),  // MiMo V2.5
+        "mimo-v2.5": R(0.14, 0.28, 0.0028, 0),  // MiMo V2.5
         "mimo-v2.5-pro": R(0.435, 0.87, 0.0036, 0),  // MiMo V2.5 Pro
         "qwen3.8-max": R(2, 6, 0.25, 2.5),  // Qwen3.8 Max
         "qwen3.8-flash": R(0.15, 0.47, 0.016, 0.2),  // Qwen3.8 Flash
@@ -238,27 +251,28 @@ public enum ModelPricing {
         "command-r-plus": R(2.5, 10, 0, 0),  // Cohere Command R+
         "command-r": R(0.15, 0.6, 0, 0),  // Cohere Command R
         "o3-pro": R(20, 80, 0, 0),  // OpenAI o3-pro
-        "o3-mini": R(0.55, 2.2, 0.55, 0),  // OpenAI o3-mini
+        "o3-mini": R(1.1, 4.4, 0.55, 0),  // OpenAI o3-mini
         "o1": R(15, 60, 7.5, 0),  // OpenAI o1
         "o1-mini": R(0.55, 2.2, 0.55, 0),  // OpenAI o1-mini
         "codex-mini": R(0.75, 3, 0.025, 0),  // Codex Mini
         "gpt-5-mini": R(0.25, 2, 0.025, 0),  // GPT-5 Mini
         "gpt-5-nano": R(0.05, 0.4, 0.005, 0),  // GPT-5 Nano
+        "mimo-v2.6-pro": R(0.435, 0.87, 0.0036, 0),  // MiMo V2.6 Pro
+        "mimo-v2.6-flash": R(0.14, 0.28, 0.0028, 0),  // MiMo V2.6 Flash
+        "mimo-v2.6-pro-ultraspeed": R(4.35, 8.7, 0.036, 0),  // MiMo V2.6 Pro UltraSpeed
     ]
 
     /// 本地先行区：上游 seed 尚未收录、但日志里已经出现的模型。脚本不碰这里；
     /// 上游收录后 `testLocalExtrasAreAbsentUpstream` 会报红，届时删掉对应行即可。
     /// 价格以 platform.claude.com/docs/en/about-claude/pricing 为准。
     ///
-    /// `claude-opus-5-5`（2026-09-23 发布，上游 v3.20.4 未收录）：缓存读是 0.05x = $0.20，
-    /// 不是常规 0.1x 的 $0.40，也不是 Opus 5 的 $0.50——照抄 opus-5 行会把缓存读多算 2.5 倍，
-    /// 而 Claude Code 会话九成以上 token 是缓存读。缓存写取 5 分钟档 1.25x = $5（1 小时档 $8 无列）。
+    /// 历史：
+    /// - `claude-fable-5-1` / `claude-mythos-5-1` 曾在此先行，上游 v3.20.2 收录后于 2026-09-21 移除。
+    /// - `claude-opus-5-5` 曾在此先行（缓存读 0.05x = $0.20，不是常规 0.1x，也不是 Opus 5 的
+    ///   $0.50），上游 v4.0.0 收录（PR #7600，同价）后于 2026-10-10 移除。
     ///
-    /// 历史：`claude-fable-5-1` / `claude-mythos-5-1` 曾在此先行，上游 v3.20.2 收录后于
-    /// 2026-09-21 移除。本区清空时空字典是正常状态，不是遗漏。
-    static let localExtras: [String: Row] = [
-        "claude-opus-5-5": R(4, 20, 0.2, 5),  // Claude Opus 5.5
-    ]
+    /// 本区清空时空字典是正常状态，不是遗漏。
+    static let localExtras: [String: Row] = [:]
 
     /// 查价与 TEMP 兜底表用的全集。上游优先：用户在 cc-switch 改过的价、上游修正过的价
     /// 都不该被本地行盖掉。

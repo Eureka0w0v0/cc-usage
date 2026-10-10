@@ -67,8 +67,8 @@ final class ModelPricingFallbackTests: XCTestCase {
 
     // Opus 5.5（2026-09-23 发布）：$4 / $20，缓存读是 0.05x = $0.20——既不是常规 0.1x 的
     // $0.40，也不是 Opus 5 的 $0.50；缓存写照常 1.25x = $5（$8 是 1 小时档，本表只有 5 分钟一列）。
-    // 负责杀的变异体：删掉 localExtras 里的 opus-5-5 行 / 缓存读按 0.1x 写成 0.4 /
-    // 整行照抄 opus-5 / 缓存写误录 1 小时档 8。
+    // 负责杀的变异体：删掉 opus-5-5 行（2026-10-10 起由上游 seed 提供，PR #7600）/
+    // 缓存读按 0.1x 写成 0.4 / 整行照抄 opus-5 / 缓存写误录 1 小时档 8。
     func testBuiltinTableHasOpus55WithTwentiethCacheRead() throws {
         let row = try XCTUnwrap(ModelPricing.lookup("claude-opus-5-5"))
         XCTAssertEqual(row.input, 4)
@@ -80,6 +80,30 @@ final class ModelPricingFallbackTests: XCTestCase {
         // 5-5 不是日期尾，不能被归一成 opus-5 再按 $5 / $25 计价
         XCTAssertNotEqual(ModelPricing.lookup("claude-opus-5-5")?.input,
                           ModelPricing.lookup("claude-opus-5")?.input)
+    }
+
+    // Sonnet 5.5（2026-09-28）与 Haiku 5.5（2026-10-07）：2026-10-10 对照官方定价页核过。
+    // 定价同步只照搬上游 seed，上游录错时本用例兜底（前车之鉴：Sonnet 5 的 seed 曾错价 1.5 倍）。
+    // Sonnet 5.5 缓存读 0.05x = $0.10，不是 Sonnet 5 的 $0.20。Haiku 5.5 按提示词长度分档，表里只存
+    // ≤10 万 token 的标准档；>10 万档（$0.50 / $2.50）本表无档位列，与上游一样不建模。
+    // 负责杀的变异体：任一字段录错 / 删掉 sonnet-5-5 行（归一回落 sonnet-5，缓存读变 0.2）/
+    // 缓存写误录 1 小时档（Sonnet $4、Haiku $0.20）/ Haiku 误录 >10 万档。
+    func testBuiltinTableHasSonnet55AndHaiku55AtOfficialPrices() throws {
+        let sonnet = try XCTUnwrap(ModelPricing.lookup("claude-sonnet-5-5"))
+        XCTAssertEqual(sonnet.input, 2)
+        XCTAssertEqual(sonnet.output, 10)
+        XCTAssertEqual(sonnet.cacheRead, 0.1)
+        XCTAssertEqual(sonnet.cacheCreation, 2.5)
+        XCTAssertEqual(ModelPricing.lookup("claude-sonnet-5-5[1m]")?.cacheRead, 0.1)
+        XCTAssertEqual(ModelPricing.lookup("anthropic/claude-sonnet-5-5")?.cacheRead, 0.1)
+        XCTAssertNotEqual(ModelPricing.lookup("claude-sonnet-5-5")?.cacheRead,
+                          ModelPricing.lookup("claude-sonnet-5")?.cacheRead)
+
+        let haiku = try XCTUnwrap(ModelPricing.lookup("claude-haiku-5-5"))
+        XCTAssertEqual(haiku.input, 0.1)
+        XCTAssertEqual(haiku.output, 0.5)
+        XCTAssertEqual(haiku.cacheRead, 0.01)
+        XCTAssertEqual(haiku.cacheCreation, 0.125)
     }
 
     // 本地先行区只在上游 seed 缺席时存在：上游收录后本用例报红，提醒把本地行删掉
