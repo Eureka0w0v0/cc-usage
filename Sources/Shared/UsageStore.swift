@@ -177,6 +177,13 @@ public final class UsageStore: @unchecked Sendable {
     func freshInput(_ db: OpaquePointer, _ alias: String) -> String {
         hasSemantics(db) ? Self.freshInputV13(alias) : Self.freshInputLegacy(alias)
     }
+    /// 单行「真实消耗 Tokens」= 新增输入 + 输出 + 缓存写入 + 缓存命中，与 Hero 的
+    /// `UsageSummary.tokensProcessed` 同口径（对齐 sql_helpers.rs::real_total_tokens_sql，
+    /// 上游 bc4d1a50）。分组统计的 total_tokens 都用它，保证各行之和等于顶部总数。
+    func realTotalTokens(_ db: OpaquePointer, _ alias: String) -> String {
+        "((\(freshInput(db, alias))) + \(alias).output_tokens"
+            + " + \(alias).cache_creation_tokens + \(alias).cache_read_tokens)"
+    }
     /// 成本（明细表侧）：库里已有正成本优先，未定价行按内置表现场补算(见 ModelPricing)。
     /// 用户在 cc-switch 里改过的价永远优先，绝不被内置表覆盖。
     func costL(_ db: OpaquePointer) -> String {

@@ -199,7 +199,7 @@ extension UsageStore {
     }
 
     /// Provider 统计。对齐 get_provider_stats（GROUP BY provider_id, app_type，
-    /// total_tokens = fresh_input + output，ORDER BY total_cost DESC）。
+    /// total_tokens = 真实消耗 realTotalTokens（上游 bc4d1a50 起含缓存），ORDER BY total_cost DESC）。
     public func providerStats(_ f: LogQueryFilter) throws -> [ProviderStatRow] {
         let db = try openRO()
         defer { sqlite3_close(db) }
@@ -207,7 +207,7 @@ extension UsageStore {
         let sql = """
         SELECT l.provider_id, \(Self.providerNameCoalesce) AS provider_name,
                COUNT(*) AS request_count,
-               COALESCE(SUM(\(freshInput(db, "l")) + l.output_tokens), 0) AS total_tokens,
+               COALESCE(SUM(\(realTotalTokens(db, "l"))), 0) AS total_tokens,
                COALESCE(SUM(\(costL(db))), 0) AS total_cost,
                COALESCE(SUM(CASE WHEN l.status_code >= 200 AND l.status_code < 300 THEN 1 ELSE 0 END), 0) AS success_count,
                CASE WHEN COUNT(*) > 0 THEN COALESCE(SUM(l.latency_ms), 0) / COUNT(*) ELSE 0 END AS avg_latency
@@ -244,7 +244,7 @@ extension UsageStore {
             for r in ov {
                 var g = grouped[r.providerId] ?? (name: r.providerName, req: 0, toks: 0, cost: 0)
                 g.req += 1
-                g.toks += r.input + r.output
+                g.toks += r.realTotalTokens
                 g.cost += r.totalCost
                 grouped[r.providerId] = g
             }
@@ -270,7 +270,7 @@ extension UsageStore {
     }
 
     /// 模型统计。对齐 get_model_stats（GROUP BY 有效计价模型，
-    /// total_tokens = fresh_input + output，avg = total_cost / request_count）。
+    /// total_tokens = 真实消耗 realTotalTokens（上游 bc4d1a50 起含缓存），avg = total_cost / request_count）。
     public func modelStats(_ f: LogQueryFilter) throws -> [ModelStatRow] {
         let db = try openRO()
         defer { sqlite3_close(db) }
@@ -278,7 +278,7 @@ extension UsageStore {
         let sql = """
         SELECT \(Self.effectiveModelL) AS model,
                COUNT(*) AS request_count,
-               COALESCE(SUM(\(freshInput(db, "l")) + l.output_tokens), 0) AS total_tokens,
+               COALESCE(SUM(\(realTotalTokens(db, "l"))), 0) AS total_tokens,
                COALESCE(SUM(\(costL(db))), 0) AS total_cost
         FROM proxy_request_logs l
         \(Self.providersJoinL)
@@ -302,14 +302,14 @@ extension UsageStore {
                 avgCostPerRequest: avg
             ))
         }
-        // 未入库增量按模型并入(total_tokens 口径 = fresh_input + output,与 SQL 一致)
+        // 未入库增量按模型并入(total_tokens 口径 = 真实消耗,与 SQL 的 realTotalTokens 一致)
         let ov = overlayLogRows(db, f)
         if !ov.isEmpty {
             var byModel: [String: (req: Int64, toks: Int64, cost: Double)] = [:]
             for r in ov {
                 var a = byModel[r.model] ?? (0, 0, 0)
                 a.req += 1
-                a.toks += r.input + r.output
+                a.toks += r.realTotalTokens
                 a.cost += r.totalCost
                 byModel[r.model] = a
             }

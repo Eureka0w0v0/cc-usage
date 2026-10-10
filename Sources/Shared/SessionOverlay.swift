@@ -35,6 +35,9 @@ public struct OverlayRow: Sendable {
     public var output: Int64
     public var cacheRead: Int64
     public var cacheCreation: Int64
+    /// 真实消耗 Tokens，与 `UsageStore.realTotalTokens` 的 SQL 同口径。两个 overlay 的
+    /// `input` 都是新增输入（JSONL 里缓存单列），所以四项直接相加，不做 cache 扣减。
+    public var realTotalTokens: Int64 { input + output + cacheCreation + cacheRead }
     public var inputCost: Double
     public var outputCost: Double
     public var cacheReadCost: Double
