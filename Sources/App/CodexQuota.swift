@@ -12,7 +12,7 @@ enum CodexQuota {
         let usedPercent: Double
     }
 
-    private struct Raw { let label: String; let pct: Double; let resetsAt: TimeInterval }
+    private typealias Raw = CodexRateLimits.RawWindow
 
     private static let lock = NSLock()
     private static var cache: (at: Date, raw: [Raw])?
@@ -33,12 +33,13 @@ enum CodexQuota {
     private static func zeroed(_ raw: [Raw], now: Date) -> [Window] {
         raw.map { w in
             let reset = w.resetsAt > 0 && now.timeIntervalSince1970 > w.resetsAt
-            return Window(label: w.label, usedPercent: reset ? 0 : w.pct)
+            return Window(label: w.label, usedPercent: reset ? 0 : w.usedPercent)
         }
     }
 
     /// 按修改时间新→旧翻最多 3 个会话文件（最新会话可能尚未产生 token_count 事件），
-    /// 每个只尾读 256KB，从后往前找最后一条 rate_limits。
+    /// 每个只尾读 256KB；选哪条快照由 Shared/CodexRateLimits.select 决定（可测）。
+    /// tails 是惰性序列：选到结果就不再读后面的文件。
     private static func scan() -> [Raw] {
         let fm = FileManager.default
         let root = fm.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions")
@@ -50,13 +51,11 @@ enum CodexQuota {
                 .contentModificationDate ?? .distantPast
             files.append((url, m))
         }
-        for (url, _) in files.sorted(by: { $0.1 > $1.1 }).prefix(3) {
-            if let raw = lastRateLimits(in: url) { return raw }
-        }
-        return []
+        let tails = files.sorted(by: { $0.1 > $1.1 }).prefix(3).lazy.compactMap { tailText(of: $0.0) }
+        return CodexRateLimits.select(tails: tails)
     }
 
-    private static func lastRateLimits(in file: URL) -> [Raw]? {
+    private static func tailText(of file: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
@@ -67,39 +66,6 @@ enum CodexQuota {
         // String(data:encoding:) 遇到非法序列返回 nil → 整个最新会话被判成「无 rate_limits」，
         // 回落到更旧的文件显示过期百分比，甚至三个都切坏时显示 "—"。改用永不失败的解码：
         // 被破坏的首行本来就是残行，parse 时 JSON 解析不过自然跳过。
-        let text = String(decoding: data, as: UTF8.self)
-        for line in text.split(separator: "\n").reversed() where line.contains("\"rate_limits\"") {
-            if let raw = parse(String(line)) { return raw }
-        }
-        return nil
-    }
-
-    private static func parse(_ line: String) -> [Raw]? {
-        guard let data = line.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        // 行结构 {timestamp, type, payload:{type:"token_count", rate_limits:{...}}}；容错直挂顶层
-        let payload = obj["payload"] as? [String: Any] ?? obj
-        guard let limits = payload["rate_limits"] as? [String: Any] else { return nil }
-        var out: [Raw] = []
-        for key in ["primary", "secondary"] {
-            guard let w = limits[key] as? [String: Any],
-                  let pct = w["used_percent"] as? Double else { continue }
-            let minutes = w["window_minutes"] as? Int ?? -1
-            let resets = w["resets_at"] as? Double ?? 0
-            out.append(Raw(label: label(minutes), pct: pct, resetsAt: resets))
-        }
-        return out.isEmpty ? nil : out
-    }
-
-    private static func label(_ minutes: Int) -> String {
-        switch minutes {
-        case ..<0:  return "?"
-        case 300:   return "5H"
-        case 10080: return "7D"    // 不叫 W：菜单栏里 W 已是「本周用量」，撞车没法读
-        case 43200: return "30D"
-        default:
-            return minutes % 1440 == 0 ? "\(minutes / 1440)D"
-                 : "\(Int((Double(minutes) / 60).rounded()))H"
-        }
+        return String(decoding: data, as: UTF8.self)
     }
 }
