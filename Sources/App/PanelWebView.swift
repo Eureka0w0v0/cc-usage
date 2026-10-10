@@ -144,6 +144,13 @@ struct PanelWebView: NSViewRepresentable {
                 return try summaryByApp(start: start, end: end, providerName: providerName, model: model)
             case "get_usage_trends":
                 return try trends(start: start, end: end, appType: appType, providerName: providerName, model: model)
+            // 热力图（embed/usage-heatmap.tsx）：最早有记录的本地日，决定铺几段 53 周。对齐 v4.0.5。
+            case "get_usage_first_date":
+                if let day = try store.firstUsageDate(UsageFilter(appType: appType,
+                                                                  providerName: providerName, model: model)) {
+                    return day
+                }
+                return NSNull()
             case "get_usage_summary":
                 let s = try store.rangeSummary(UsageFilter(start: start, end: end, appType: appType,
                                                            providerName: providerName, model: model))

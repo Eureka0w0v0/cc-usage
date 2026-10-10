@@ -14,6 +14,7 @@
 		1635BCDD5D777AB253C584AC /* UsageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA8DAFF3CCEE62A47CCC0700 /* UsageStoreTests.swift */; };
 		16B1600F6E59BF63180A84EA /* TrendChartScaleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 326F0B1374BB035FFB3D5672 /* TrendChartScaleTests.swift */; };
 		1AB9D7324DF34BF91A2E4087 /* CrossSourceDedupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02EC91B3D0364F51E74D43D4 /* CrossSourceDedupTests.swift */; };
+		1C7900C7A437B0E5D4CACF28 /* UsageFirstDateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7956EC6440F54CE21ECC59EA /* UsageFirstDateTests.swift */; };
 		1C8B58897031EB0BE70B1FC9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
 		1EB76A1AAF9DEB820C81DC05 /* ModelPricingFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */; };
 		213C0F0038E91DFADFA61B44 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = C843DC8A24FE2FC77A32C289 /* Sample.swift */; };
@@ -24,6 +25,7 @@
 		2F7C1BA51315A51A1C47EA60 /* OmpOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD962A14316054D9A982BE4 /* OmpOverlayTests.swift */; };
 		2FB870100920324A6F8DB6F1 /* CodexQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36764B37F900CFF7A2CD31CB /* CodexQuota.swift */; };
 		30D0267489B6604D1EDBBFDE /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
+		362F525889D4499DC183C099 /* UsageStore+FirstDate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0FC10388B763548ADC60AEE /* UsageStore+FirstDate.swift */; };
 		430272EA72A336833DA9941E /* OmpOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852F6FC486224DEFA66DC312 /* OmpOverlay.swift */; };
 		43884E8A3CE005F12FEB30E4 /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */; };
 		44B723727A3908575C51CA2C /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B7394AA86628D94994BEE1 /* UsageStore+Summary.swift */; };
@@ -62,6 +64,7 @@
 		79DF1F59109D2C6A54E0C8D7 /* MenuBarLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBFCAC535AAB804E7BDC1E1 /* MenuBarLabel.swift */; };
 		7EFE2736BE80418E3B599C60 /* UsageStore+Tabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 578EA2EB8DDB1CFEEEAACBE1 /* UsageStore+Tabs.swift */; };
 		80090AAACF2B93A81A1F657A /* FallbackTableSeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581B74090E8AD015CE9C4DBE /* FallbackTableSeedTests.swift */; };
+		80692A733BA2132264250B23 /* UsageStore+FirstDate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0FC10388B763548ADC60AEE /* UsageStore+FirstDate.swift */; };
 		8489854C9B2CFB5F223BCDF5 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B630AB07F7C1A6EB7B7A1D56 /* UpdateChecker.swift */; };
 		8694E39C29B428CB8A2B9AB0 /* MenuBarStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E66BA024EC17C0383C62FD /* MenuBarStrip.swift */; };
 		87C3041DB6F00AC702CC5176 /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B7394AA86628D94994BEE1 /* UsageStore+Summary.swift */; };
@@ -108,6 +111,7 @@
 		DF73068A06C4D63F6DC7C0E4 /* ClaudeQuotaParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 734B59D76CAC08CBDFB54649 /* ClaudeQuotaParsing.swift */; };
 		E34D5CCE71FDDE308668470A /* brand-minimax.png in Resources */ = {isa = PBXBuildFile; fileRef = E50FA82869360DF5BE4941CF /* brand-minimax.png */; };
 		E5DE774E75BA5998B16892CF /* ModelPricing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */; };
+		E6F467CC7A11E4D5C531A6F4 /* UsageStore+FirstDate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0FC10388B763548ADC60AEE /* UsageStore+FirstDate.swift */; };
 		EA76484909B3172F0696D31D /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
 		EDF2674C1654E5556470D38C /* NiceScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4AA5CE26A92288C346C292B /* NiceScale.swift */; };
 		EF35541C241CCFC24EC49BBE /* CodexRateLimitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CDBEA70D4CF12353B80A47 /* CodexRateLimitsTests.swift */; };
@@ -182,6 +186,7 @@
 		6B3E5D981FBFF4D027390E89 /* WidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetViews.swift; sourceTree = "<group>"; };
 		7240EDA4C546F2792A21A93D /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		734B59D76CAC08CBDFB54649 /* ClaudeQuotaParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeQuotaParsing.swift; sourceTree = "<group>"; };
+		7956EC6440F54CE21ECC59EA /* UsageFirstDateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageFirstDateTests.swift; sourceTree = "<group>"; };
 		79D23CC551C0C16F95DCFD40 /* MenuBarKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarKeys.swift; sourceTree = "<group>"; };
 		7C5506EFDDB250B8217B59FD /* brand-gemini.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-gemini.png"; sourceTree = "<group>"; };
 		852F6FC486224DEFA66DC312 /* OmpOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmpOverlay.swift; sourceTree = "<group>"; };
@@ -209,6 +214,7 @@
 		D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelWebView.swift; sourceTree = "<group>"; };
 		DC3977B07E56C3EEC6F0A704 /* CCUsageWidget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CCUsageWidget.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DDBFCAC535AAB804E7BDC1E1 /* MenuBarLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarLabel.swift; sourceTree = "<group>"; };
+		E0FC10388B763548ADC60AEE /* UsageStore+FirstDate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+FirstDate.swift"; sourceTree = "<group>"; };
 		E1AB14D881996E7BEEB26551 /* FormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormattingTests.swift; sourceTree = "<group>"; };
 		E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-openai.png"; sourceTree = "<group>"; };
 		E20D62ABBAC169F3225CD479 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -286,6 +292,7 @@
 				95C0D5712E669F0035EB83C1 /* UsageModels.swift */,
 				40C9249F54B1DB05E9E9CC84 /* UsageSQL.swift */,
 				B9BD9FF5731326FD2CED9258 /* UsageStore.swift */,
+				E0FC10388B763548ADC60AEE /* UsageStore+FirstDate.swift */,
 				40B7394AA86628D94994BEE1 /* UsageStore+Summary.swift */,
 				578EA2EB8DDB1CFEEEAACBE1 /* UsageStore+Tabs.swift */,
 				F6EBED98C0A4EED2EDD79A8D /* UsageStore+Trend.swift */,
@@ -316,6 +323,7 @@
 				3B0A19B0E75AF7C4A2A7B928 /* SyncCursorCompatTests.swift */,
 				9AD0BC76597EA7B1CA061A1A /* TestSupport.swift */,
 				326F0B1374BB035FFB3D5672 /* TrendChartScaleTests.swift */,
+				7956EC6440F54CE21ECC59EA /* UsageFirstDateTests.swift */,
 				BA8DAFF3CCEE62A47CCC0700 /* UsageStoreTests.swift */,
 			);
 			path = Tests;
@@ -542,6 +550,7 @@
 				30D0267489B6604D1EDBBFDE /* TrendChart.swift in Sources */,
 				76BC38DB44AABCA134742251 /* UsageModels.swift in Sources */,
 				A82AE276EBA63B9FB4DDF303 /* UsageSQL.swift in Sources */,
+				80692A733BA2132264250B23 /* UsageStore+FirstDate.swift in Sources */,
 				F27D33A3F027F1A252FF97C8 /* UsageStore+Summary.swift in Sources */,
 				7EFE2736BE80418E3B599C60 /* UsageStore+Tabs.swift in Sources */,
 				4C9782056DFD51AA6C4CB316 /* UsageStore+Trend.swift in Sources */,
@@ -583,6 +592,7 @@
 				8489854C9B2CFB5F223BCDF5 /* UpdateChecker.swift in Sources */,
 				A9F586A54F2D6C657E1E698E /* UsageModels.swift in Sources */,
 				4A6DCE483C890415EF7E35A6 /* UsageSQL.swift in Sources */,
+				362F525889D4499DC183C099 /* UsageStore+FirstDate.swift in Sources */,
 				87C3041DB6F00AC702CC5176 /* UsageStore+Summary.swift in Sources */,
 				F064B71605FDB5C2DC91E88E /* UsageStore+Tabs.swift in Sources */,
 				54226FF91E2A07FBE5A32AE7 /* UsageStore+Trend.swift in Sources */,
@@ -629,8 +639,10 @@
 				D467AB086C4AC71B7300F1C2 /* Theme.swift in Sources */,
 				7228754FB1F545AD7A34151A /* TrendChart.swift in Sources */,
 				16B1600F6E59BF63180A84EA /* TrendChartScaleTests.swift in Sources */,
+				1C7900C7A437B0E5D4CACF28 /* UsageFirstDateTests.swift in Sources */,
 				D77303B4CA902215FA6CE90A /* UsageModels.swift in Sources */,
 				794633D2ACEF1CDB86E138B4 /* UsageSQL.swift in Sources */,
+				E6F467CC7A11E4D5C531A6F4 /* UsageStore+FirstDate.swift in Sources */,
 				44B723727A3908575C51CA2C /* UsageStore+Summary.swift in Sources */,
 				CEA127E6F6FD4420DFA5F5B1 /* UsageStore+Tabs.swift in Sources */,
 				5C0CBC6177708D7689875224 /* UsageStore+Trend.swift in Sources */,

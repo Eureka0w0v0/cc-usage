@@ -154,6 +154,14 @@ extension UsageStore {
         var binds: [SQLBind] = []
         if let s = f.start { conds.append("l.created_at >= ?"); binds.append(.int(s)) }
         if let e = f.end { conds.append("l.created_at <= ?"); binds.append(.int(e)) }
+        let (sc, sb) = scopeCondsL(f)
+        return (conds + sc, binds + sb)
+    }
+
+    /// 明细表的 app → provider → 模型三项筛选（不含时间窗与跨源去重）。
+    func scopeCondsL(_ f: UsageFilter) -> ([String], [SQLBind]) {
+        var conds: [String] = []
+        var binds: [SQLBind] = []
         if let at = f.appType { conds.append("\(Self.foldedAppL) = ?"); binds.append(.text(at)) }
         if let pn = f.providerName { conds.append("\(Self.providerNameCoalesce) = ?"); binds.append(.text(pn)) }
         if let m = f.model { conds.append("\(Self.effectiveModelL) = ?"); binds.append(.text(m)) }
@@ -170,6 +178,14 @@ extension UsageStore {
             if let s = b.start { conds.append("r.date >= ?"); binds.append(.text(s)) }
             if let e = b.end { conds.append("r.date <= ?"); binds.append(.text(e)) }
         }
+        let (sc, sb) = scopeCondsR(f)
+        return (conds + sc, binds + sb)
+    }
+
+    /// rollups 表的 app → provider → 模型三项筛选（不含整日边界）。
+    func scopeCondsR(_ f: UsageFilter) -> ([String], [SQLBind]) {
+        var conds: [String] = []
+        var binds: [SQLBind] = []
         if let at = f.appType { conds.append("\(Self.foldedAppR) = ?"); binds.append(.text(at)) }
         if let pn = f.providerName { conds.append("\(Self.providerNameSQL(log: "r", provider: "p2")) = ?"); binds.append(.text(pn)) }
         if let m = f.model { conds.append("\(Self.effectiveModelR) = ?"); binds.append(.text(m)) }
