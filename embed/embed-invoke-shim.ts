@@ -66,6 +66,8 @@ function mockInvoke(cmd: string, args?: InvokeArgs): unknown {
       return mockSummary();
     case "get_usage_trends":
       return mockTrends(args);
+    case "get_usage_first_date":
+      return mockFirstDate();
     case "get_provider_stats":
       return mockProviders();
     case "get_model_stats":
@@ -142,11 +144,15 @@ function mockTrends(args?: InvokeArgs) {
   const span = Math.max(end - start, 3600);
   const hourly = span <= 24 * 3600;
   const step = hourly ? 3600 : 24 * 3600;
-  const count = Math.min(Math.max(Math.ceil(span / step), 1), 200);
+  // 热力图一次要拿最多两段 53 周（约 742 天），上限放到 800
+  const count = Math.min(Math.max(Math.ceil(span / step), 1), 800);
+  const firstTs = Math.floor(new Date(`${mockFirstDate()}T00:00:00`).getTime() / 1000);
 
   const out = [];
   for (let i = 0; i < count; i++) {
     const ts = start + i * step;
+    // 热力图预览：最早日期之前没有数据；按天时每周有两天空着，好看到 0 档底色
+    if (ts < firstTs || (!hourly && i % 7 >= 5)) continue;
     const input = Math.round(40000 + 30000 * Math.abs(Math.sin(i / 3)));
     const output = Math.round(8000 + 6000 * Math.abs(Math.cos(i / 4)));
     const cacheCreation = Math.round(12000 + 9000 * Math.abs(Math.sin(i / 5)));
@@ -165,6 +171,13 @@ function mockTrends(args?: InvokeArgs) {
     });
   }
   return out;
+}
+
+// 预览用的最早日期：420 天前，热力图会多出一段，能看到「Show more」。
+function mockFirstDate(): string {
+  const d = new Date(Date.now() - 420 * 24 * 3600 * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function mockProviders() {

@@ -2,7 +2,7 @@
  * Embed 入口：把 cc-switch 真实的 Usage 面板（精简版）跑在 WKWebView 里。
  *
  * 只渲染：顶部工具栏（app 图标筛选 + 来源/模型/刷新下拉 + 日期选择器）
- * + <UsageHero> + <UsageTrendChart>。跳过下方 Tabs 与 Pricing。
+ * + <UsageHero> + <UsageTrendChart> + <UsageHeatmap>（常驻，见 usage-heatmap.tsx）+ 下方 Tabs。跳过 Pricing。
  *
  * 工具栏 JSX / state 照抄自 src/components/usage/UsageDashboard.tsx。
  */
@@ -36,6 +36,7 @@ import { UsageDateRangePicker } from "@/components/usage/UsageDateRangePicker";
 import { RequestLogTable } from "@/components/usage/RequestLogTable";
 import { ProviderStatsTable } from "@/components/usage/ProviderStatsTable";
 import { ModelStatsTable } from "@/components/usage/ModelStatsTable";
+import { UsageHeatmap } from "./usage-heatmap";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import {
   Select,
@@ -556,6 +557,14 @@ function EmbedUsagePanel() {
       <UsageTrendChart
         range={range}
         rangeLabel={rangeLabel}
+        appType={appType}
+        providerName={providerName}
+        model={model}
+        refreshIntervalMs={refreshIntervalMs}
+      />
+
+      {/* 常驻热力图：只跟随应用 / 供应商 / 模型筛选，不受上面的时间范围影响 */}
+      <UsageHeatmap
         appType={appType}
         providerName={providerName}
         model={model}
