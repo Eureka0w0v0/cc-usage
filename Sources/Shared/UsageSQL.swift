@@ -72,6 +72,39 @@ extension UsageStore {
     static func dedupAppTypeMatch(_ left: String, _ right: String) -> String {
         "\(left) IN (\(right), CASE WHEN \(right)='claude' THEN 'claude-desktop' ELSE \(right) END)"
     }
+    // ── 速度 / 首字（对齐 usage_stats.rs v4.0.12 的四个 *_eligible_sql，别名 l）──
+    // 会话日志导入的行也可能有首字（按时间戳推出来的），所以先按来源分开，不能只看有没有首字。
+
+    /// 精确速度的输出门槛（SPEED_MIN_OUTPUT_TOKENS）：工具调用这类短输出不算速度。
+    static let speedMinOutputTokens: Int64 = 100
+    /// 精确速度的生成窗口门槛（SPEED_MIN_GENERATION_MS）：短于它多半是中转站缓冲后一次性吐出。
+    static let speedMinGenerationMs: Int64 = 100
+    /// 估算速度的输出门槛（SPEED_ESTIMATE_MIN_OUTPUT_TOKENS）：估算耗时含首字等待，输出越少越偏低。
+    static let speedEstimateMinOutputTokens: Int64 = 200
+    /// 估算速度的耗时门槛（SPEED_ESTIMATE_MIN_DURATION_MS）：不到 1 秒多半是起点取晚了。
+    static let speedEstimateMinDurationMs: Int64 = 1000
+    private static let dataSourceL = "COALESCE(l.data_source,'proxy')"
+    /// 精确速度：路由记的、有首字、输出够长、生成窗口（耗时 − 首字）够长。
+    static let speedEligibleL = "\(dataSourceL) = 'proxy' AND l.first_token_ms IS NOT NULL"
+        + " AND l.output_tokens >= \(speedMinOutputTokens)"
+        + " AND l.latency_ms - l.first_token_ms >= \(speedMinGenerationMs)"
+    /// 估算速度：会话日志导入、输出够长、估算耗时够长；按整段耗时算，不减推出来的首字。
+    static let speedEstimateEligibleL = "\(dataSourceL) <> 'proxy'"
+        + " AND l.output_tokens >= \(speedEstimateMinOutputTokens)"
+        + " AND l.latency_ms >= \(speedEstimateMinDurationMs)"
+    /// 精确首字：路由记的、成功、有首字计时（流式请求）。
+    static let firstTokenEligibleL = "\(dataSourceL) = 'proxy' AND l.first_token_ms IS NOT NULL"
+        + " AND l.status_code >= 200 AND l.status_code < 300"
+    /// 估算首字：会话日志导入、导入时按时间戳推出了首字的行。
+    static let estFirstTokenEligibleL = "\(dataSourceL) <> 'proxy' AND l.first_token_ms IS NOT NULL"
+    /// 明细子查询里的四个速度累计列，列序固定：精确输出、精确生成窗口、估算输出、估算耗时。
+    static let speedSumsL = """
+        COALESCE(SUM(CASE WHEN \(speedEligibleL) THEN l.output_tokens ELSE 0 END), 0) AS speed_output,
+        COALESCE(SUM(CASE WHEN \(speedEligibleL) THEN l.latency_ms - l.first_token_ms ELSE 0 END), 0) AS speed_gen_ms,
+        COALESCE(SUM(CASE WHEN \(speedEstimateEligibleL) THEN l.output_tokens ELSE 0 END), 0) AS est_output,
+        COALESCE(SUM(CASE WHEN \(speedEstimateEligibleL) THEN l.latency_ms ELSE 0 END), 0) AS est_ms
+        """
+
     /// 跨源去重的时间窗（秒）：session 行与 proxy 行 created_at 相差 ±10 分钟内视为同一笔。
     static let dedupWindowSeconds: Int64 = 600
     /// 跨源去重过滤（对齐 usage_stats.rs::effective_usage_log_filter，别名 l）：

@@ -281,10 +281,10 @@ struct PanelWebView: NSViewRepresentable {
                 "totalCost": String(format: "%.6f", s.totalCost),
                 "successRate": s.successRate,
                 "avgLatencyMs": s.avgLatencyMs,
-            ]
+            ].merging(performanceDict(s.performance)) { current, _ in current }
         }
 
-        // ModelStatRow → ModelStats
+        // ModelStatRow → ModelStats（successRate 是 v4 前端的必填字段，缺了模型页签整页白屏）
         private func modelStatDict(_ s: ModelStatRow) -> [String: Any] {
             return [
                 "model": s.model,
@@ -292,6 +292,19 @@ struct PanelWebView: NSViewRepresentable {
                 "totalTokens": s.totalTokens,
                 "totalCost": String(format: "%.6f", s.totalCost),
                 "avgCostPerRequest": String(format: "%.6f", s.avgCostPerRequest),
+                "successRate": s.successRate,
+            ].merging(performanceDict(s.performance)) { current, _ in current }
+        }
+
+        // StatsPerformance → ProviderStats / ModelStats 的六个速度、首字字段（中位数缺失时为 null）
+        private func performanceDict(_ p: StatsPerformance) -> [String: Any] {
+            return [
+                "speedOutputTokens": p.speedOutputTokens,
+                "speedGenerationMs": p.speedGenerationMs,
+                "estSpeedOutputTokens": p.estSpeedOutputTokens,
+                "estSpeedDurationMs": p.estSpeedDurationMs,
+                "firstTokenMedianMs": p.firstTokenMedianMs.map { $0 as Any } ?? NSNull(),
+                "estFirstTokenMedianMs": p.estFirstTokenMedianMs.map { $0 as Any } ?? NSNull(),
             ]
         }
 

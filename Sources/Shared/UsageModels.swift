@@ -124,6 +124,25 @@ public struct RequestLogPage: Sendable {
     public var total: Int
 }
 
+/// 统计表「速度 / 首字」两列的原料（对齐 usage_stats.rs v4.0.12 ProviderStats / ModelStats 的六个字段）。
+/// 速度 = 输出之和 ÷ 时长之和，前端自己除；精确和估算两组口径不同，分开累计，界面上没有精确值时才用估算值、带 ≈。
+public struct StatsPerformance: Sendable, Equatable {
+    /// 精确速度分子：路由记的、有首字、输出 ≥ 100、生成窗口 ≥ 100ms 的明细行的输出之和。
+    public var speedOutputTokens: Int64 = 0
+    /// 精确速度分母：同一批行的（耗时 − 首字）之和，毫秒。
+    public var speedGenerationMs: Int64 = 0
+    /// 估算速度分子：会话日志导入、输出 ≥ 200、耗时 ≥ 1s 的明细行的输出之和。
+    public var estSpeedOutputTokens: Int64 = 0
+    /// 估算速度分母：同一批行的耗时（含首字等待）之和，毫秒。
+    public var estSpeedDurationMs: Int64 = 0
+    /// 首字中位数：路由记的成功行；没有这样的行为 nil。
+    public var firstTokenMedianMs: Int64?
+    /// 估算首字中位数：会话日志导入、按时间戳推出了首字的行。
+    public var estFirstTokenMedianMs: Int64?
+
+    public init() {}
+}
+
 /// 对齐 ProviderStats（types/usage.ts）。
 public struct ProviderStatRow: Sendable {
     public var providerId: String
@@ -134,6 +153,7 @@ public struct ProviderStatRow: Sendable {
     public var totalCost: Double
     public var successRate: Double
     public var avgLatencyMs: Int64
+    public var performance = StatsPerformance()
 }
 
 /// 对齐 ModelStats（types/usage.ts）。
@@ -143,6 +163,9 @@ public struct ModelStatRow: Sendable {
     public var totalTokens: Int64
     public var totalCost: Double
     public var avgCostPerRequest: Double
+    /// v4 前端必填：缺了切到模型页签整页白屏。
+    public var successRate: Double = 0
+    public var performance = StatsPerformance()
 }
 
 /// 「按来源」一行。dataSource 取值空间同 proxy_request_logs.data_source
