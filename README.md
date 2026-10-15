@@ -31,7 +31,7 @@ The Usage dashboard in [cc-switch](https://github.com/farion1231/cc-switch) is g
 
 - ⚡ **Composable menu bar chips**: Tokens & cost for today / last 7 days / last 30 days (D/W/M), plus official 5H / Weekly quota percentages — pick any combination; per-AI groups (Claude / Codex / Gemini / OpenCode / Grok / Antigravity)
 - 🧩 **Grok group**: Tokens/Cost chips for `grokbuild` usage; xAI has **no public remaining/utilization API**, so Quota shows `No quota API` like Gemini/OpenCode (no fabricated percentages)
-- 📊 **The real dashboard, 1:1**: the main window runs cc-switch's actual frontend build — Usage Hero, genuine Recharts trend chart (hover tooltips identical to upstream), source/model filters, date ranges, and the Request Logs / Provider Stats / Model Stats tabs
+- 📊 **The real dashboard, 1:1**: the main window runs the actual frontend build of cc-switch 4.0's redesigned Usage page — metric cards, genuine Recharts trend chart (hover tooltips identical to upstream), an always-on 53-week heatmap, app/provider/model filters, date ranges including "All", and the Request Logs / Providers / Models tabs with success rate, output speed and first-token time (≈ marks values estimated from session logs); click any request for its full breakdown. It is read-only: everything that would write to cc-switch (sync, rebuild, pricing edits) is left out
 - 🔄 **5-second live refresh**: choose 5/10/30/60s or off; the choice persists, and the menu bar and main window share one refresh cadence so they never disagree
 - 🔋 **Official subscription quota**: queries Anthropic's `/api/oauth/usage` with your local Claude Code OAuth credentials, throttled to once per 5 minutes with an in-process shared cache (no 429s); shown from the very first paint
 - 🔌 **Live even with cc-switch closed**: a built-in read-only overlay incrementally parses Claude Code session logs and prices them with cc-switch's own pricing table; when cc-switch imports those rows later the overlay drains via exact request-id dedup — verified seamless handoff, zero double counting
@@ -73,9 +73,9 @@ bash scripts/build.sh   # generate project → Release build → install to /App
 ## Usage notes
 
 - **Menu bar chips**: click the ⚡ icon → expand "Menu Bar Display" → tick what you want (Tokens/Cost each offer Day/Week/Month; Quota offers 5H/Week). The label renders like `D: 42.9M·$34.9 5H: 10%`;
-- **Refresh interval**: the ⟳ dropdown in the main-window toolbar; it applies to both the panel and the menu bar, and persists across restarts;
+- **Refresh interval**: the ⟳ dropdown in the main-window header; it applies to both the panel and the menu bar, and persists across restarts;
 - **Quota update cadence**: the 5H/Week percentages change **at most once per 5 minutes** — the official endpoint is throttled exactly like cc-switch does to avoid rate-limiting your account. Tokens/cost from the local database are the truly-every-5-seconds numbers;
-- Date/source/model filters and the three stats tabs behave exactly like upstream cc-switch.
+- Date/provider/model filters and the three stats tabs behave exactly like upstream cc-switch; the Providers / Models tables include daily rollups, so their rows add up to the totals at the top. Requests that cc-switch hasn't imported yet show "—" for speed and first token until it does.
 
 ## How it works
 

@@ -21,7 +21,7 @@ ROOT=$(pwd)
 CC_SWITCH_DIR="${CC_SWITCH_DIR:-$ROOT/../cc-switch}"
 # 面板桥接层验证过的上游提交（升级上游后先回归再更新此值）。
 # The upstream commit this embed bridge was last verified against.
-CC_SWITCH_REF="${CC_SWITCH_REF:-fdbe3a85b269ed40695ded5981b6ba8288d30ac3}"
+CC_SWITCH_REF="${CC_SWITCH_REF:-51ac86f1c59abfefabadebd05ec5a5415b8ad72c}"
 
 if [ ! -d "$CC_SWITCH_DIR/src" ]; then
   echo "❌ 未找到 cc-switch 源码（${CC_SWITCH_DIR}）。先执行 / clone it first:"
@@ -36,13 +36,13 @@ if git -C "$CC_SWITCH_DIR" rev-parse --verify "$CC_SWITCH_REF^{commit}" >/dev/nu
   HEAD_SHA=$(git -C "$CC_SWITCH_DIR" rev-parse HEAD)
   REF_SHA=$(git -C "$CC_SWITCH_DIR" rev-parse "$CC_SWITCH_REF^{commit}")
   if [ "$HEAD_SHA" != "$REF_SHA" ]; then
-    # 本地在钉子之上只叠了桥接层提交（下面铺进去的 6 个文件 + 依赖清单）不算偏离：
+    # 本地在钉子之上只叠了桥接层提交（下面铺进去的 5 个文件 + 依赖清单）不算偏离：
     # 钉子须是 HEAD 的祖先，且 REF..HEAD 之间除桥接文件外零改动。
     # Local commits on top of the pin that only touch the bridge files are not drift.
     BRIDGE_ONLY=0
     if git -C "$CC_SWITCH_DIR" merge-base --is-ancestor "$REF_SHA" HEAD 2>/dev/null; then
       DRIFT=$(git -C "$CC_SWITCH_DIR" diff --name-only "$REF_SHA" HEAD -- . \
-        ':!src/usage-embed.tsx' ':!src/usage-heatmap.tsx' ':!src/embed-invoke-shim.ts' ':!src/embed-tauri-stub.ts' \
+        ':!src/usage-embed.tsx' ':!src/embed-invoke-shim.ts' ':!src/embed-tauri-stub.ts' \
         ':!index-embed.html' ':!vite.embed.config.ts' ':!package.json' ':!pnpm-lock.yaml')
       [ -z "$DRIFT" ] && BRIDGE_ONLY=1
     fi
@@ -64,7 +64,7 @@ fi
 # 1) 把 embed 桥接文件铺进 cc-switch 源码树（均为新增文件，不覆盖上游文件）
 #    Copy embed bridge files into the cc-switch tree (all additive, no upstream file touched)
 cp embed/index-embed.html embed/vite.embed.config.ts "$CC_SWITCH_DIR/"
-cp embed/usage-embed.tsx embed/usage-heatmap.tsx embed/embed-invoke-shim.ts embed/embed-tauri-stub.ts "$CC_SWITCH_DIR/src/"
+cp embed/usage-embed.tsx embed/embed-invoke-shim.ts embed/embed-tauri-stub.ts "$CC_SWITCH_DIR/src/"
 
 # 2) 安装依赖 + 补打包插件 / install deps + the single-file plugin
 #    已在 package.json 里就不再 add；install 走非交互模式且不吞输出——

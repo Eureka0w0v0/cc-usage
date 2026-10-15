@@ -43,6 +43,19 @@
       html {
         color-scheme: dark;
       }
+      /* 只让内容区自己滚：整页固定成窗口高度、不滚动。万一再有元素逃出内容区的裁剪，也只会被裁掉，
+         不会出现第二层滚动条（滚下去后页头跑出窗口、底下一大片空白）。 */
+      html,
+      body,
+      #root {
+        height: 100%;
+        overflow: hidden;
+      }
+      /* 原生拖动条盖住窗口顶部 46pt（MainWindowView 的 WindowDragArea）：贴右边的抽屉（请求详情）
+         要从它下面开始，不然右上角的关闭按钮落在拖动条下面，点不到。 */
+      [role="dialog"].fixed.inset-y-0 {
+        top: 46px !important;
+      }
     </style>
   </head>
   <body>

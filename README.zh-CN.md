@@ -31,7 +31,7 @@
 
 - ⚡ **菜单栏码片自由组合**:今日 / 近 7 天 / 近 30 天的 Tokens 与花费(D/W/M),外加 5H / Week 官方额度百分比,想看哪个勾哪个;支持按 AI 分组(Claude / Codex / Gemini / OpenCode / Grok / Antigravity)
 - 🧩 **Grok 分组**:可勾选 `grokbuild` 用量 Tokens/Cost;xAI **无公开 remaining/utilization 查询接口**,Quota 行与 Gemini/OpenCode 一样标注 `No quota API`(不做伪造百分比)
-- 📊 **1:1 真面板**:主窗口直接运行 cc-switch 前端构建产物——Usage Hero、真 Recharts 趋势图(悬停提示与原版一致)、来源/模型筛选、日期范围、Request Logs / Provider Stats / Model Stats 三个标签页
+- 📊 **1:1 真面板**:主窗口直接运行 cc-switch 4.0 改版后「用量统计」页的前端构建产物——指标卡、真 Recharts 趋势图(悬停提示与原版一致)、常驻的 53 周热力图、应用/供应商/模型筛选、含「全部」的日期范围,以及带成功率、输出速度、首字时间的 Request Logs / Providers / Models 三个页签(≈ 表示按会话日志估算的值),点任意一条请求可看完整明细。面板只读:会写 cc-switch 的功能(同步、重建、改价)一律不放
 - 🔄 **5 秒实时刷新**:间隔可选 5/10/30/60 秒或关闭,选择持久化;菜单栏与主窗口共享同一个刷新节奏,数字永远一致
 - 🔋 **官方订阅额度**:读取本机 Claude Code 的 OAuth 凭据查询官方 `/api/oauth/usage`,5 分钟节流 + 进程内共享缓存,绝不打爆接口(429);首屏即显,无需等待
 - 🔌 **cc-switch 关闭也照常实时**:内置只读「未入库增量」叠加层,直接增量解析 Claude Code 会话日志并按 cc-switch 的价格表现场定价;cc-switch 补录入库时自动去重收敛,实测数字无缝交接
@@ -73,9 +73,9 @@ bash scripts/build.sh   # 生成工程 → Release 构建 → 安装到 /Applica
 ## 使用说明
 
 - **菜单栏显示项**:点菜单栏 ⚡ 图标 → 展开「Menu Bar Display」→ 勾选想要的码片(Tokens/Cost 各含 Day/Week/Month,Quota 含 5H/Week)。菜单栏显示格式如 `D: 42.9M·$34.9 5H: 10%`;
-- **刷新间隔**:主窗口工具栏的 ⟳ 下拉选择,菜单栏与面板同步生效并持久化;
+- **刷新间隔**:主窗口页头的 ⟳ 下拉选择,菜单栏与面板同步生效并持久化;
 - **额度的更新节奏**:5H/Week 的百分比**最快 5 分钟变一次**——官方接口按 cc-switch 同款设计做了 5 分钟节流,防止账号被限流。本地库的 tokens/花费才是真·5 秒一变;
-- **日期/来源/模型筛选、三个统计标签页**:与 cc-switch 原版完全一致。
+- **日期/供应商/模型筛选、三个统计页签**:与 cc-switch 原版完全一致;供应商/模型表把日汇总也算进去,各行加起来等于顶部总数。cc-switch 还没导入的请求,速度和首字先显示「—」,导入后自动出现。
 
 ## 工作原理
 

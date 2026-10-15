@@ -1,71 +1,82 @@
 /**
- * Embed 入口：把 cc-switch 真实的 Usage 面板（精简版）跑在 WKWebView 里。
+ * Embed 入口：把 cc-switch v4.0.12 的用量页（只读精简版）跑在 CC Usage 主窗口的 WKWebView 里。
  *
- * 只渲染：顶部工具栏（app 图标筛选 + 来源/模型/刷新下拉 + 日期选择器）
- * + <UsageHero> + <UsageTrendChart> + <UsageHeatmap>（常驻，见 usage-heatmap.tsx）+ 下方 Tabs。跳过 Pricing。
- *
- * 工具栏 JSX / state 照抄自 src/components/usage/UsageDashboard.tsx。
+ * 照 src/components/usage/UsageDashboard.tsx（v4.0.12）改写：页头 → 筛选行 → 指标 → 走势图 / 热力图 →
+ * 子页签（请求日志 / 供应商 / 模型），点一条请求看详情。与上游的差异（2026-10-15 与用户逐项确认）：
+ * - 只读：不要「立即同步」、「数据来源」抽屉（自动扫描开关 / 重建 Codex）、「定价」页签和空状态，
+ *   它们都会写 cc-switch 的库或设置；
+ * - 页头右侧换成 CC Usage 自己的刷新间隔（关 / 5 / 10 / 30 / 60 秒，默认 5 秒，存原生 UserDefaults、
+ *   和菜单栏同步）和官方额度徽标；
+ * - 热力图常驻在走势图下方（2026-10-10 用户选定），选「全部」时只显示热力图；
+ * - 刷新：子组件都不轮询（refreshIntervalMs=0），这里按间隔统一失效重查（原生每次查询都会顺带续读
+ *   会话日志叠加层），窗口不可见时暂停、回来立刻补一次；
+ * - 固定深色主题 + 英文（与用户 cc-switch 的设置一致）。
  */
 
 import "./index.css";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
-import {
-  RefreshCw,
-  LayoutGrid,
-  ListFilter,
-  Activity,
-  BarChart3,
-  Clock,
-} from "lucide-react";
+import { MotionConfig } from "framer-motion";
+import { ChartColumn, Check, ChevronDown, Clock, RefreshCw } from "lucide-react";
 import {
   QueryClientProvider,
-  keepPreviousData,
+  focusManager,
   useQueryClient,
 } from "@tanstack/react-query";
 
 import i18n from "@/i18n";
 import { queryClient } from "@/lib/query/queryClient";
-import { UsageHero } from "@/components/usage/UsageHero";
-import { UsageTrendChart } from "@/components/usage/UsageTrendChart";
-import { UsageDateRangePicker } from "@/components/usage/UsageDateRangePicker";
-import { RequestLogTable } from "@/components/usage/RequestLogTable";
-import { ProviderStatsTable } from "@/components/usage/ProviderStatsTable";
-import { ModelStatsTable } from "@/components/usage/ModelStatsTable";
-import { UsageHeatmap } from "./usage-heatmap";
-import { ProviderIcon } from "@/components/ProviderIcon";
+import { ThemeProvider } from "@/components/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
+import { AppPageHeader } from "@/components/shell/AppPageHeader";
+import { AppGlyph, APP_DISPLAY_NAME } from "@/components/shell/AppGlyph";
+import { HelpTip } from "@/components/ui/help-tip";
+import { PageTabs } from "@/components/ui/page-tabs";
+import { Button } from "@/components/ui/button";
+import { HoverTip } from "@/components/ui/hover-tip";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usageKeys, useModelStats, useProviderStats } from "@/lib/query/usage";
-import { useUsageEventBridge } from "@/hooks/useUsageEventBridge";
-import { cn } from "@/lib/utils";
-import { getUsageRangePresetLabel, resolveUsageRange } from "@/lib/usageRange";
-import { getLocaleFromLanguage } from "@/components/usage/format";
+  SegmentThumb,
+  useSlidingIndicator,
+} from "@/components/ui/sliding-indicator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   KNOWN_APP_TYPES,
-  type AppType,
   type AppTypeFilter,
   type UsageRangeSelection,
 } from "@/types/usage";
+import { usageKeys, useModelStats, useProviderStats } from "@/lib/query/usage";
+import { useUsageEventBridge } from "@/hooks/useUsageEventBridge";
+import { getUsageRangePresetLabel, resolveUsageRange } from "@/lib/usageRange";
+import { cn } from "@/lib/utils";
+import { UsageHero } from "@/components/usage/UsageHero";
+import { UsageTrendChart } from "@/components/usage/UsageTrendChart";
+import { UsageHeatmap } from "@/components/usage/UsageHeatmap";
+import { RequestLogTable } from "@/components/usage/RequestLogTable";
+import { ProviderStatsTable } from "@/components/usage/ProviderStatsTable";
+import { ModelStatsTable } from "@/components/usage/ModelStatsTable";
+import { RequestDetailPanel } from "@/components/usage/RequestDetailPanel";
+import { UsageDateRangePicker } from "@/components/usage/UsageDateRangePicker";
+import { fmtInt, getLocaleFromLanguage } from "@/components/usage/format";
+import {
+  getUsageProviderLabel,
+  usageProviderTitle,
+} from "@/components/usage/providerLabel";
 
-const APP_FILTER_OPTIONS: AppTypeFilter[] = ["all", ...KNOWN_APP_TYPES];
+/* ───────── 刷新间隔（CC Usage 自己的，和菜单栏联动） ───────── */
 
-// 0 表示关闭自动刷新（refetchInterval=false）
+// 0 表示关闭自动刷新。默认 5 秒（与菜单栏一致）。选择结果写 localStorage（快路径，首帧免闪）+
+// 原生 UserDefaults（权威，WKWebView 的 file:// localStorage 偶发不跨启动持久），并经 set_setting
+// 把菜单栏的原生刷新节奏同步成同一个值。
 const REFRESH_INTERVAL_OPTIONS_MS = [0, 5000, 10000, 30000, 60000] as const;
-
-// 刷新间隔持久化：默认 5s（与菜单栏一致）。选择结果写 localStorage（快路径，
-// 首帧免闪）+ 原生 UserDefaults（权威，WKWebView 的 file:// localStorage 偶发
-// 不跨启动持久），并经 set_setting 把菜单栏的原生刷新节奏同步成同一个值。
 const REFRESH_INTERVAL_STORAGE_KEY = "embed.refreshIntervalMs";
 const DEFAULT_REFRESH_INTERVAL_MS = 5000;
 
@@ -88,63 +99,34 @@ function loadStoredRefreshIntervalMs(): number {
   return DEFAULT_REFRESH_INTERVAL_MS;
 }
 
-// 与 AppSwitcher 的 appIconName 保持一致（codex 复用 openai 图标）；上游 UsageDashboard 的
-// 同名映射是对照基准。vite 构建只转译不查类型，缺键要靠 build-embed.sh 里的 tsc 一步拦住
-// （mcode 曾漏到运行时，按钮退化成灰底首字母）。
-const APP_FILTER_ICON: Record<AppType, string> = {
-  claude: "claude",
-  codex: "openai",
-  gemini: "gemini",
-  grokbuild: "grok",
-  opencode: "opencode",
-  pi: "pi",
-  mcode: "minimax",
-};
+const refreshLabel = (ms: number) => (ms > 0 ? `${ms / 1000}s` : "Off");
 
-// 统计类查询在换筛选、时间范围、翻页时先留着上一份数据，新数据到了再换，不让指标闪成「…」、
-// 请求日志表塌成骨架。对齐上游 v4.0.0 在这 6 类 hook 上加的 placeholderData: keepPreviousData；
-// 钉住的上游版本还没有这个改动，又不能改上游文件（钉子校验只放行桥接文件），所以按 key 前缀
-// 统一挂默认值。detail / pricing / limits 与上游一样不挂（换一条请求不该先显示上一条的详情）。
-const KEEP_PREVIOUS_DATA_SEGMENTS = [
-  "summary",
-  "summary-by-app",
-  "trends",
-  "provider-stats",
-  "model-stats",
-  "logs",
-] as const;
-
-// Provider 统计的行身份是 (appType, providerId)：「Claude」筛选把 Claude Desktop 折叠进来，同一个
-// 供应商两边都配过时会回来两行同 id 的记录。钉住的上游 ProviderStatsTable 只拿 providerId 当 React
-// key，重复 key 会让切换应用后留下旧的行；上游 v4.0.7（#8032）改成了 [appType, providerId]。上游文件
-// 不能改，只能在数据侧把 providerId 换成同样的组合键——3.x 的表格和来源下拉都不显示 providerId
-// （下拉只用 providerName），换掉不影响展示。embed 整体升到 v4 前端时删掉这段。
-type ProviderStatsRow = { providerId: string; appType?: string };
-const keyProviderRowsByApp = (rows: ProviderStatsRow[]): ProviderStatsRow[] =>
-  rows.map((row) => ({
-    ...row,
-    providerId: JSON.stringify([row.appType ?? "", row.providerId]),
-  }));
-
-// 同一个 key 再调一次 setQueryDefaults 会整个替换前一次，所以额外的默认值和 keepPreviousData 一起给。
-const EXTRA_QUERY_DEFAULTS: Partial<
-  Record<(typeof KEEP_PREVIOUS_DATA_SEGMENTS)[number], { select: typeof keyProviderRowsByApp }>
-> = {
-  "provider-stats": { select: keyProviderRowsByApp },
-};
-for (const segment of KEEP_PREVIOUS_DATA_SEGMENTS) {
-  queryClient.setQueryDefaults([...usageKeys.all, segment], {
-    placeholderData: keepPreviousData,
-    ...EXTRA_QUERY_DEFAULTS[segment],
-  });
+/**
+ * 按刷新间隔统一失效重查。子组件都不轮询（同 v4：它们拿到的 refreshIntervalMs 是 0），由这里定时让
+ * 整页重查；原生每次查询都会顺带续读会话日志叠加层，所以新用量跟着出现。窗口不可见时停，重新可见时
+ * 立刻补一次（节奏同 v4 的 useUsageAutoRefresh）。
+ */
+function useEmbedAutoRefresh(refreshIntervalMs: number) {
+  const queryClientInstance = useQueryClient();
+  useEffect(() => {
+    if (refreshIntervalMs <= 0) return;
+    const refresh = () => {
+      if (focusManager.isFocused()) {
+        void queryClientInstance.invalidateQueries({ queryKey: usageKeys.all });
+      }
+    };
+    const timer = window.setInterval(refresh, refreshIntervalMs);
+    const unsubscribe = focusManager.subscribe((focused) => {
+      if (focused) refresh();
+    });
+    return () => {
+      window.clearInterval(timer);
+      unsubscribe();
+    };
+  }, [queryClientInstance, refreshIntervalMs]);
 }
 
-const DYNAMIC_OPTION_PREFIX = "v:";
-const encodeOptionValue = (name: string) => `${DYNAMIC_OPTION_PREFIX}${name}`;
-const decodeOptionValue = (value: string) =>
-  value === "all" ? undefined : value.slice(DYNAMIC_OPTION_PREFIX.length);
-
-/* ───────── 官方额度徽标（渲染进面板工具栏，数据来自原生 get_quota） ───────── */
+/* ───────── 官方额度徽标（页头右侧，数据来自原生 get_quota） ───────── */
 
 type QuotaTierData = {
   name: string;
@@ -153,15 +135,14 @@ type QuotaTierData = {
   planLabel?: string | null;
 };
 
-// 连续渐变配色：用量 0→100% 时色相从 140°(绿) 平滑过渡到 0°(红)，
-// 途中经过黄绿/黄/橙 → 5% 与 68% 一眼可辨（比 cc-switch 的三段粗档更直观）。
+// 连续渐变配色：用量 0→100% 时色相从 140°(绿) 平滑过渡到 0°(红)，途中经过黄绿/黄/橙。
 function quotaColor(util: number): string {
   const t = Math.min(1, Math.max(0, util / 100));
-  const hue = Math.round(140 * (1 - t)); // 140°绿 → 0°红
+  const hue = Math.round(140 * (1 - t));
   return `hsl(${hue}, 72%, 48%)`;
 }
 
-// 重置倒计时（用于 tooltip）：3d12h / 2h30m / 45m；已重置/无数据返回 null
+// 重置倒计时：3d12h / 2h30m / 45m；已重置 / 无数据返回 null
 function quotaCountdown(resetsAt?: string | null): string | null {
   if (!resetsAt) return null;
   const ms = new Date(resetsAt).getTime() - Date.now();
@@ -174,17 +155,11 @@ function quotaCountdown(resetsAt?: string | null): string | null {
   return `${m}m`;
 }
 
-// 轮询原生 get_quota 刷新徽标。稳态轮询跟随面板刷新间隔（最低 5s；面板关闭
-// 自动刷新时回落 5 分钟）——与菜单栏同节奏读同一份 QuotaCache，两边数字始终
-// 一致（此前徽标拿到数据后 5 分钟才再读，会与菜单栏最多分叉 5 分钟）。
-// 真正是否命中官方接口由原生 QuotaCache 的 5 分钟节流窗口决定（缓存优先、
-// 失败保留上次值），故轮询再快也绝不会把 /api/oauth/usage 打限流。
-// 读不到凭据/失败返回 []（徽标降级显示 "—"）。
-const QUOTA_REFETCH_INTERVAL_MS = 5 * 60 * 1000; // 无面板间隔可跟随时的兜底
+// 轮询原生 get_quota。稳态节奏跟随面板刷新间隔（最低 5s；关闭自动刷新时回落 5 分钟），与菜单栏读同一份
+// QuotaCache，两边数字一致；真正是否打官方接口由原生 5 分钟节流决定，轮询再快也不会被限流。
+// 拿到数据前每 20s 重试（首屏碰上限流或缓存冷时不至于空 5 分钟）。失败 / 空保留上次值。
+const QUOTA_REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 const QUOTA_MIN_POLL_MS = 5 * 1000;
-// 拿到数据前的快速重试间隔：面板加载时若正好赶上限流/缓存冷会拿到空值(徽标显示 "—")，
-// 每 20s 重试直到有数据再降到 5 分钟慢刷——这样就不会「菜单栏已恢复、面板还空 5 分钟」。
-// 原生 QuotaCache 已把真实 /api/oauth/usage 节流到 5 分钟，前端多读几次只命中缓存、不会打限流。
 const QUOTA_FAST_RETRY_MS = 20 * 1000;
 
 function useQuotaTiers(pollMs: number): QuotaTierData[] {
@@ -193,13 +168,11 @@ function useQuotaTiers(pollMs: number): QuotaTierData[] {
     let alive = true;
     let timer: number | undefined;
     let gotData = false;
-    // 稳态节奏：跟随面板刷新间隔（下限 5s）；面板关闭自动刷新时回落 5 分钟兜底
     const steadyMs =
       pollMs > 0 ? Math.max(pollMs, QUOTA_MIN_POLL_MS) : QUOTA_REFETCH_INTERVAL_MS;
     const tick = async () => {
       try {
         const data = await invoke<QuotaTierData[]>("get_quota");
-        // 只在拿到非空数据时更新；失败/空(如 429 限流)保留上次值，不空成 "—"
         if (alive && Array.isArray(data) && data.length) {
           setTiers(data);
           gotData = true;
@@ -208,7 +181,6 @@ function useQuotaTiers(pollMs: number): QuotaTierData[] {
         /* 保留上次值，不清空 */
       }
       if (!alive) return;
-      // 拿到数据前每 20s 重试；拿到后按稳态节奏轮询（只读原生缓存，成本≈0）
       timer = window.setTimeout(
         () => void tick(),
         gotData ? steadyMs : QUOTA_FAST_RETRY_MS,
@@ -223,11 +195,8 @@ function useQuotaTiers(pollMs: number): QuotaTierData[] {
   return tiers;
 }
 
-// 徽标清单。顺序即展示序，与原生 ClaudeQuotaParser.knownTiers 一致——那边已按同序
-// 排好，这里再显式列一遍是为了不把布局押在后端数组顺序上。
-//
-// `always`：5H / Week 是所有套餐都有的窗口，无数据时也占位显示 "—"；模型专属的
-// Fable / Opus / Sonnet 走 `limits[]`，接口只在账号真有该额度时才返回，故按需出现。
+// 顺序即展示序，与原生 ClaudeQuotaParser.knownTiers 一致。5H / Week 无数据也占位（否则首屏会先塌再弹）；
+// 模型专属的 Fable / Opus / Sonnet 只在接口真给了数据时出现。
 const QUOTA_BADGES: { name: string; label: string; always: boolean }[] = [
   { name: "five_hour", label: "5H", always: true },
   { name: "seven_day", label: "Week", always: true },
@@ -241,13 +210,8 @@ function QuotaBadge({ label, tier }: { label: string; tier?: QuotaTierData }) {
   const frac = tier ? Math.min(1, Math.max(0, tier.utilization / 100)) : 0;
   const color = tier ? quotaColor(tier.utilization) : undefined;
   const countdown = tier ? quotaCountdown(tier.resetsAt) : null;
-
   const title = tier
-    ? [
-        `${label} · ${pct}%`,
-        countdown ? `resets in ${countdown}` : null,
-        tier.planLabel || null,
-      ]
+    ? [`${label} · ${pct}%`, countdown ? `resets in ${countdown}` : null, tier.planLabel || null]
         .filter(Boolean)
         .join(" · ")
     : `${label}: no data`;
@@ -255,29 +219,25 @@ function QuotaBadge({ label, tier }: { label: string; tier?: QuotaTierData }) {
   return (
     <div
       title={title}
-      className="flex h-9 flex-col justify-center gap-0.5 rounded-md border border-border/50 bg-background px-2.5 text-xs"
+      className="flex h-[34px] shrink-0 flex-col justify-center gap-0.5 rounded-control border border-border bg-surface px-2.5 text-caption"
     >
       <div className="flex items-center gap-1.5">
-        <span className="font-medium text-muted-foreground">{label}</span>
+        <span className="font-medium text-fg-2">{label}</span>
         <span
-          className={cn(
-            "font-semibold tabular-nums",
-            pct == null && "text-muted-foreground",
-          )}
+          className={cn("font-semibold tabular-nums", pct == null && "text-fg-3")}
           style={color ? { color } : undefined}
         >
           {pct == null ? "—" : `${pct}%`}
         </span>
-        <div className="relative h-1.5 w-8 overflow-hidden rounded-full bg-muted">
+        <div className="relative h-1.5 w-8 overflow-hidden rounded-full bg-subtle">
           <div
             className="absolute inset-y-0 left-0 rounded-full transition-[width]"
             style={{ width: `${frac * 100}%`, backgroundColor: color ?? "transparent" }}
           />
         </div>
       </div>
-      {/* 重置倒计时行（Clock + "2h28m"，样式对齐 cc-switch TierBadge 的 inline 倒计时）。
-          无数据/已重置时占位 "—"，保持徽标高度稳定不跳动。 */}
-      <div className="flex items-center gap-1 text-[10px] leading-none text-muted-foreground/70 tabular-nums">
+      {/* 重置倒计时行；无数据 / 已重置时占位「—」，徽标高度不跳 */}
+      <div className="flex items-center gap-1 text-[10px] leading-none tabular-nums text-fg-3">
         <Clock className="h-2.5 w-2.5 shrink-0" />
         <span>{countdown ?? "—"}</span>
       </div>
@@ -287,24 +247,65 @@ function QuotaBadge({ label, tier }: { label: string; tier?: QuotaTierData }) {
 
 function QuotaBadges({ pollMs }: { pollMs: number }) {
   const tiers = useQuotaTiers(pollMs);
-  // 倒计时行的本地步进：额度数据最慢 5 分钟才轮询一次（面板关闭自动刷新时），
-  // 若只靠轮询重渲染，倒计时会"停走"最多 5 分钟。这里每 30s 强制重渲染一次让
-  // quotaCountdown 重算——纯本地计算，不碰 get_quota、更不碰官方接口。
+  // 倒计时本地步进：额度最慢 5 分钟才轮询一次，这里每 30s 重渲染让倒计时继续走（纯本地计算）
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = window.setInterval(() => setTick((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex shrink-0 items-center gap-1.5">
       {QUOTA_BADGES.map(({ name, label, always }) => {
         const tier = tiers.find((t) => t.name === name);
-        // 模型专属档只在接口真给了数据时才出现：没订到 Fable 的账号不该看见一排 "—"。
-        // 5H / Week 则始终占位，否则首屏 tiers 还空着时工具栏会先塌再弹。
         if (!tier && !always) return null;
         return <QuotaBadge key={name} label={label} tier={tier} />;
       })}
     </div>
+  );
+}
+
+/* ───────── 用量页（照 v4.0.12 UsageDashboard，只读） ───────── */
+
+const STATUS_CODE_OPTIONS = [200, 400, 401, 429, 500] as const;
+
+type UsageTab = "logs" | "providers" | "models";
+const TABS: UsageTab[] = ["logs", "providers", "models"];
+
+/** 容器宽度（ResizeObserver）；测量不到时返回 0。 */
+function useContainerWidth<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => setWidth(element.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
+const menuContentClass =
+  "min-w-[200px] max-w-[320px] rounded-panel border-border bg-surface p-1 shadow-v7-md";
+const menuItemClass = "h-[30px] gap-2 rounded-control px-2 text-body";
+
+function MenuCheck({ checked }: { checked: boolean }) {
+  return (
+    <Check
+      aria-hidden="true"
+      strokeWidth={1.75}
+      className={cn("h-3.5 w-3.5 shrink-0", !checked && "invisible")}
+    />
+  );
+}
+
+function MenuMeta({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="ms-auto ps-3 text-caption tabular-nums text-fg-3">
+      {children}
+    </span>
   );
 }
 
@@ -313,16 +314,20 @@ function EmbedUsagePanel() {
   const queryClientInstance = useQueryClient();
   const [range, setRange] = useState<UsageRangeSelection>({ preset: "today" });
   const [appType, setAppType] = useState<AppTypeFilter>("all");
-  const [providerName, setProviderName] = useState<string | undefined>(
-    undefined,
-  );
+  const [providerName, setProviderName] = useState<string | undefined>(undefined);
   const [model, setModel] = useState<string | undefined>(undefined);
+  const [statusCode, setStatusCode] = useState<number | undefined>(undefined);
+  const [tab, setTab] = useState<UsageTab>("logs");
+  const [detailRequestId, setDetailRequestId] = useState<string | null>(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(
     loadStoredRefreshIntervalMs,
   );
+  const [containerRef, measuredWidth] = useContainerWidth<HTMLDivElement>();
+  // 测量不到时按宽窗口排
+  const compact = (measuredWidth || 1000) < 720;
 
-  // 启动时向原生要权威值（UserDefaults）：file:// 场景 localStorage 偶发不跨启动
-  // 持久，以原生存的为准兜底；两边一致时无感。浏览器冒烟（无桥）静默跳过。
+  // 启动时向原生要权威值（UserDefaults）：file:// 场景 localStorage 偶发不跨启动持久。
+  // 浏览器冒烟（没有原生桥）时静默跳过。
   useEffect(() => {
     let alive = true;
     invoke<number | null>("get_setting", { key: "refreshIntervalMs" }).then(
@@ -344,6 +349,11 @@ function EmbedUsagePanel() {
     };
   }, []);
 
+  // 后端写入新日志时 emit `usage-log-recorded`（embed 里是空实现，刷新靠下面的定时失效）
+  useUsageEventBridge();
+  useEmbedAutoRefresh(refreshIntervalMs);
+
+  // 切应用时清掉下游筛选，避免留下一个在新范围内查无数据的「幽灵」组合；切供应商同理清掉模型。
   const changeAppType = (next: AppTypeFilter) => {
     setAppType(next);
     if (next !== appType) {
@@ -358,8 +368,6 @@ function EmbedUsagePanel() {
     }
   };
 
-  useUsageEventBridge();
-
   const changeRefreshInterval = (next: number) => {
     setRefreshIntervalMs(next);
     try {
@@ -368,11 +376,10 @@ function EmbedUsagePanel() {
       /* ignore */
     }
     // 写穿原生：持久化到 UserDefaults，并把菜单栏刷新节奏同步成同一个值
-    void invoke("set_setting", {
-      key: "refreshIntervalMs",
-      value: next,
-    }).catch(() => {});
-    queryClientInstance.invalidateQueries({ queryKey: usageKeys.all });
+    void invoke("set_setting", { key: "refreshIntervalMs", value: next }).catch(
+      () => {},
+    );
+    void queryClientInstance.invalidateQueries({ queryKey: usageKeys.all });
   };
 
   const language =
@@ -383,282 +390,375 @@ function EmbedUsagePanel() {
     if (range.preset !== "custom") {
       return getUsageRangePresetLabel(range.preset, t);
     }
-
-    const startStr = new Date(resolvedRange.startDate * 1000).toLocaleString(
-      locale,
-    );
-
+    const startStr = new Date(resolvedRange.startDate * 1000).toLocaleString(locale);
     if (range.liveEndTime) {
       return `${startStr} → ${t("usage.liveEndTimeNow", "现在")}`;
     }
-
-    const endStr = new Date(resolvedRange.endDate * 1000).toLocaleString(
-      locale,
-    );
+    const endStr = new Date(resolvedRange.endDate * 1000).toLocaleString(locale);
     return `${startStr} - ${endStr}`;
   }, [locale, range, resolvedRange.endDate, resolvedRange.startDate, t]);
 
-  const optionsRefetch = {
-    refetchInterval:
-      refreshIntervalMs > 0 ? refreshIntervalMs : (false as const),
-  };
-  const { data: providerOptionsData } = useProviderStats(
-    range,
-    { appType },
-    optionsRefetch,
-  );
+  // 筛选下拉的选项池：供应商列表只跟应用 / 时间范围走，模型列表随所选供应商级联。都不轮询，
+  // 由 useEmbedAutoRefresh 统一失效重查。
+  const noPolling = { refetchInterval: false as const };
+  const { data: providerOptionsData } = useProviderStats(range, { appType }, noPolling);
   const { data: modelOptionsData } = useModelStats(
     range,
     { appType, providerName },
-    optionsRefetch,
+    noPolling,
   );
 
   const providerOptions = useMemo(() => {
-    const names = new Set<string>();
+    const counts = new Map<string, number>();
     for (const stat of providerOptionsData ?? []) {
-      names.add(stat.providerName);
+      counts.set(stat.providerName, (counts.get(stat.providerName) ?? 0) + stat.requestCount);
     }
-    if (providerName) names.add(providerName);
-    return Array.from(names);
+    // 数据刷新后选中项可能掉出列表（如改了时间范围）；补回去保证用户看得见、能清除
+    if (providerName && !counts.has(providerName)) counts.set(providerName, 0);
+    return Array.from(counts, ([name, count]) => ({ name, count })).sort(
+      (a, b) => b.count - a.count,
+    );
   }, [providerOptionsData, providerName]);
 
   const modelOptions = useMemo(() => {
-    const names = new Set<string>();
+    const counts = new Map<string, number>();
     for (const stat of modelOptionsData ?? []) {
-      names.add(stat.model);
+      counts.set(stat.model, (counts.get(stat.model) ?? 0) + stat.requestCount);
     }
-    if (model) names.add(model);
-    return Array.from(names);
+    if (model && !counts.has(model)) counts.set(model, 0);
+    return Array.from(counts, ([name, count]) => ({ name, count })).sort(
+      (a, b) => b.count - a.count,
+    );
   }, [modelOptionsData, model]);
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-8 pb-8"
-    >
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-2">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-bold tracking-tight">
-            {t("usage.title")}
-          </h2>
-          <p className="text-sm text-muted-foreground">{t("usage.subtitle")}</p>
-        </div>
+  const providerTotal = providerOptions.reduce((sum, p) => sum + p.count, 0);
+  const modelTotal = modelOptions.reduce((sum, m) => sum + m.count, 0);
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center p-1 bg-muted/30 rounded-lg border border-border/50">
-            {APP_FILTER_OPTIONS.map((type) => {
-              const label = t(`usage.appFilter.${type}`);
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => changeAppType(type)}
-                  title={label}
-                  aria-label={label}
-                  className={cn(
-                    "flex h-8 items-center justify-center px-2.5 rounded-md transition-all",
-                    appType === type
-                      ? "bg-background text-primary shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                  )}
-                >
-                  {type === "all" ? (
-                    <LayoutGrid className="h-4 w-4" />
-                  ) : (
-                    <ProviderIcon
-                      icon={APP_FILTER_ICON[type]}
-                      name={label}
-                      size={16}
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+  // ── 页头右侧：刷新间隔 + 官方额度徽标 ─────────────────────────────────
+  const headerActions = (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="quiet"
+            size="regular"
+            className="shrink-0 gap-1.5 pe-2 ps-2.5 text-fg-2"
+            title="Refresh interval"
+            aria-label={`Refresh interval: ${refreshLabel(refreshIntervalMs)}`}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {refreshLabel(refreshIntervalMs)}
+            <ChevronDown className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className={cn(menuContentClass, "min-w-[150px]")}>
+          {REFRESH_INTERVAL_OPTIONS_MS.map((ms) => (
+            <DropdownMenuItem
+              key={ms}
+              className={menuItemClass}
+              onSelect={() => changeRefreshInterval(ms)}
+            >
+              <MenuCheck checked={refreshIntervalMs === ms} />
+              {ms > 0 ? `Every ${ms / 1000}s` : "Off"}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <QuotaBadges pollMs={refreshIntervalMs} />
+    </>
+  );
 
-          <Select
-            value={
-              providerName != null ? encodeOptionValue(providerName) : "all"
+  // ── 筛选行（照 v4）──────────────────────────────────────────────────
+  const appFilterIndicator = useSlidingIndicator<HTMLDivElement>(
+    '[aria-pressed="true"]',
+    appType,
+  );
+  const chipClass = (pressed: boolean) =>
+    cn(
+      "relative inline-flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[5px] px-2 text-body transition-colors duration-150",
+      pressed ? "font-semibold text-fg-1" : "font-medium text-fg-2 hover:text-fg-1",
+    );
+
+  const filterRow = (
+    <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 px-6 py-2">
+      <div
+        ref={appFilterIndicator.ref}
+        role="group"
+        aria-label={t("usage.appFilter.label")}
+        className="relative flex h-8 shrink-0 items-center gap-0.5 rounded-[8px] bg-subtle p-[3px]"
+      >
+        <SegmentThumb
+          rect={appFilterIndicator.rect}
+          animate={appFilterIndicator.animate}
+          className="rounded-[5px]"
+        />
+        <button
+          type="button"
+          aria-pressed={appType === "all"}
+          className={chipClass(appType === "all")}
+          onClick={() => changeAppType("all")}
+        >
+          {t("usage.appFilter.all")}
+        </button>
+        {/* 应用只露图标，名字放悬停提示和 aria-label */}
+        {KNOWN_APP_TYPES.map((app) => (
+          <HoverTip key={app} content={APP_DISPLAY_NAME[app]}>
+            <button
+              type="button"
+              aria-pressed={appType === app}
+              aria-label={APP_DISPLAY_NAME[app]}
+              className={cn(chipClass(appType === app), "w-[30px] justify-center px-0")}
+              onClick={() => changeAppType(app)}
+            >
+              <AppGlyph
+                app={app}
+                size={16}
+                badgeClassName={appType === app ? "bg-surface" : "bg-subtle"}
+              />
+            </button>
+          </HoverTip>
+        ))}
+      </div>
+      <div className="min-w-2 flex-1" />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="neutral"
+            size="regular"
+            className="min-w-[78px] max-w-[156px] shrink gap-1 pe-2 ps-3"
+            title={
+              providerName
+                ? usageProviderTitle(getUsageProviderLabel(providerName, t))
+                : t("usage.providerFilter.title")
             }
-            onValueChange={(v) => changeProviderName(decodeOptionValue(v))}
           >
-            <SelectTrigger
-              className="h-9 w-[100px] bg-background text-xs focus:border-border-default [&>span]:min-w-0 [&>span]:truncate"
-              title={providerName ?? t("usage.filterBySource")}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="max-w-[280px]">
-              <SelectItem value="all">{t("usage.allSources")}</SelectItem>
-              {providerOptions.map((name) => (
-                <SelectItem
-                  key={name}
-                  value={encodeOptionValue(name)}
-                  title={name}
-                  className="[&>span]:min-w-0 [&>span]:truncate"
-                >
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={model != null ? encodeOptionValue(model) : "all"}
-            onValueChange={(v) => setModel(decodeOptionValue(v))}
-          >
-            <SelectTrigger
-              className="h-9 w-[100px] bg-background text-xs focus:border-border-default [&>span]:min-w-0 [&>span]:truncate"
-              title={model ?? t("usage.filterByModel")}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="max-w-[280px]">
-              <SelectItem value="all">{t("usage.allModels")}</SelectItem>
-              {modelOptions.map((name) => (
-                <SelectItem
-                  key={name}
-                  value={encodeOptionValue(name)}
-                  title={name}
-                  className="[&>span]:min-w-0 [&>span]:truncate"
-                >
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <div className="flex items-center gap-2 ml-auto lg:ml-0">
-            <Select
-              value={String(refreshIntervalMs)}
-              onValueChange={(v) => changeRefreshInterval(Number(v))}
-            >
-              <SelectTrigger
-                className="h-9 w-[100px] bg-background text-xs focus:border-border-default"
-                title={t("usage.refreshInterval")}
-                aria-label={t("usage.refreshInterval")}
+            <span className="min-w-0 truncate">
+              {providerName
+                ? getUsageProviderLabel(providerName, t).label
+                : t("usage.providerFilter.label")}
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-fg-2" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          aria-label={t("usage.providerFilter.title")}
+          className={cn(menuContentClass, "max-h-[360px] overflow-y-auto")}
+        >
+          <DropdownMenuItem className={menuItemClass} onSelect={() => changeProviderName(undefined)}>
+            <MenuCheck checked={providerName == null} />
+            {t("usage.providerFilter.all")}
+            <MenuMeta>{fmtInt(providerTotal, locale)}</MenuMeta>
+          </DropdownMenuItem>
+          {providerOptions.map((option) => {
+            const label = getUsageProviderLabel(option.name, t);
+            return (
+              <DropdownMenuItem
+                key={option.name}
+                className={menuItemClass}
+                title={usageProviderTitle(label)}
+                onSelect={() => changeProviderName(option.name)}
               >
-                <span className="flex items-center gap-2">
-                  <RefreshCw className="h-3.5 w-3.5 shrink-0" />
-                  <SelectValue />
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                {REFRESH_INTERVAL_OPTIONS_MS.map((ms) => (
-                  <SelectItem key={ms} value={String(ms)}>
-                    {ms > 0 ? `${ms / 1000}s` : t("usage.refreshOff")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <UsageDateRangePicker
-              selection={range}
-              triggerLabel={rangeLabel}
-              onApply={(nextRange) => setRange(nextRange)}
-            />
-
-            {/* 5H / Week 官方额度徽标，并入右侧 ml-auto 组末尾 → 顶到最右、同一排 */}
-            <QuotaBadges pollMs={refreshIntervalMs} />
-          </div>
-        </div>
-      </div>
-
-      <UsageHero
-        range={range}
-        appType={appType === "all" ? undefined : appType}
-        providerName={providerName}
-        model={model}
-        refreshIntervalMs={refreshIntervalMs}
-      />
-
-      <UsageTrendChart
-        range={range}
-        rangeLabel={rangeLabel}
-        appType={appType}
-        providerName={providerName}
-        model={model}
-        refreshIntervalMs={refreshIntervalMs}
-      />
-
-      {/* 常驻热力图：只跟随应用 / 供应商 / 模型筛选，不受上面的时间范围影响 */}
-      <UsageHeatmap
-        appType={appType}
-        providerName={providerName}
-        model={model}
-        refreshIntervalMs={refreshIntervalMs}
-      />
-
-      {/* 下半部 Tabs：Request Logs / Provider Stats / Model Stats
-          结构照抄 UsageDashboard.tsx；传参用面板现有 state（与 Dashboard 一致）。 */}
-      <div className="space-y-4">
-        <Tabs defaultValue="logs" className="w-full">
-          <div className="flex items-center justify-between mb-4">
-            <TabsList className="bg-muted/50">
-              <TabsTrigger value="logs" className="gap-2">
-                <ListFilter className="h-4 w-4" />
-                {t("usage.requestLogs")}
-              </TabsTrigger>
-              <TabsTrigger value="providers" className="gap-2">
-                <Activity className="h-4 w-4" />
-                {t("usage.providerStats")}
-              </TabsTrigger>
-              <TabsTrigger value="models" className="gap-2">
-                <BarChart3 className="h-4 w-4" />
-                {t("usage.modelStats")}
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+                <MenuCheck checked={providerName === option.name} />
+                <span className="min-w-0 truncate">{label.label}</span>
+                <MenuMeta>{fmtInt(option.count, locale)}</MenuMeta>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="neutral"
+            size="regular"
+            className="min-w-[66px] max-w-[156px] shrink gap-1 pe-2 ps-3"
+            title={model ?? t("usage.modelFilter.title")}
           >
-            <TabsContent value="logs" className="mt-0">
-              <RequestLogTable
-                range={range}
-                rangeLabel={rangeLabel}
-                appType={appType}
-                providerName={providerName}
-                model={model}
-                refreshIntervalMs={refreshIntervalMs}
-                onRangeChange={setRange}
-              />
-            </TabsContent>
+            <span className="min-w-0 truncate">{model ?? t("usage.modelFilter.label")}</span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-fg-2" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          aria-label={t("usage.modelFilter.title")}
+          className={cn(menuContentClass, "max-h-[360px] overflow-y-auto")}
+        >
+          <DropdownMenuItem className={menuItemClass} onSelect={() => setModel(undefined)}>
+            <MenuCheck checked={model == null} />
+            {t("usage.allModels")}
+            <MenuMeta>{fmtInt(modelTotal, locale)}</MenuMeta>
+          </DropdownMenuItem>
+          {modelOptions.map((option) => (
+            <DropdownMenuItem
+              key={option.name}
+              className={menuItemClass}
+              title={option.name}
+              onSelect={() => setModel(option.name)}
+            >
+              <MenuCheck checked={model === option.name} />
+              <span className="min-w-0 truncate font-mono text-caption">{option.name}</span>
+              <MenuMeta>{fmtInt(option.count, locale)}</MenuMeta>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <UsageDateRangePicker
+        selection={range}
+        triggerLabel={rangeLabel}
+        onApply={(nextRange) => setRange(nextRange)}
+      />
+    </div>
+  );
 
-            <TabsContent value="providers" className="mt-0">
-              <ProviderStatsTable
-                range={range}
-                appType={appType}
-                providerName={providerName}
-                model={model}
-                refreshIntervalMs={refreshIntervalMs}
-              />
-            </TabsContent>
+  // ── 子页签（照 v4，去掉定价）────────────────────────────────────────
+  const tabLabel: Record<UsageTab, string> = {
+    logs: t("usage.requestLogs"),
+    providers: t("usage.tabs.providers"),
+    models: t("usage.tabs.models"),
+  };
+  const statusLabel =
+    statusCode == null ? t("usage.statusFilter.all") : `${t("usage.statusCode")} ${statusCode}`;
 
-            <TabsContent value="models" className="mt-0">
-              <ModelStatsTable
-                range={range}
-                appType={appType}
-                providerName={providerName}
-                model={model}
-                refreshIntervalMs={refreshIntervalMs}
-              />
-            </TabsContent>
-          </motion.div>
-        </Tabs>
+  const tabTrailing =
+    tab === "logs" ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="quiet"
+            size="compact"
+            className="gap-1 pe-1.5 ps-2 text-caption text-fg-2"
+            aria-label={`${t("usage.statusCode")}: ${statusLabel}`}
+          >
+            {statusLabel}
+            <ChevronDown className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className={cn(menuContentClass, "min-w-[160px]")}>
+          <DropdownMenuItem className={menuItemClass} onSelect={() => setStatusCode(undefined)}>
+            <MenuCheck checked={statusCode == null} />
+            {t("usage.statusFilter.all")}
+          </DropdownMenuItem>
+          {STATUS_CODE_OPTIONS.map((code) => (
+            <DropdownMenuItem key={code} className={menuItemClass} onSelect={() => setStatusCode(code)}>
+              <MenuCheck checked={statusCode === code} />
+              <span className="tabular-nums">{code}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : (
+      <span className="text-caption text-fg-3">{t("usage.sortedByRequests")}</span>
+    );
+
+  const scopedAppType = appType === "all" ? undefined : appType;
+
+  const tabsSection = (
+    <section aria-label={t("usage.tabs.label")} className="flex flex-col">
+      <PageTabs<UsageTab>
+        aria-label={t("usage.tabs.label")}
+        items={TABS.map((id) => ({ value: id, label: tabLabel[id] }))}
+        value={tab}
+        onValueChange={setTab}
+        idPrefix="usage-tab"
+        controls="usage-tabpanel"
+        trailing={tabTrailing}
+      />
+      <div role="tabpanel" id="usage-tabpanel" aria-labelledby={`usage-tab-${tab}`}>
+        {tab === "logs" && (
+          <RequestLogTable
+            range={range}
+            appType={appType}
+            providerName={providerName}
+            model={model}
+            statusCode={statusCode}
+            refreshIntervalMs={0}
+            onOpenDetail={setDetailRequestId}
+          />
+        )}
+        {tab === "providers" && (
+          <ProviderStatsTable
+            range={range}
+            appType={appType}
+            providerName={providerName}
+            model={model}
+            refreshIntervalMs={0}
+          />
+        )}
+        {tab === "models" && (
+          <ModelStatsTable
+            range={range}
+            appType={appType}
+            providerName={providerName}
+            model={model}
+            refreshIntervalMs={0}
+          />
+        )}
       </div>
-    </motion.div>
+    </section>
+  );
+
+  return (
+    <div ref={containerRef} className="flex h-screen min-h-0 min-w-0 flex-col">
+      {/* 顶部 46pt 留白：原生拖动条和红绿灯在这里，网页控件放进来点不到 */}
+      <div aria-hidden="true" className="h-[46px] shrink-0" />
+      <AppPageHeader
+        icon={<ChartColumn className="h-5 w-5" strokeWidth={1.5} />}
+        title={t("nav.usage")}
+        titleExtra={<HelpTip title={t("nav.usage")}>{t("usage.subtitle")}</HelpTip>}
+        actions={headerActions}
+      />
+      {filterRow}
+      {/* relative：让内容区成为绝对定位元素的参照。表格里的 sr-only 文字是 position:absolute，
+          没有带定位的祖先时会以整页为参照，逃出这里的滚动裁剪、把整个文档撑高，出现第二层滚动条 */}
+      <div
+        id="main-content"
+        className="relative flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto scroll-stable px-6 pb-6 pt-1"
+      >
+        <UsageHero
+          range={range}
+          appType={scopedAppType}
+          providerName={providerName}
+          model={model}
+          refreshIntervalMs={0}
+          compact={compact}
+        />
+        {/* 热力图常驻在走势图下方；「全部」范围下走势图会和热力图重复，只留热力图（同 v4） */}
+        {range.preset !== "all" && (
+          <UsageTrendChart
+            range={range}
+            rangeLabel={rangeLabel}
+            appType={appType}
+            providerName={providerName}
+            model={model}
+            refreshIntervalMs={0}
+          />
+        )}
+        <UsageHeatmap
+          appType={appType}
+          providerName={providerName}
+          model={model}
+          refreshIntervalMs={0}
+        />
+        {tabsSection}
+      </div>
+      <RequestDetailPanel
+        requestId={detailRequestId}
+        onClose={() => setDetailRequestId(null)}
+      />
+    </div>
   );
 }
 
 /* ────────────────────────── bootstrap ────────────────────────── */
 
-// 强制深色主题 + 英文文案（"Tokens Processed" / "Fresh Input" 等）。
+// 固定深色主题 + 英文文案；macOS 专属样式（v4 main.tsx 同样在 body 上挂 is-mac）。
 document.documentElement.classList.add("dark");
+document.body.classList.add("is-mac");
 try {
   window.localStorage.setItem("language", "en");
 } catch {
@@ -669,10 +769,14 @@ void i18n.changeLanguage("en");
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      {/* 顶部额外留白 ~46px：避开原生窗口左上角交通灯（.hiddenTitleBar，内容边到边） */}
-      <div className="px-4 pb-4 md:px-6 md:pb-6" style={{ paddingTop: 46 }}>
-        <EmbedUsagePanel />
-      </div>
+      <ThemeProvider defaultTheme="dark" storageKey="cc-usage-embed-theme">
+        <MotionConfig reducedMotion="user">
+          <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+            <EmbedUsagePanel />
+          </TooltipProvider>
+        </MotionConfig>
+        <Toaster />
+      </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

@@ -81,7 +81,13 @@ function mockInvoke(cmd: string, args?: InvokeArgs): unknown {
         },
       ];
     case "get_request_logs":
-      return { data: [], total: 0, page: 0, pageSize: 20 };
+      return mockRequestLogs();
+    case "get_request_detail":
+      return (
+        mockRequestLogs().data.find(
+          (r) => r.requestId === (args as { requestId?: string })?.requestId,
+        ) ?? null
+      );
     case "get_model_pricing":
       return [];
     case "check_provider_limits":
@@ -180,6 +186,49 @@ function mockFirstDate(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// 三种计时情况各一行：经路由（精确速度 / 首字）、会话日志导入（估算，界面带 ≈）、
+// 还没被 cc-switch 导入的叠加行（没有计时，界面显示「—」）。
+function mockRequestLogs() {
+  const now = Math.floor(Date.now() / 1000);
+  const row = (
+    requestId: string,
+    providerName: string,
+    dataSource: string,
+    output: number,
+    latencyMs: number,
+    firstTokenMs: number | undefined,
+    ago: number,
+  ) => ({
+    requestId,
+    providerId: dataSource === "proxy" ? "p2" : "_session",
+    providerName,
+    appType: "claude",
+    model: "claude-sonnet-4-5",
+    costMultiplier: "1",
+    inputTokens: 1200,
+    outputTokens: output,
+    cacheReadTokens: 40_000,
+    cacheCreationTokens: 3_000,
+    inputCostUsd: "0.003600",
+    outputCostUsd: (output * 15e-6).toFixed(6),
+    cacheReadCostUsd: "0.012000",
+    cacheCreationCostUsd: "0.011250",
+    totalCostUsd: (0.02685 + output * 15e-6).toFixed(6),
+    isStreaming: true,
+    latencyMs,
+    ...(firstTokenMs == null ? {} : { firstTokenMs }),
+    statusCode: 200,
+    createdAt: now - ago,
+    dataSource,
+  });
+  const data = [
+    row("session:pending", "Claude (Session)", "session_log", 640, 0, undefined, 30),
+    row("session:imported", "Claude (Session)", "session_log", 820, 16_400, 2_100, 400),
+    row("proxy-1", "PackyCode", "proxy", 900, 9_800, 1_150, 900),
+  ];
+  return { data, total: data.length, page: 0, pageSize: 20 };
+}
+
 function mockProviders() {
   return [
     {
@@ -191,6 +240,13 @@ function mockProviders() {
       totalCost: "0.981200",
       successRate: 100,
       avgLatencyMs: 0,
+      // 会话日志导入：只有估算值（界面带 ≈）
+      speedOutputTokens: 0,
+      speedGenerationMs: 0,
+      estSpeedOutputTokens: 48_000,
+      estSpeedDurationMs: 960_000,
+      firstTokenMedianMs: null,
+      estFirstTokenMedianMs: 2_400,
     },
     {
       providerId: "p2",
@@ -201,6 +257,13 @@ function mockProviders() {
       totalCost: "0.253360",
       successRate: 98,
       avgLatencyMs: 1200,
+      // 经路由：有精确值
+      speedOutputTokens: 12_000,
+      speedGenerationMs: 200_000,
+      estSpeedOutputTokens: 0,
+      estSpeedDurationMs: 0,
+      firstTokenMedianMs: 1_100,
+      estFirstTokenMedianMs: null,
     },
   ];
 }
@@ -213,6 +276,13 @@ function mockModels() {
       totalTokens: 2_800_000,
       totalCost: "0.800000",
       avgCostPerRequest: "0.010000",
+      successRate: 100,
+      speedOutputTokens: 0,
+      speedGenerationMs: 0,
+      estSpeedOutputTokens: 40_000,
+      estSpeedDurationMs: 800_000,
+      firstTokenMedianMs: null,
+      estFirstTokenMedianMs: 2_200,
     },
     {
       model: "claude-opus-4-1",
@@ -220,6 +290,13 @@ function mockModels() {
       totalTokens: 1_360_000,
       totalCost: "0.434560",
       avgCostPerRequest: "0.009053",
+      successRate: 97.9,
+      speedOutputTokens: 9_000,
+      speedGenerationMs: 180_000,
+      estSpeedOutputTokens: 0,
+      estSpeedDurationMs: 0,
+      firstTokenMedianMs: 1_300,
+      estFirstTokenMedianMs: null,
     },
   ];
 }
