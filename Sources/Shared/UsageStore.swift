@@ -177,6 +177,10 @@ public final class UsageStore: @unchecked Sendable {
     func freshInput(_ db: OpaquePointer, _ alias: String) -> String {
         hasSemantics(db) ? Self.freshInputV13(alias) : Self.freshInputLegacy(alias)
     }
+    /// 按当前库 schema 生成跨源去重过滤（明细表别名 l）。所有读明细的路径都要带它。
+    func effectiveUsageFilter(_ db: OpaquePointer) -> String {
+        Self.effectiveUsageFilterL(hasSemantics: hasSemantics(db))
+    }
     /// 单行「真实消耗 Tokens」= 新增输入 + 输出 + 缓存写入 + 缓存命中，与 Hero 的
     /// `UsageSummary.tokensProcessed` 同口径（对齐 sql_helpers.rs::real_total_tokens_sql，
     /// 上游 bc4d1a50）。分组统计的 total_tokens 都用它，保证各行之和等于顶部总数。

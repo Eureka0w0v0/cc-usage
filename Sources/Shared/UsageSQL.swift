@@ -72,13 +72,26 @@ extension UsageStore {
     static func dedupAppTypeMatch(_ left: String, _ right: String) -> String {
         "\(left) IN (\(right), CASE WHEN \(right)='claude' THEN 'claude-desktop' ELSE \(right) END)"
     }
+    /// 跨源去重的时间窗（秒）：session 行与 proxy 行 created_at 相差 ±10 分钟内视为同一笔。
+    static let dedupWindowSeconds: Int64 = 600
     /// 跨源去重过滤（对齐 usage_stats.rs::effective_usage_log_filter，别名 l）：
     /// session 系日志若在 ±10min 窗口内存在指纹匹配的成功 proxy 行，则剔除该 session 行，
     /// 防止「同一次请求既落 session 又落 proxy」被双算（窗口见 dedupWindowSeconds）。
     /// 本机无 'proxy' 行 → EXISTS 恒 false → NOT(...) 恒 true → 全过（已验证），但忠实照搬。
-    /// 跨源去重的时间窗（秒）：session 行与 proxy 行 created_at 相差 ±10 分钟内视为同一笔。
-    static let dedupWindowSeconds: Int64 = 600
-    static let effectiveUsageFilterL = """
+    ///
+    /// `hasSemantics`：库里有没有 v13 的 input_token_semantics 列。上游 v4.0.7（#7635）加的
+    /// 第三个缓存写入分支要读这一列：v3.17.0 之前的代理行（legacy 语义）从不记 Codex 缓存写入，
+    /// 写入量 0 当「没记」，放行会话行的任意写入量。旧库没有这一列就省掉该分支——旧库里的
+    /// Codex 会话行由旧导入器写入、写入量恒为 0，已被第二个分支放行，结果不变（缺列时照写
+    /// 会在 prepare 阶段报错，所有读路径一起挂）。读路径统一经 `effectiveUsageFilter(db)` 取用。
+    static func effectiveUsageFilterL(hasSemantics: Bool) -> String {
+        let legacyCodexProxy = hasSemantics ? """
+
+                                OR (proxy_dedup.cache_creation_tokens=0
+                                    AND proxy_dedup.input_token_semantics=0
+                                    AND COALESCE(l.data_source,'proxy')='codex_session')
+            """ : ""
+        return """
         NOT (COALESCE(l.data_source,'proxy') IN ('session_log','codex_session','gemini_session','opencode_session')
              AND EXISTS (SELECT 1 FROM proxy_request_logs proxy_dedup
                          WHERE COALESCE(proxy_dedup.data_source,'proxy')='proxy'
@@ -89,9 +102,10 @@ extension UsageStore {
                            AND proxy_dedup.cache_read_tokens=l.cache_read_tokens
                            AND (proxy_dedup.cache_creation_tokens=l.cache_creation_tokens
                                 OR (l.cache_creation_tokens=0
-                                    AND COALESCE(l.data_source,'proxy') IN ('codex_session','gemini_session','opencode_session')))
+                                    AND COALESCE(l.data_source,'proxy') IN ('codex_session','gemini_session','opencode_session'))\(legacyCodexProxy))
                            AND proxy_dedup.created_at BETWEEN l.created_at-\(dedupWindowSeconds) AND l.created_at+\(dedupWindowSeconds)
                            AND (LOWER(proxy_dedup.model)=LOWER(l.model)
                                 OR LOWER(proxy_dedup.model)='unknown' OR LOWER(l.model)='unknown')))
         """
+    }
 }

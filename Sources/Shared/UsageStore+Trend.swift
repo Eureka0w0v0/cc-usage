@@ -18,7 +18,7 @@ extension UsageStore {
                COALESCE(SUM(\(costL(db))),0),
                COUNT(*)
         FROM proxy_request_logs l\(Self.providersJoinIf(f.providerName, log: "l", provider: "p"))
-        WHERE l.created_at >= ?1 AND l.created_at <= ?2 AND \(Self.effectiveUsageFilterL)
+        WHERE l.created_at >= ?1 AND l.created_at <= ?2 AND \(effectiveUsageFilter(db))
         """
         if f.appType != nil { sql += " AND \(Self.foldedAppL) = ?4" }
         if f.model != nil { sql += " AND \(Self.effectiveModelL) = ?5" }
@@ -78,7 +78,7 @@ extension UsageStore {
 
         // --- logs：按 localtime 本地日分组（set）---
         var lf = f; lf.start = startTs; lf.end = endTs   // 缺省窗口已在 startTs/endTs 落定
-        let (lConds, lBinds) = logConds(lf)
+        let (lConds, lBinds) = logConds(db, lf)
         let lSQL = """
         SELECT date(l.created_at,'unixepoch','localtime') AS d,
                COUNT(*),

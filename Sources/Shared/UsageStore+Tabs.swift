@@ -25,8 +25,8 @@ extension UsageStore {
     // provider / model 统计共用的 WHERE + 绑定参数（时间窗 + app + provider + model）。
     // 首条恒为跨源去重过滤，对齐 get_provider_stats / get_model_stats（usage_stats.rs
     // :1265 / :1409，两者都以 vec![effective_usage_log_filter("l")] 起头）。
-    private func statsWhere(_ f: LogQueryFilter) -> (String, [SQLBind]) {
-        let (conds, binds) = logConds(UsageFilter(start: f.start, end: f.end, appType: f.appType,
+    private func statsWhere(_ db: OpaquePointer, _ f: LogQueryFilter) -> (String, [SQLBind]) {
+        let (conds, binds) = logConds(db, UsageFilter(start: f.start, end: f.end, appType: f.appType,
                                                   providerName: f.providerName, model: f.model))
         return ("WHERE " + conds.joined(separator: " AND "), binds)
     }
@@ -37,7 +37,7 @@ extension UsageStore {
         defer { sqlite3_close(db) }
 
         // 首条恒为跨源去重过滤，对齐 get_request_logs（usage_stats.rs:1554）。
-        var conds: [String] = [Self.effectiveUsageFilterL]
+        var conds: [String] = [effectiveUsageFilter(db)]
         var binds: [SQLBind] = []
         if let at = f.appType { conds.append("\(Self.foldedAppL) = ?"); binds.append(.text(at)) }
         if let pn = f.providerName { conds.append("\(Self.providerNameCoalesce) = ?"); binds.append(.text(pn)) }
@@ -203,7 +203,7 @@ extension UsageStore {
     public func providerStats(_ f: LogQueryFilter) throws -> [ProviderStatRow] {
         let db = try openRO()
         defer { sqlite3_close(db) }
-        let (whereClause, binds) = statsWhere(f)
+        let (whereClause, binds) = statsWhere(db, f)
         let sql = """
         SELECT l.provider_id, \(Self.providerNameCoalesce) AS provider_name,
                COUNT(*) AS request_count,
@@ -274,7 +274,7 @@ extension UsageStore {
     public func modelStats(_ f: LogQueryFilter) throws -> [ModelStatRow] {
         let db = try openRO()
         defer { sqlite3_close(db) }
-        let (whereClause, binds) = statsWhere(f)
+        let (whereClause, binds) = statsWhere(db, f)
         let sql = """
         SELECT \(Self.effectiveModelL) AS model,
                COUNT(*) AS request_count,
@@ -346,7 +346,7 @@ extension UsageStore {
                COUNT(*),
                COALESCE(SUM(\(costL(db))),0)
         FROM proxy_request_logs l
-        WHERE \(Self.effectiveUsageFilterL)
+        WHERE \(effectiveUsageFilter(db))
         GROUP BY ds
         """
         let stmt = try prepare(db, sql)

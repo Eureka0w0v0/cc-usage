@@ -129,4 +129,33 @@ final class CrossSourceDedupTests: XCTestCase {
         XCTAssertEqual(page.total, 1)
         XCTAssertEqual(page.rows.map(\.requestId), ["proxy-row"], "保留 proxy 行，剔除 session 行")
     }
+
+    // MARK: - legacy Codex 代理行（上游 v4.0.7 #7635）
+
+    /// v4.0.7 起 Codex 会话导入会记缓存写入；v3.17.0 之前的代理行（legacy 语义）从来不记，
+    /// 写入量恒为 0。两边对不上，旧规则就把同一笔请求算两次。
+    /// 杀变异体：缺这条分支（legacy 那对不去重）/ 分支不看 semantics（total 那对被误去重）/
+    /// 分支不限 codex_session（gemini 那对被误去重）。
+    func testCodexSessionCacheWritesMatchLegacyProxyWithout() throws {
+        let t = Fixture.ts(2026, 10, 10, 12)
+        let day: Int64 = 86_400
+        func pair(_ tag: String, app: String = "codex", source: String = "codex_session",
+                  proxySemantics: Int64, at: Int64) throws {
+            try Fixture.insertLog(dbPath, id: "proxy-\(tag)", app: app, model: "gpt-5.6",
+                                  input: 1000, output: 50, cacheRead: 300, cacheCreation: 0,
+                                  createdAt: at, dataSource: "proxy", providerId: "openai",
+                                  semantics: proxySemantics)
+            try Fixture.insertLog(dbPath, id: "session-\(tag)", app: app, model: "gpt-5.6",
+                                  input: 1000, output: 50, cacheRead: 300, cacheCreation: 600,
+                                  createdAt: at + 60, dataSource: source, providerId: "_codex_session",
+                                  semantics: 1)
+        }
+        try pair("legacy", proxySemantics: 0, at: t)
+        try pair("total", proxySemantics: 1, at: t + day)
+        try pair("gemini", app: "gemini", source: "gemini_session", proxySemantics: 0, at: t + 2 * day)
+
+        XCTAssertEqual(try requestCount(around: t), 1, "legacy 代理行的写入量 0 是「没记」，应与会话行去重")
+        XCTAssertEqual(try requestCount(around: t + day), 2, "新语义代理行要求写入量一致")
+        XCTAssertEqual(try requestCount(around: t + 2 * day), 2, "放宽只针对 codex_session")
+    }
 }

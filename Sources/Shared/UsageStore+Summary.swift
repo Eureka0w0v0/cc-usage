@@ -10,7 +10,7 @@ extension UsageStore {
 
     /// logs 部分：仅 proxy_request_logs（fresh_input + 跨源去重过滤）。
     func summaryLogsOnly(_ db: OpaquePointer, _ f: UsageFilter) throws -> UsageSummary {
-        let (conds, binds) = logConds(f)
+        let (conds, binds) = logConds(db, f)
         let sql = """
         SELECT COUNT(*),
                COALESCE(SUM(\(costL(db))),0),
@@ -81,7 +81,7 @@ extension UsageStore {
         // 不按 app 过滤、按 app 分组：两侧条件都用 appType = nil 的过滤器生成；
         // 绑定参数顺序 = 明细侧在前、rollup 侧在后（与 SQL 里两个子查询的先后一致）。
         var noApp = filter; noApp.appType = nil
-        let (dConds, dBinds) = logConds(noApp)
+        let (dConds, dBinds) = logConds(db, noApp)
         let (rConds, rBinds) = rollupConds(noApp, rollupDateBounds(filter.start, filter.end, cal))
         let binds = dBinds + rBinds
 
@@ -149,8 +149,8 @@ extension UsageStore {
     // MARK: - 汇总小工具
 
     /// 明细表侧 WHERE 条件（首条恒为跨源去重；其余顺序 = 上游 push 顺序：时间窗 → app → provider → 模型）。
-    func logConds(_ f: UsageFilter) -> ([String], [SQLBind]) {
-        var conds: [String] = [Self.effectiveUsageFilterL]
+    func logConds(_ db: OpaquePointer, _ f: UsageFilter) -> ([String], [SQLBind]) {
+        var conds: [String] = [effectiveUsageFilter(db)]
         var binds: [SQLBind] = []
         if let s = f.start { conds.append("l.created_at >= ?"); binds.append(.int(s)) }
         if let e = f.end { conds.append("l.created_at <= ?"); binds.append(.int(e)) }
