@@ -87,11 +87,20 @@ enum Fixture {
     }
 
     /// schema <13 旧库：两表都没有 input_token_semantics 列（验证降级路径）。
+    ///
+    /// 按正则去掉列（连同上一行的逗号），不写死缩进：`schema` 是多行字符串，会按收尾 `"""` 的
+    /// 缩进剥掉每行的前导空格。早先写死 6 个空格，实际只剩 2 个，一直没匹配上——「旧库」其实
+    /// 带着这一列，降级路径从没被真正测到（2026-10-15 变异测试发现）。删不干净就直接报错。
     static func makeLegacyDB(_ name: String) throws -> String {
         let path = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("ccusage-test-\(name)-\(UUID().uuidString).db")
         let legacy = schema.replacingOccurrences(
-            of: ",\n      input_token_semantics INTEGER NOT NULL DEFAULT 0", with: "")
+            of: #",\s*input_token_semantics INTEGER NOT NULL DEFAULT 0"#, with: "",
+            options: .regularExpression)
+        guard !legacy.contains("input_token_semantics") else {
+            throw NSError(domain: "fixture", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey: "旧库夹具没去掉 input_token_semantics 列"])
+        }
         try exec(path, legacy)
         return path
     }
