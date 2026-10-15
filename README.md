@@ -72,7 +72,7 @@ bash scripts/build.sh   # generate project → Release build → install to /App
 
 ## Usage notes
 
-- **Menu bar chips**: click the ⚡ icon → expand "Menu Bar Display" → tick what you want (Tokens/Cost each offer Day/Week/Month; Quota offers 5H/Week). The label renders like `D: 42.9M·$34.9 5H: 10%`;
+- **Menu bar chips**: click CC Usage's item in the menu bar → expand "Menu Bar Display" → open an AI group (All / Claude / Codex / …) and tick what you want (Tokens/Cost each offer Day/Week/Month; Quota offers 5H/Week). The label renders like `D:154.9M 5H:8% 7D:45%`, behind each AI's icon;
 - **Refresh interval**: the ⟳ dropdown in the main-window header; it applies to both the panel and the menu bar, and persists across restarts;
 - **Quota update cadence**: the 5H/Week percentages change **at most once per 5 minutes** — the official endpoint is throttled exactly like cc-switch does to avoid rate-limiting your account. Tokens/cost from the local database are the truly-every-5-seconds numbers;
 - Date/provider/model filters and the three stats tabs behave exactly like upstream cc-switch; the Providers / Models tables include daily rollups, so their rows add up to the totals at the top. Requests that cc-switch hasn't imported yet show "—" for speed and first token until it does.

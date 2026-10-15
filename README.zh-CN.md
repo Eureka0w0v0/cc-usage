@@ -72,7 +72,7 @@ bash scripts/build.sh   # 生成工程 → Release 构建 → 安装到 /Applica
 
 ## 使用说明
 
-- **菜单栏显示项**:点菜单栏 ⚡ 图标 → 展开「Menu Bar Display」→ 勾选想要的码片(Tokens/Cost 各含 Day/Week/Month,Quota 含 5H/Week)。菜单栏显示格式如 `D: 42.9M·$34.9 5H: 10%`;
+- **菜单栏显示项**:点菜单栏里的 CC Usage → 展开「Menu Bar Display」→ 展开某个 AI 分组(All / Claude / Codex / …)勾选想要的码片(Tokens/Cost 各含 Day/Week/Month,Quota 含 5H/Week)。菜单栏显示格式如 `D:154.9M 5H:8% 7D:45%`,前面是对应 AI 的图标;
 - **刷新间隔**:主窗口页头的 ⟳ 下拉选择,菜单栏与面板同步生效并持久化;
 - **额度的更新节奏**:5H/Week 的百分比**最快 5 分钟变一次**——官方接口按 cc-switch 同款设计做了 5 分钟节流,防止账号被限流。本地库的 tokens/花费才是真·5 秒一变;
 - **日期/供应商/模型筛选、三个统计页签**:与 cc-switch 原版完全一致;供应商/模型表把日汇总也算进去,各行加起来等于顶部总数。cc-switch 还没导入的请求,速度和首字先显示「—」,导入后自动出现。
