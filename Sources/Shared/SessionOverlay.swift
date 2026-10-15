@@ -21,6 +21,9 @@ import SQLite3
 //   * created_at 取顶层 RFC3339 timestamp,解析失败回落当前时间
 //   * 定价:model_pricing 精确匹配 → 前缀匹配(候选生成含命名空间/日期
 //     后缀/推理档后缀剥离,dot→dash),tokens × 每百万单价,倍率 1
+//   * 缓存写入里的 1 小时部分(usage.cache_creation.ephemeral_1h_input_tokens)
+//     按 cache_creation 单价 × 1.6 计(v4.0.7 #7653)。是否拆分跟着本机 CC Switch
+//     的版本走,与它将来补录的值保持一致(见 ClaudeCacheWriteBilling)
 //   * 未匹配到定价 → 成本 0(与 cc-switch 相同),tokens 照计
 //
 // 已知取舍:cc-switch 入库时还会做「session 行 vs 成功 proxy 行」的指纹去重
@@ -130,7 +133,8 @@ public final class SessionOverlay {
     /// 两次真实扫描的最小间隔:一个刷新 tick 内 UsageStore 的多个查询共享同一次扫描。
     private let minRefreshInterval: TimeInterval
     /// 定价表缓存时长(cc-switch 更新价格后最迟 5 分钟被叠加层看到)。
-    private let pricingTTL: TimeInterval = 300
+    private let pricingTTL: TimeInterval
+    private let ccSwitchVersion: () -> String?
 
     private let lock = NSLock()
     private var rows: [String: OverlayRow] = [:]   // requestId → 待入库行
@@ -175,6 +179,9 @@ public final class SessionOverlay {
     private var pricingExact: [String: Pricing] = [:]
     private var pricingIds: [String] = []          // 前缀匹配用(短 id 优先)
     private var pricingLoadedAt: Date?
+    /// 1 小时缓存写入是否按 1.6 倍计，随定价一起按 TTL 重判。nil = 还没判过；
+    /// 每轮真扫都先经 loadPricingIfStale 判定，ingest 时不会是 nil。
+    private var oneHourRate: Bool?
 
     /// 上一次真正扫完时的库水位，供预检短路比对（见 nothingChangedLocked）。
     private var lastWatermark: JSONLScan.Watermark?
@@ -187,9 +194,13 @@ public final class SessionOverlay {
     /// minRefreshInterval 可注入：测试传 0 即可免掉「睡过节流窗口」的等待。
     public init(projectsDir: String =
         (NSHomeDirectory() as NSString).appendingPathComponent(".claude/projects"),
-        minRefreshInterval: TimeInterval = 2.0) {
+        minRefreshInterval: TimeInterval = 2.0,
+        pricingTTL: TimeInterval = 300,
+        ccSwitchVersion: @escaping () -> String? = { ClaudeCacheWriteBilling.installedCCSwitchVersion() }) {
         self.projectsDir = projectsDir
         self.minRefreshInterval = minRefreshInterval
+        self.pricingTTL = pricingTTL
+        self.ccSwitchVersion = ccSwitchVersion
     }
 
     // MARK: - 对外入口
@@ -370,6 +381,8 @@ public final class SessionOverlay {
         let output = int64(usage["output_tokens"])
         let cacheRead = int64(usage["cache_read_input_tokens"])
         let cacheCreation = int64(usage["cache_creation_input_tokens"])
+        // 缓存写入里 1 小时那部分（对齐上游 claude_cache_creation_1h_tokens）
+        let cacheCreation1h = int64((usage["cache_creation"] as? NSDictionary)?["ephemeral_1h_input_tokens"])
         // 任一计费维度 > 0 才计入(对齐上游 has_billable_tokens)
         guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { return }
 
@@ -390,7 +403,10 @@ public final class SessionOverlay {
         let ic = p.map { Double(input) * $0.input / 1_000_000 } ?? 0
         let oc = p.map { Double(output) * $0.output / 1_000_000 } ?? 0
         let crc = p.map { Double(cacheRead) * $0.cacheRead / 1_000_000 } ?? 0
-        let ccc = p.map { Double(cacheCreation) * $0.cacheCreation / 1_000_000 } ?? 0
+        let ccc = p.map {
+            ClaudeCacheWriteBilling.cost(tokens: cacheCreation, oneHourTokens: cacheCreation1h,
+                                         pricePerMillion: $0.cacheCreation, oneHourRate: oneHourRate ?? true)
+        } ?? 0
 
         rows[requestId] = OverlayRow(
             requestId: requestId, model: model, createdAt: ts,
@@ -523,6 +539,7 @@ public final class SessionOverlay {
 
     private func loadPricingIfStale(_ db: OpaquePointer) {
         if let at = pricingLoadedAt, Date().timeIntervalSince(at) < pricingTTL { return }
+        refreshBillingRuleLocked()
         var exact: [String: Pricing] = [:]
         var stmt: OpaquePointer?
         let sql = """
@@ -542,6 +559,17 @@ public final class SessionOverlay {
         pricingExact = exact
         pricingIds = exact.keys.sorted { $0.count < $1.count }   // 前缀匹配取最短命中,对齐 LENGTH ASC
         pricingLoadedAt = Date()
+    }
+
+    /// 重判 1 小时缓存写入的计价口径。口径变了（多半是 CC Switch 刚升到 v4.0.7+）就清空
+    /// 已叠加的行和续读进度：那些行是按旧口径定的价，本轮从 cc-switch 游标处整体重扫。
+    private func refreshBillingRuleLocked() {
+        let rule = ClaudeCacheWriteBilling.usesOneHourRate(ccSwitchVersion: ccSwitchVersion())
+        if let old = oneHourRate, old != rule {
+            rows.removeAll()
+            marks.removeAll()
+        }
+        oneHourRate = rule
     }
 
     // MARK: - 定价匹配(对齐 find_model_pricing_row:候选精确匹配 → 前缀匹配)
