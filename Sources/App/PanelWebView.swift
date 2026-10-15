@@ -274,6 +274,7 @@ struct PanelWebView: NSViewRepresentable {
         private func providerStatDict(_ s: ProviderStatRow) -> [String: Any] {
             return [
                 "providerId": s.providerId,
+                "appType": s.appType,
                 "providerName": s.providerName,
                 "requestCount": s.requestCount,
                 "totalTokens": s.totalTokens,

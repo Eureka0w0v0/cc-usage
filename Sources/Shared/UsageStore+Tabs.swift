@@ -200,6 +200,8 @@ extension UsageStore {
 
     /// Provider 统计。对齐 get_provider_stats（GROUP BY provider_id, app_type，
     /// total_tokens = 真实消耗 realTotalTokens（上游 bc4d1a50 起含缓存），ORDER BY total_cost DESC）。
+    /// 行身份是 (providerId, appType)：「Claude」筛选折叠了 claude-desktop，同一个供应商两边都配过时
+    /// 会有两行同 id 同名的记录，appType 是区分它们的唯一依据（上游 v4.0.7 #8032）。
     public func providerStats(_ f: LogQueryFilter) throws -> [ProviderStatRow] {
         let db = try openRO()
         defer { sqlite3_close(db) }
@@ -210,7 +212,8 @@ extension UsageStore {
                COALESCE(SUM(\(realTotalTokens(db, "l"))), 0) AS total_tokens,
                COALESCE(SUM(\(costL(db))), 0) AS total_cost,
                COALESCE(SUM(CASE WHEN l.status_code >= 200 AND l.status_code < 300 THEN 1 ELSE 0 END), 0) AS success_count,
-               CASE WHEN COUNT(*) > 0 THEN COALESCE(SUM(l.latency_ms), 0) / COUNT(*) ELSE 0 END AS avg_latency
+               CASE WHEN COUNT(*) > 0 THEN COALESCE(SUM(l.latency_ms), 0) / COUNT(*) ELSE 0 END AS avg_latency,
+               l.app_type
         FROM proxy_request_logs l
         \(Self.providersJoinL)
         \(whereClause)
@@ -227,6 +230,7 @@ extension UsageStore {
             let rate = reqCount > 0 ? (Double(success) / Double(reqCount)) * 100.0 : 0.0
             out.append(ProviderStatRow(
                 providerId: SQLite.text(stmt, 0),
+                appType: SQLite.text(stmt, 7),
                 providerName: SQLite.text(stmt, 1),
                 requestCount: reqCount,
                 totalTokens: sqlite3_column_int64(stmt, 3),
@@ -235,21 +239,23 @@ extension UsageStore {
                 avgLatencyMs: sqlite3_column_int64(stmt, 6)
             ))
         }
-        // 增量行按各自 provider 并入(overlay 行恒 200/latency 0,按计数折算均值)。
-        // OMP 日志里混着多家 provider,必须分组累加——一股脑塞进 "Claude (Session)"
-        // 会把 grok 的花费记到 Claude 头上。
+        // 增量行按 (provider, app) 并入，与库内行同一套身份(overlay 行恒 200/latency 0,
+        // 按计数折算均值)。OMP 日志里混着多家 provider,必须分组累加——一股脑塞进
+        // "Claude (Session)" 会把 grok 的花费记到 Claude 头上。
         let ov = overlayLogRows(db, f)
         if !ov.isEmpty {
-            var grouped: [String: (name: String, req: Int64, toks: Int64, cost: Double)] = [:]
+            struct Identity: Hashable { let providerId: String; let appType: String }
+            var grouped: [Identity: (name: String, req: Int64, toks: Int64, cost: Double)] = [:]
             for r in ov {
-                var g = grouped[r.providerId] ?? (name: r.providerName, req: 0, toks: 0, cost: 0)
+                let key = Identity(providerId: r.providerId, appType: r.appType)
+                var g = grouped[key] ?? (name: r.providerName, req: 0, toks: 0, cost: 0)
                 g.req += 1
                 g.toks += r.realTotalTokens
                 g.cost += r.totalCost
-                grouped[r.providerId] = g
+                grouped[key] = g
             }
-            for (pid, g) in grouped {
-                if let i = out.firstIndex(where: { $0.providerId == pid }) {
+            for (key, g) in grouped {
+                if let i = out.firstIndex(where: { $0.providerId == key.providerId && $0.appType == key.appType }) {
                     let oldN = out[i].requestCount
                     let newN = oldN + g.req
                     out[i].successRate = newN > 0
@@ -259,7 +265,7 @@ extension UsageStore {
                     out[i].totalTokens += g.toks
                     out[i].totalCost += g.cost
                 } else {
-                    out.append(ProviderStatRow(providerId: pid, providerName: g.name,
+                    out.append(ProviderStatRow(providerId: key.providerId, appType: key.appType, providerName: g.name,
                                                requestCount: g.req, totalTokens: g.toks, totalCost: g.cost,
                                                successRate: 100, avgLatencyMs: 0))
                 }

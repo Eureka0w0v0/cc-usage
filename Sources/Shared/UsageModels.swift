@@ -127,6 +127,7 @@ public struct RequestLogPage: Sendable {
 /// 对齐 ProviderStats（types/usage.ts）。
 public struct ProviderStatRow: Sendable {
     public var providerId: String
+    public var appType: String
     public var providerName: String
     public var requestCount: Int64
     public var totalTokens: Int64

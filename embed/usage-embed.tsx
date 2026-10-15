@@ -113,9 +113,29 @@ const KEEP_PREVIOUS_DATA_SEGMENTS = [
   "model-stats",
   "logs",
 ] as const;
+
+// Provider 统计的行身份是 (appType, providerId)：「Claude」筛选把 Claude Desktop 折叠进来，同一个
+// 供应商两边都配过时会回来两行同 id 的记录。钉住的上游 ProviderStatsTable 只拿 providerId 当 React
+// key，重复 key 会让切换应用后留下旧的行；上游 v4.0.7（#8032）改成了 [appType, providerId]。上游文件
+// 不能改，只能在数据侧把 providerId 换成同样的组合键——3.x 的表格和来源下拉都不显示 providerId
+// （下拉只用 providerName），换掉不影响展示。embed 整体升到 v4 前端时删掉这段。
+type ProviderStatsRow = { providerId: string; appType?: string };
+const keyProviderRowsByApp = (rows: ProviderStatsRow[]): ProviderStatsRow[] =>
+  rows.map((row) => ({
+    ...row,
+    providerId: JSON.stringify([row.appType ?? "", row.providerId]),
+  }));
+
+// 同一个 key 再调一次 setQueryDefaults 会整个替换前一次，所以额外的默认值和 keepPreviousData 一起给。
+const EXTRA_QUERY_DEFAULTS: Partial<
+  Record<(typeof KEEP_PREVIOUS_DATA_SEGMENTS)[number], { select: typeof keyProviderRowsByApp }>
+> = {
+  "provider-stats": { select: keyProviderRowsByApp },
+};
 for (const segment of KEEP_PREVIOUS_DATA_SEGMENTS) {
   queryClient.setQueryDefaults([...usageKeys.all, segment], {
     placeholderData: keepPreviousData,
+    ...EXTRA_QUERY_DEFAULTS[segment],
   });
 }
 

@@ -184,6 +184,7 @@ function mockProviders() {
   return [
     {
       providerId: "p1",
+      appType: "claude",
       providerName: "Claude (Session)",
       requestCount: 96,
       totalTokens: 3_200_000,
@@ -193,6 +194,7 @@ function mockProviders() {
     },
     {
       providerId: "p2",
+      appType: "claude",
       providerName: "PackyCode",
       requestCount: 32,
       totalTokens: 960_000,
