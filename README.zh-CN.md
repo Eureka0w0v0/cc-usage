@@ -75,7 +75,7 @@ bash scripts/build.sh   # 生成工程 → Release 构建 → 安装到 /Applica
 - **菜单栏显示项**:点菜单栏里的 CC Usage → 展开「Menu Bar Display」→ 展开某个 AI 分组(All / Claude / Codex / …)勾选想要的码片(Tokens/Cost 各含 Day/Week/Month,Quota 含 5H/Week)。菜单栏显示格式如 `D:154.9M 5H:8% 7D:45%`,前面是对应 AI 的图标;
 - **刷新间隔**:主窗口页头的 ⟳ 下拉选择,菜单栏与面板同步生效并持久化;
 - **额度的更新节奏**:5H/Week 的百分比**最快 5 分钟变一次**——官方接口按 cc-switch 同款设计做了 5 分钟节流,防止账号被限流。本地库的 tokens/花费才是真·5 秒一变;
-- **日期/供应商/模型筛选、三个统计页签**:与 cc-switch 原版完全一致;供应商/模型表把日汇总也算进去,各行加起来等于顶部总数。cc-switch 还没导入的请求,速度和首字先显示「—」,导入后自动出现。
+- **日期/供应商/模型筛选、三个统计页签**:与 cc-switch 原版完全一致;供应商/模型表把日汇总也算进去,各行加起来等于顶部总数。cc-switch 还没导入的请求,速度和首字按 cc-switch 同一套规则从会话日志估算(带 ≈),导入前后数值不变;OMP 的请求直接用 OMP 自己测的耗时和首字时间。和 cc-switch 一样,输出不到 200 token 的短回复不估速度,只有以思考块开头的回复推得出首字。
 
 ## 工作原理
 
@@ -108,8 +108,8 @@ flowchart TB
 ```
 
 - 主窗口不是仿制界面,而是把 cc-switch 的前端源码加一层 `invoke` 桥接(`embed/`)后用 Vite 编译成单文件 `index.html`,跑在 WKWebView 里;前端发出的 Tauri `invoke` 调用被 Swift 拦下,直接查本地 SQLite 返回——统计口径逐条复刻 cc-switch 的 `usage_stats.rs`;
-- cc-switch 不在运行时,`SessionOverlay` 按 cc-switch 记录的行偏移(`session_log_sync`)只读续解析会话 JSONL,解析与定价规则逐条对齐其导入器(`session_usage.rs`)。定价跟着本机装的 cc-switch 版本走:v4.0.7 起 Claude 的 1 小时缓存写入按 5 分钟写入价的 1.6 倍计,叠加层同样这么算;装的是更早的版本(如 3.20.x)时,它入库一律按 5 分钟价,叠加层也按 5 分钟价,入库前后数字不跳;这些「未入库增量」在内存里并进所有查询,cc-switch 回来入库时按 `request_id` 精确去重、自动收敛为零——全程不写库,绝无双算;
-- OMP 的用量是另一回事:cc-switch 压根不扫 `~/.omp/agent/sessions`,那批数字**永远不会**自己进库,所以 `OmpOverlay` 不是「等补录的临时叠加」而是它们的唯一来源。归属按**模型家族**判定而非 provider 名——同一个 provider 可以配多个家族的模型,而这笔账该算谁头上取决于打的是谁的模型,所以 Claude 模型的消耗必须落进 Claude 分组(若 OMP 与 Claude Code 用的是同一个订阅账号,它花的还是 5H/Week 徽标那份额度,分组错了面板就会出现「额度百分比在涨、Tokens 却纹丝不动」的自相矛盾);走自定义网关的 Grok 则落进 Grok 分组。成本直接采用 OMP 自己算好的值(它的 `models.yml` 里才有那些自定义端点的价)。响应 id 是 Anthropic 的 `msg_xxx` 时,request_id 复用 cc-switch 同一套 `session:<msg_id>` 命名空间——既防与 `SessionOverlay` 自相双算,万一将来真被入库也会自动收敛;
+- cc-switch 不在运行时,`SessionOverlay` 按 cc-switch 记录的行偏移(`session_log_sync`)只读续解析会话 JSONL,解析与定价规则逐条对齐其导入器(`session_usage.rs`)。定价跟着本机装的 cc-switch 版本走:v4.0.7 起 Claude 的 1 小时缓存写入按 5 分钟写入价的 1.6 倍计,叠加层同样这么算;装的是更早的版本(如 3.20.x)时,它入库一律按 5 分钟价,叠加层也按 5 分钟价,入库前后数字不跳;耗时和首字也照 cc-switch v4.0.12 的办法估——沿对话链找发起这次请求的那一行(对话链跨轮保留,cc-switch 游标前同样回看 256KB),用时间戳相减,与 cc-switch 自己导入的值逐条一致;这些「未入库增量」在内存里并进所有查询,cc-switch 回来入库时按 `request_id` 精确去重、自动收敛为零——全程不写库,绝无双算;
+- OMP 的用量是另一回事:cc-switch 压根不扫 `~/.omp/agent/sessions`,那批数字**永远不会**自己进库,所以 `OmpOverlay` 不是「等补录的临时叠加」而是它们的唯一来源。归属按**模型家族**判定而非 provider 名——同一个 provider 可以配多个家族的模型,而这笔账该算谁头上取决于打的是谁的模型,所以 Claude 模型的消耗必须落进 Claude 分组(若 OMP 与 Claude Code 用的是同一个订阅账号,它花的还是 5H/Week 徽标那份额度,分组错了面板就会出现「额度百分比在涨、Tokens 却纹丝不动」的自相矛盾);走自定义网关的 Grok 则落进 Grok 分组。成本直接采用 OMP 自己算好的值(它的 `models.yml` 里才有那些自定义端点的价),耗时和首字时间同样用 OMP 每条回复自己测的值。响应 id 是 Anthropic 的 `msg_xxx` 时,request_id 复用 cc-switch 同一套 `session:<msg_id>` 命名空间——既防与 `SessionOverlay` 自相双算,万一将来真被入库也会自动收敛;
 - 订阅额度走你本机的 Claude Code OAuth 凭据,查询结果在进程内共享缓存,菜单栏与面板读同一份,所以两边永远一致。
 
 ## 重建面板前端(可选)
