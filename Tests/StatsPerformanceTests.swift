@@ -157,9 +157,10 @@ final class StatsPerformanceTests: XCTestCase {
 
     // MARK: - 叠加层
 
-    /// 还没入库的叠加行计入请求数和成功率，但没有计时，不进速度、首字（界面显示「—」）。
-    /// 杀变异体：叠加行按失败计（成功率 50%）；叠加行混进估算速度。
-    func testOverlayRowsCountButStayOutOfPerformance() throws {
+    /// 还没入库的叠加行计入请求数和成功率；这一行的日志没有对话链、估不出计时，就不进速度、首字。
+    /// （2026-10-16 起叠加行按上游规则估计时，估得出来的会并进去，见下一个用例。）
+    /// 杀变异体：叠加行按失败计（成功率 50%）；没有计时的叠加行也混进估算速度。
+    func testOverlayRowsWithoutTimingStayOutOfPerformance() throws {
         try Fixture.insertLog(dbPath, id: "session:db1", input: 10, output: 400, cost: 1.0,
                               createdAt: t, dataSource: "session_log", providerId: "_session",
                               latencyMs: 4000, firstTokenMs: 1200)
@@ -180,5 +181,76 @@ final class StatsPerformanceTests: XCTestCase {
         XCTAssertEqual(m.requestCount, 2)
         XCTAssertEqual(m.successRate, 100, accuracy: 1e-9)
         XCTAssertEqual(m.performance.estSpeedOutputTokens, 400)
+    }
+
+    /// 估出了计时的叠加行（非路由来源，一律按估算口径）：够门槛的（输出 ≥ 200、耗时 ≥ 1s）进估算速度，
+    /// 推出了首字的和库内行合在一起取中位数，耗时一律进平均耗时。只有叠加行的新分组也要带上这些值。
+    ///   库内 db1：输出 400、耗时 4000、首字 1200
+    ///   叠加 ov1：思考块开头，输出 900、耗时 5000、首字 2000
+    ///   叠加 ov2：工具调用开头，输出 150（不够估算速度的门槛）、耗时 3000、没有首字
+    ///   叠加 ov3：另一个模型（claude-haiku-5），输出 900、耗时 4000、首字 3000
+    /// 杀变异体：叠加行不进估算速度（供应商 400 / 4000）；叠加行不看门槛（ov2 混进来）；叠加行的首字不并进
+    /// 中位数（1200）；新分组不带速度、首字；平均耗时还按 0 折算叠加行（1000）。
+    func testOverlayTimingJoinsEstimatedSpeedMediansAndLatency() throws {
+        try Fixture.insertLog(dbPath, id: "session:db1", input: 10, output: 400, cost: 1.0,
+                              createdAt: t, dataSource: "session_log", providerId: "_session",
+                              latencyMs: 4000, firstTokenMs: 1200)
+        let lines = [
+            ClaudeLog.chain("user", 1, parent: nil, "2026-10-10T03:00:00.000Z"),
+            ClaudeLog.thinking("ov1", 2, parent: 1, "2026-10-10T03:00:05.000Z", durationMs: 3000,
+                               model: "claude-sonnet-5"),
+            ClaudeLog.chain("user", 3, parent: nil, "2026-10-10T03:01:00.000Z"),
+            ClaudeLog.block("ov2", 4, parent: 3, index: 0, "2026-10-10T03:01:03.000Z", output: 150,
+                            model: "claude-sonnet-5"),
+            ClaudeLog.chain("user", 5, parent: nil, "2026-10-10T03:02:00.000Z"),
+            ClaudeLog.thinking("ov3", 6, parent: 5, "2026-10-10T03:02:04.000Z", durationMs: 1000,
+                               model: "claude-haiku-5"),
+        ]
+        try (lines.joined(separator: "\n") + "\n").write(
+            toFile: ((projectsDir as NSString).appendingPathComponent("proj1") as NSString)
+                .appendingPathComponent("s.jsonl"),
+            atomically: true, encoding: .utf8)
+
+        let p = try XCTUnwrap(store.providerStats(window).first)
+        XCTAssertEqual(p.requestCount, 4, "前提：三条叠加行都并进了同一个供应商分组")
+        XCTAssertEqual(p.performance.estSpeedOutputTokens, 400 + 900 + 900)
+        XCTAssertEqual(p.performance.estSpeedDurationMs, 4000 + 5000 + 4000)
+        XCTAssertEqual(p.performance.estFirstTokenMedianMs, 2000, "[1200, 2000, 3000] 的中位数")
+        XCTAssertEqual(p.avgLatencyMs, (4000 + 5000 + 3000 + 4000) / 4)
+
+        let models = Dictionary(uniqueKeysWithValues: try store.modelStats(window).map { ($0.model, $0) })
+        let sonnet = try XCTUnwrap(models["claude-sonnet-5"])
+        XCTAssertEqual(sonnet.requestCount, 3)
+        XCTAssertEqual(sonnet.performance.estSpeedOutputTokens, 400 + 900)
+        XCTAssertEqual(sonnet.performance.estSpeedDurationMs, 4000 + 5000)
+        XCTAssertEqual(sonnet.performance.estFirstTokenMedianMs, (1200 + 2000) / 2)
+        let haiku = try XCTUnwrap(models["claude-haiku-5"], "只有叠加行的新分组")
+        XCTAssertEqual(haiku.performance.estSpeedOutputTokens, 900)
+        XCTAssertEqual(haiku.performance.estSpeedDurationMs, 4000)
+        XCTAssertEqual(haiku.performance.estFirstTokenMedianMs, 3000)
+    }
+
+    /// 库里还没有这个供应商的任何行（cc-switch 一直没开的常态），Providers 表那一行全由叠加行组成：
+    /// 同样要带上估算速度、估算首字和平均耗时。
+    /// 杀变异体：只有叠加行的供应商分组不带速度 / 首字 / 平均耗时（→ 0 / nil / 0）。
+    func testOverlayOnlyProviderCarriesPerformance() throws {
+        let lines = [
+            ClaudeLog.chain("user", 1, parent: nil, "2026-10-10T03:00:00.000Z"),
+            ClaudeLog.thinking("ov1", 2, parent: 1, "2026-10-10T03:00:05.000Z", durationMs: 3000,
+                               model: "claude-sonnet-5"),
+        ]
+        try (lines.joined(separator: "\n") + "\n").write(
+            toFile: ((projectsDir as NSString).appendingPathComponent("proj1") as NSString)
+                .appendingPathComponent("s.jsonl"),
+            atomically: true, encoding: .utf8)
+
+        let p = try XCTUnwrap(store.providerStats(window).first)
+        XCTAssertEqual(p.providerId, "_session")
+        XCTAssertEqual(p.requestCount, 1)
+        XCTAssertEqual(p.successRate, 100, accuracy: 1e-9)
+        XCTAssertEqual(p.avgLatencyMs, 5000)
+        XCTAssertEqual(p.performance.estSpeedOutputTokens, 900)
+        XCTAssertEqual(p.performance.estSpeedDurationMs, 5000)
+        XCTAssertEqual(p.performance.estFirstTokenMedianMs, 2000)
     }
 }

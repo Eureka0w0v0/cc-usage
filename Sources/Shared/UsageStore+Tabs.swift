@@ -203,7 +203,8 @@ extension UsageStore {
     /// (provider_id, app_type) 汇总，total_tokens = 真实消耗 realTotalTokens，ORDER BY total_cost DESC。
     /// 行身份是 (providerId, appType)：「Claude」筛选折叠了 claude-desktop，同一个供应商两边都配过时
     /// 会有两行同 id 同名的记录，appType 是区分它们的唯一依据（上游 v4.0.7 #8032）。
-    /// 速度只看明细（rollup 没有逐条计时）；首字中位数另起一条查询按同一身份分组（见 firstTokenMedians）。
+    /// 速度只看明细（rollup 没有逐条计时）；首字中位数另起一条查询按同一身份分组（见 firstTokenSamples）。
+    /// 平均耗时 = 耗时之和 ÷ 请求数（整除，同上游）；SQL 只取和，叠加行并进来以后在这里除。
     public func providerStats(_ f: LogQueryFilter, calendar: Calendar = .current) throws -> [ProviderStatRow] {
         let db = try openRO()
         defer { sqlite3_close(db) }
@@ -212,7 +213,7 @@ extension UsageStore {
         let sql = """
         SELECT provider_id, app_type, provider_name,
                SUM(request_count), SUM(total_tokens), SUM(total_cost), SUM(success_count),
-               CASE WHEN SUM(request_count) > 0 THEN SUM(latency_sum) / SUM(request_count) ELSE 0 END,
+               SUM(latency_sum),
                SUM(speed_output), SUM(speed_gen_ms), SUM(est_output), SUM(est_ms)
         FROM (
             SELECT l.provider_id, l.app_type, \(Self.providerNameCoalesce) AS provider_name,
@@ -245,10 +246,15 @@ extension UsageStore {
         // 分组键用不会出现在 id 里的 0x1F 拼接，和主查询的 (provider_id, app_type) 对上
         let medianKey = "l.provider_id || char(31) || l.app_type"
         let medianFrom = "FROM proxy_request_logs l \(Self.providersJoinL)"
-        let exact = try firstTokenMedians(db, key: medianKey, from: medianFrom, where: detailWhere,
+        let exact = try firstTokenSamples(db, key: medianKey, from: medianFrom, where: detailWhere,
                                           binds: detailBinds, eligible: Self.firstTokenEligibleL)
-        let estimated = try firstTokenMedians(db, key: medianKey, from: medianFrom, where: detailWhere,
+        var estimated = try firstTokenSamples(db, key: medianKey, from: medianFrom, where: detailWhere,
                                               binds: detailBinds, eligible: Self.estFirstTokenEligibleL)
+        // 增量行按 (provider, app) 汇总，与库内行同一套身份。OMP 日志里混着多家 provider，必须分组累加——
+        // 一股脑塞进 "Claude (Session)" 会把 grok 的花费记到 Claude 头上。估出来的首字先并进样本，再统一取中位数。
+        var overlay = Self.groupOverlay(overlayLogRows(db, f)) { "\($0.providerId)\u{1F}\($0.appType)" }
+        let hasOverlay = !overlay.isEmpty
+        Self.mergeFirstTokens(of: overlay, into: &estimated)
 
         let stmt = try prepare(db, sql, detailBinds + rollupBinds)
         defer { sqlite3_finalize(stmt) }
@@ -256,53 +262,36 @@ extension UsageStore {
         while sqlite3_step(stmt) == SQLITE_ROW {
             let providerId = SQLite.text(stmt, 0)
             let appType = SQLite.text(stmt, 1)
-            let reqCount = sqlite3_column_int64(stmt, 3)
             let key = "\(providerId)\u{1F}\(appType)"
+            let ov = overlay.removeValue(forKey: key) ?? OverlayStatsGroup()
+            let requests = sqlite3_column_int64(stmt, 3) + ov.requests
+            var performance = Self.readPerformance(stmt, from: 8, exact: exact[key].map(Self.median),
+                                                   estimated: estimated[key].map(Self.median))
+            ov.addEstimatedSpeed(to: &performance)
             out.append(ProviderStatRow(
                 providerId: providerId,
                 appType: appType,
                 providerName: SQLite.text(stmt, 2),
-                requestCount: reqCount,
-                totalTokens: sqlite3_column_int64(stmt, 4),
-                totalCost: sqlite3_column_double(stmt, 5),
-                successRate: Self.successRate(sqlite3_column_int64(stmt, 6), of: reqCount),
-                avgLatencyMs: sqlite3_column_int64(stmt, 7),
-                performance: Self.readPerformance(stmt, from: 8, exact: exact[key], estimated: estimated[key])
+                requestCount: requests,
+                totalTokens: sqlite3_column_int64(stmt, 4) + ov.tokens,
+                totalCost: sqlite3_column_double(stmt, 5) + ov.cost,
+                successRate: Self.successRate(sqlite3_column_int64(stmt, 6) + ov.requests, of: requests),
+                avgLatencyMs: Self.averageLatency(sqlite3_column_int64(stmt, 7) + ov.latencySum, of: requests),
+                performance: performance
             ))
         }
-        // 增量行按 (provider, app) 并入，与库内行同一套身份（overlay 行恒 200、没有计时：计入请求数、
-        // 成功率，耗时按 0 折算，不进速度和首字——界面上显示「—」，等 cc-switch 入库后再有）。
-        // OMP 日志里混着多家 provider，必须分组累加——一股脑塞进 "Claude (Session)" 会把 grok 的花费
-        // 记到 Claude 头上。
-        let ov = overlayLogRows(db, f)
-        if !ov.isEmpty {
-            struct Identity: Hashable { let providerId: String; let appType: String }
-            var grouped: [Identity: (name: String, req: Int64, toks: Int64, cost: Double)] = [:]
-            for r in ov {
-                let key = Identity(providerId: r.providerId, appType: r.appType)
-                var g = grouped[key] ?? (name: r.providerName, req: 0, toks: 0, cost: 0)
-                g.req += 1
-                g.toks += r.realTotalTokens
-                g.cost += r.totalCost
-                grouped[key] = g
-            }
-            for (key, g) in grouped {
-                if let i = out.firstIndex(where: { $0.providerId == key.providerId && $0.appType == key.appType }) {
-                    let oldN = out[i].requestCount
-                    let newN = oldN + g.req
-                    out[i].successRate = Self.mergedSuccessRate(out[i].successRate, oldN, adding: g.req)
-                    out[i].avgLatencyMs = newN > 0 ? out[i].avgLatencyMs * oldN / newN : 0
-                    out[i].requestCount = newN
-                    out[i].totalTokens += g.toks
-                    out[i].totalCost += g.cost
-                } else {
-                    out.append(ProviderStatRow(providerId: key.providerId, appType: key.appType, providerName: g.name,
-                                               requestCount: g.req, totalTokens: g.toks, totalCost: g.cost,
-                                               successRate: 100, avgLatencyMs: 0))
-                }
-            }
-            out.sort { $0.totalCost > $1.totalCost }
+        // 只有叠加行的分组
+        for (key, ov) in overlay {
+            var performance = StatsPerformance()
+            performance.estFirstTokenMedianMs = estimated[key].map(Self.median)
+            ov.addEstimatedSpeed(to: &performance)
+            out.append(ProviderStatRow(providerId: ov.providerId, appType: ov.appType, providerName: ov.providerName,
+                                       requestCount: ov.requests, totalTokens: ov.tokens, totalCost: ov.cost,
+                                       successRate: Self.successRate(ov.requests, of: ov.requests),
+                                       avgLatencyMs: Self.averageLatency(ov.latencySum, of: ov.requests),
+                                       performance: performance))
         }
+        if hasOverlay { out.sort { $0.totalCost > $1.totalCost } }
         return out
     }
 
@@ -343,57 +332,48 @@ extension UsageStore {
         ORDER BY SUM(total_cost) DESC
         """
         let medianFrom = "FROM proxy_request_logs l \(Self.providersJoinL)"
-        let exact = try firstTokenMedians(db, key: Self.effectiveModelL, from: medianFrom, where: detailWhere,
+        let exact = try firstTokenSamples(db, key: Self.effectiveModelL, from: medianFrom, where: detailWhere,
                                           binds: detailBinds, eligible: Self.firstTokenEligibleL)
-        let estimated = try firstTokenMedians(db, key: Self.effectiveModelL, from: medianFrom, where: detailWhere,
+        var estimated = try firstTokenSamples(db, key: Self.effectiveModelL, from: medianFrom, where: detailWhere,
                                               binds: detailBinds, eligible: Self.estFirstTokenEligibleL)
+        // 未入库增量按模型汇总：叠加行 pricing_model 为空，有效计价模型就是 model（与库内会话行同口径）
+        var overlay = Self.groupOverlay(overlayLogRows(db, f)) { $0.model }
+        let hasOverlay = !overlay.isEmpty
+        Self.mergeFirstTokens(of: overlay, into: &estimated)
 
         let stmt = try prepare(db, sql, detailBinds + rollupBinds)
         defer { sqlite3_finalize(stmt) }
         var out: [ModelStatRow] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
             let model = SQLite.text(stmt, 0)
-            let reqCount = sqlite3_column_int64(stmt, 1)
-            let totalCost = sqlite3_column_double(stmt, 3)
+            let ov = overlay.removeValue(forKey: model) ?? OverlayStatsGroup()
+            let requests = sqlite3_column_int64(stmt, 1) + ov.requests
+            let totalCost = sqlite3_column_double(stmt, 3) + ov.cost
+            var performance = Self.readPerformance(stmt, from: 5, exact: exact[model].map(Self.median),
+                                                   estimated: estimated[model].map(Self.median))
+            ov.addEstimatedSpeed(to: &performance)
             out.append(ModelStatRow(
                 model: model,
-                requestCount: reqCount,
-                totalTokens: sqlite3_column_int64(stmt, 2),
+                requestCount: requests,
+                totalTokens: sqlite3_column_int64(stmt, 2) + ov.tokens,
                 totalCost: totalCost,
-                avgCostPerRequest: reqCount > 0 ? totalCost / Double(reqCount) : 0,
-                successRate: Self.successRate(sqlite3_column_int64(stmt, 4), of: reqCount),
-                performance: Self.readPerformance(stmt, from: 5, exact: exact[model], estimated: estimated[model])
+                avgCostPerRequest: requests > 0 ? totalCost / Double(requests) : 0,
+                successRate: Self.successRate(sqlite3_column_int64(stmt, 4) + ov.requests, of: requests),
+                performance: performance
             ))
         }
-        // 未入库增量按模型并入（total_tokens 口径 = 真实消耗，与 SQL 的 realTotalTokens 一致；
-        // 叠加行恒成功、没有计时，只动请求数、成功率、Tokens、成本）
-        let ov = overlayLogRows(db, f)
-        if !ov.isEmpty {
-            var byModel: [String: (req: Int64, toks: Int64, cost: Double)] = [:]
-            for r in ov {
-                var a = byModel[r.model] ?? (0, 0, 0)
-                a.req += 1
-                a.toks += r.realTotalTokens
-                a.cost += r.totalCost
-                byModel[r.model] = a
-            }
-            for (m, a) in byModel {
-                if let i = out.firstIndex(where: { $0.model == m }) {
-                    out[i].successRate = Self.mergedSuccessRate(out[i].successRate, out[i].requestCount, adding: a.req)
-                    out[i].requestCount += a.req
-                    out[i].totalTokens += a.toks
-                    out[i].totalCost += a.cost
-                    out[i].avgCostPerRequest = out[i].requestCount > 0
-                        ? out[i].totalCost / Double(out[i].requestCount) : 0
-                } else {
-                    out.append(ModelStatRow(model: m, requestCount: a.req, totalTokens: a.toks,
-                                            totalCost: a.cost,
-                                            avgCostPerRequest: a.req > 0 ? a.cost / Double(a.req) : 0,
-                                            successRate: 100))
-                }
-            }
-            out.sort { $0.totalCost > $1.totalCost }
+        // 只有叠加行的模型
+        for (model, ov) in overlay {
+            var performance = StatsPerformance()
+            performance.estFirstTokenMedianMs = estimated[model].map(Self.median)
+            ov.addEstimatedSpeed(to: &performance)
+            out.append(ModelStatRow(model: model, requestCount: ov.requests, totalTokens: ov.tokens,
+                                    totalCost: ov.cost,
+                                    avgCostPerRequest: ov.requests > 0 ? ov.cost / Double(ov.requests) : 0,
+                                    successRate: Self.successRate(ov.requests, of: ov.requests),
+                                    performance: performance))
         }
+        if hasOverlay { out.sort { $0.totalCost > $1.totalCost } }
         return out
     }
 
@@ -407,11 +387,11 @@ extension UsageStore {
         return (conds.isEmpty ? "" : "WHERE " + conds.joined(separator: " AND "), binds)
     }
 
-    /// 按分组键取首字中位数（对齐 first_token_medians）。首字长尾明显，偶尔一次排队就十几秒，
-    /// 所以用中位数不用平均；SQLite 没有中位数函数，按键、值排好序取出来在这里算。
+    /// 按分组键取首字样本，各组升序（对齐 first_token_medians 的取数部分）。首字长尾明显，偶尔一次排队就十几秒，
+    /// 所以用中位数不用平均；SQLite 没有中位数函数，按键、值排好序取出来，并进叠加行的样本以后再用 median 算。
     /// `whereClause` 是统计查询明细部分的 WHERE（恒非空：首条是跨源去重），`binds` 是它的参数。
-    func firstTokenMedians(_ db: OpaquePointer, key: String, from: String, where whereClause: String,
-                           binds: [SQLBind], eligible: String) throws -> [String: Int64] {
+    func firstTokenSamples(_ db: OpaquePointer, key: String, from: String, where whereClause: String,
+                           binds: [SQLBind], eligible: String) throws -> [String: [Int64]] {
         let sql = "SELECT \(key) AS k, l.first_token_ms \(from) \(whereClause) AND \(eligible) ORDER BY k, l.first_token_ms"
         let stmt = try prepare(db, sql, binds)
         defer { sqlite3_finalize(stmt) }
@@ -419,7 +399,7 @@ extension UsageStore {
         while sqlite3_step(stmt) == SQLITE_ROW {
             grouped[SQLite.text(stmt, 0), default: []].append(max(0, sqlite3_column_int64(stmt, 1)))
         }
-        return grouped.mapValues(Self.median)
+        return grouped
     }
 
     /// 已升序的一组数的中位数：奇数个取中间，偶数个取中间两个的整除平均（同上游）。
@@ -433,10 +413,68 @@ extension UsageStore {
         requests > 0 ? Double(successes) / Double(requests) * 100 : 0
     }
 
-    /// 并入 `adding` 个恒成功的叠加行之后的成功率。
-    static func mergedSuccessRate(_ rate: Double, _ requests: Int64, adding: Int64) -> Double {
-        let total = requests + adding
-        return total > 0 ? (rate * Double(requests) + 100 * Double(adding)) / Double(total) : 100
+    /// 平均耗时：耗时之和整除请求数，请求数为 0 时为 0（同上游的 SQL 写法）。
+    static func averageLatency(_ sum: Int64, of requests: Int64) -> Int64 {
+        requests > 0 ? sum / requests : 0
+    }
+
+    /// 叠加行按统计表的行身份汇总。叠加行恒 200，全部计入成功；计时是叠加层现场估的（或 OMP 自己记的），
+    /// 非路由来源一律按估算口径：耗时之和进平均耗时；够门槛的（输出 ≥ 200、耗时 ≥ 1s，同 speedEstimateEligibleL）
+    /// 进估算速度；推出了首字的进估算首字中位数（同 estFirstTokenEligibleL）。没有计时的行（耗时 0）只算请求数、
+    /// Tokens、成本，平均耗时里按 0 计——与库里没有计时的行同一口径。
+    struct OverlayStatsGroup {
+        /// 供应商分组用的身份与展示名，取这组第一条叠加行的。
+        var providerId = ""
+        var appType = ""
+        var providerName = ""
+        var requests: Int64 = 0
+        var tokens: Int64 = 0
+        var cost: Double = 0
+        var latencySum: Int64 = 0
+        var estOutputTokens: Int64 = 0
+        var estDurationMs: Int64 = 0
+        var firstTokens: [Int64] = []
+
+        mutating func add(_ r: OverlayRow) {
+            requests += 1
+            tokens += r.realTotalTokens
+            cost += r.totalCost
+            latencySum += r.latencyMs
+            if r.output >= UsageStore.speedEstimateMinOutputTokens,
+               r.latencyMs >= UsageStore.speedEstimateMinDurationMs {
+                estOutputTokens += r.output
+                estDurationMs += r.latencyMs
+            }
+            if let ms = r.firstTokenMs { firstTokens.append(max(0, ms)) }
+        }
+
+        func addEstimatedSpeed(to performance: inout StatsPerformance) {
+            performance.estSpeedOutputTokens += estOutputTokens
+            performance.estSpeedDurationMs += estDurationMs
+        }
+    }
+
+    static func groupOverlay(_ rows: [OverlayRow],
+                             by key: (OverlayRow) -> String) -> [String: OverlayStatsGroup] {
+        var groups: [String: OverlayStatsGroup] = [:]
+        for r in rows {
+            let k = key(r)
+            var g = groups[k] ?? OverlayStatsGroup(providerId: r.providerId, appType: r.appType,
+                                                   providerName: r.providerName)
+            g.add(r)
+            groups[k] = g
+        }
+        return groups
+    }
+
+    /// 叠加行估出的首字并进估算首字的样本，各组重新排好序，之后统一取中位数。
+    static func mergeFirstTokens(of groups: [String: OverlayStatsGroup], into samples: inout [String: [Int64]]) {
+        for (key, g) in groups where !g.firstTokens.isEmpty {
+            var merged = samples[key] ?? []
+            merged.append(contentsOf: g.firstTokens)
+            merged.sort()
+            samples[key] = merged
+        }
     }
 
     /// 从主查询第 `c` 列起读四个速度累计列，配上两组首字中位数。
