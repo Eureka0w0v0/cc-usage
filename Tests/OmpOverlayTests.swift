@@ -42,13 +42,15 @@ final class OmpOverlayTests: XCTestCase {
     }
 
     /// OMP 的 assistant 消息行：usage 用 input/output/cacheRead/cacheWrite，
-    /// 成本自带，timestamp 是毫秒 epoch。
+    /// 成本自带，timestamp 是毫秒 epoch。duration / ttft 是原样写进 JSON 的值（nil = 不带这个字段）。
     private func msgLine(rid: String, provider: String, model: String,
                          output: Int = 100, input: Int = 10,
                          cacheRead: Int = 0, cacheWrite: Int = 0,
-                         cost: Double = 0.5, tsMs: Int64 = 1_785_072_483_377) -> String {
-        #"""
-        {"type":"message","id":"e1","timestamp":"2026-07-26T13:28:12.890Z","message":{"role":"assistant","provider":"\#(provider)","model":"\#(model)","responseId":"\#(rid)","timestamp":\#(tsMs),"usage":{"input":\#(input),"output":\#(output),"cacheRead":\#(cacheRead),"cacheWrite":\#(cacheWrite),"totalTokens":\#(input + output + cacheRead + cacheWrite),"cost":{"input":0.1,"output":0.2,"cacheRead":0.1,"cacheWrite":0.1,"total":\#(cost)}}}}
+                         cost: Double = 0.5, tsMs: Int64 = 1_785_072_483_377,
+                         duration: String? = nil, ttft: String? = nil) -> String {
+        let timing = (duration.map { #""duration":\#($0),"# } ?? "") + (ttft.map { #""ttft":\#($0),"# } ?? "")
+        return #"""
+        {"type":"message","id":"e1","timestamp":"2026-07-26T13:28:12.890Z","message":{"role":"assistant","provider":"\#(provider)","model":"\#(model)","responseId":"\#(rid)","timestamp":\#(tsMs),\#(timing)"usage":{"input":\#(input),"output":\#(output),"cacheRead":\#(cacheRead),"cacheWrite":\#(cacheWrite),"totalTokens":\#(input + output + cacheRead + cacheWrite),"cost":{"input":0.1,"output":0.2,"cacheRead":0.1,"cacheWrite":0.1,"total":\#(cost)}}}}
         """#
     }
 
@@ -281,5 +283,51 @@ final class OmpOverlayTests: XCTestCase {
         let buckets = try store.dataSourceBreakdown().map(\.dataSource)
         XCTAssertEqual(row.dataSource, "omp_session")
         XCTAssertEqual(buckets, ["omp_session"])
+    }
+
+    // MARK: - 计时（OMP 自己记了 duration / ttft）
+
+    /// OMP 在每条回复上记了客户端实测的 duration（请求开始到回复结束）和 ttft，单位毫秒、带小数：
+    /// 四舍五入后直接当耗时和首字。早先恒为 0 / nil，界面显示「—」。
+    /// 杀变异体：不读 duration / ttft（→ 0 / nil）；截断代替四舍五入（首字 9452）。
+    func testTimingComesFromOwnDurationAndTtft() throws {
+        try write([msgLine(rid: "msg_t1", provider: "anthropic", model: "claude-opus-5",
+                           duration: "24760.084791", ttft: "9452.701875")])
+        let r = try XCTUnwrap(overlay.pendingRows(db: db).first)
+        XCTAssertEqual(r.latencyMs, 24_760)
+        XCTAssertEqual(r.firstTokenMs, 9_453)
+
+        // 走到 Request Logs 那一行上
+        let store = UsageStore(path: dbPath, overlay: try Fixture.emptyOverlay(), ompOverlay: overlay)
+        let row = try XCTUnwrap(store.requestLogs(LogQueryFilter(), page: 0, pageSize: 10).rows.first)
+        XCTAssertEqual(row.latencyMs, 24_760)
+        XCTAssertEqual(row.firstTokenMs, 9_453)
+    }
+
+    /// 合理范围和会话日志估算同一套：耗时 100ms–1h，首字落在 (0, 耗时]。缺字段、类型不对都当没有计时；
+    /// 没有耗时就不给首字（上游的首字也只在估出了耗时时才有）。
+    /// 杀变异体：去掉耗时上下限（a、d）；下限改成严格大于（b）；首字不要求 ≤ 耗时（c）或 > 0（e）；
+    /// 没有耗时仍给首字（f）；布尔、字符串当数字读（g、h）。
+    func testTimingOutsidePlausibleRangeIsDropped() throws {
+        let cases: [(id: String, duration: String?, ttft: String?, latency: Int64, firstToken: Int64?)] = [
+            ("msg_a", "99", "50", 0, nil),                 // 耗时不到 100ms
+            ("msg_b", "100", "100", 100, 100),             // 两个边界都算
+            ("msg_c", "3600000", "3600001", 3_600_000, nil), // 1 小时整还算；首字比耗时长不要
+            ("msg_d", "3600001", "1000", 0, nil),          // 超过 1 小时
+            ("msg_e", "5000", "0", 5_000, nil),            // 首字 0 不要
+            ("msg_f", nil, "1000", 0, nil),                // 没有 duration
+            ("msg_g", "true", "1000", 0, nil),             // 布尔不是数字
+            ("msg_h", "\"5000\"", "1000", 0, nil),         // 字符串不是数字
+        ]
+        try write(cases.map {
+            msgLine(rid: $0.id, provider: "anthropic", model: "claude-opus-5", duration: $0.duration, ttft: $0.ttft)
+        })
+        let rows = Dictionary(uniqueKeysWithValues: overlay.pendingRows(db: db).map { ($0.requestId, $0) })
+        XCTAssertEqual(rows.count, cases.count)
+        for c in cases {
+            let r = try XCTUnwrap(rows["session:\(c.id)"], c.id)
+            XCTAssertEqual(r.latencyMs, c.latency, c.id)
+            XCTAssertEqual(r.firstTokenMs, c.firstToken, c.id)
+        }
     }
 }

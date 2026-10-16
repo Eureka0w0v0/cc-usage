@@ -16,7 +16,8 @@ import SQLite3
 //      也只会得到 0,反而把 OMP 已经算对的成本抹掉;
 //   3. 一个日志里混着多家 provider,必须逐行分流到不同 app_type——走 anthropic 的
 //      是 Claude(吃本机 Claude 订阅额度,和 5H/Week 徽标是同一笔账),走 custom-gateway
-//      的是 Grok,两者不能混为一谈(见 classify)。
+//      的是 Grok,两者不能混为一谈(见 classify);
+//   4. 计时不用估:OMP 每条回复自带客户端实测的 duration / ttft,直接采用(见 timing)。
 //
 // 防双算:responseId 为 Anthropic 的 msg_xxx 时,request_id 采用与 cc-switch /
 // SessionOverlay 完全相同的 "session:<msg_id>" 命名空间。这样既能被
@@ -225,15 +226,7 @@ public final class OmpOverlay {
         let provider = (message["provider"] as? String) ?? "unknown"
         let cls = Self.classify(provider: provider, model: model)
 
-        // message.timestamp 是毫秒 epoch;缺失时回落顶层 RFC3339 字符串。
-        let ts: Int64
-        if let ms = message["timestamp"] as? NSNumber {
-            ts = ms.int64Value / 1000
-        } else if let s = obj["timestamp"] as? String, let t = ISO8601Lenient.epochSeconds(s) {
-            ts = t
-        } else {
-            ts = Int64(Date().timeIntervalSince1970)
-        }
+        let ts = Self.createdAt(message: message, line: obj)
 
         let requestId = Self.requestId(responseId: message["responseId"] as? String,
                                        path: path, byteOffset: lineStart)
@@ -248,6 +241,7 @@ public final class OmpOverlay {
         // 同 responseId 重复出现(重试/分叉写入)→ 取 output 更大的那条
         if let old = rows[requestId], output <= old.output { return }
 
+        let timing = Self.timing(duration: message["duration"], ttft: message["ttft"])
         rows[requestId] = OverlayRow(
             requestId: requestId, model: model, createdAt: ts,
             input: input, output: output, cacheRead: cacheRead, cacheCreation: cacheWrite,
@@ -255,8 +249,29 @@ public final class OmpOverlay {
             totalCost: total,
             hasStopReason: true, sourceFile: path,
             appType: cls.appType, providerId: cls.providerId, providerName: cls.providerName,
-            dataSource: "omp_session"
+            dataSource: "omp_session",
+            latencyMs: timing?.latencyMs ?? 0, firstTokenMs: timing?.firstTokenMs
         )
+    }
+
+    /// message.timestamp 是毫秒 epoch;缺失时回落顶层 RFC3339 字符串,再没有就取当前时间。
+    private static func createdAt(message: NSDictionary, line obj: NSDictionary) -> Int64 {
+        if let ms = message["timestamp"] as? NSNumber { return ms.int64Value / 1000 }
+        if let s = obj["timestamp"] as? String, let t = ISO8601Lenient.epochSeconds(s) { return t }
+        return Int64(Date().timeIntervalSince1970)
+    }
+
+    /// OMP 在每条回复上记了客户端实测的 duration（请求开始到回复结束，含首字等待）和 ttft，单位毫秒、带小数。
+    /// cc-switch 不导入 OMP、没有上游口径可对，直接采用，四舍五入到整毫秒；合理范围借用会话日志估算那一套
+    /// （耗时 100ms–1h、首字落在 (0, 耗时]），范围外的当没有计时。没有耗时就不给首字——上游的首字也只在估出了
+    /// 耗时时才有。界面上照样带 ≈：前端把非路由来源一律当估算值显示。
+    static func timing(duration: Any?, ttft: Any?) -> SessionTiming.Estimate? {
+        guard let ms = SessionTiming.jsonMillis(duration),
+              let latency = SessionTiming.plausibleLatency(ms) else { return nil }
+        let firstToken = SessionTiming.jsonMillis(ttft).flatMap {
+            SessionTiming.plausibleFirstToken($0, latency: latency)
+        }
+        return SessionTiming.Estimate(latencyMs: latency, firstTokenMs: firstToken)
     }
 
     /// Anthropic 的 msg_xxx 复用 cc-switch 的 "session:" 命名空间(可被库内行收敛、
