@@ -28,7 +28,9 @@
 		30D0267489B6604D1EDBBFDE /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53421EF89E45311FE29CC6BF /* TrendChart.swift */; };
 		362F525889D4499DC183C099 /* UsageStore+FirstDate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0FC10388B763548ADC60AEE /* UsageStore+FirstDate.swift */; };
 		417D94777D2B75B45D979FB0 /* ClaudeCacheWriteBillingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C680FCBEA94CAC502E56E10 /* ClaudeCacheWriteBillingTests.swift */; };
+		4277C8F9F0DACD8EA6CC0E05 /* SessionTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 614E551FAF127B664E883DF7 /* SessionTiming.swift */; };
 		430272EA72A336833DA9941E /* OmpOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852F6FC486224DEFA66DC312 /* OmpOverlay.swift */; };
+		4337D0C51031275FAFC205AD /* SessionTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 614E551FAF127B664E883DF7 /* SessionTiming.swift */; };
 		43884E8A3CE005F12FEB30E4 /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */; };
 		44B723727A3908575C51CA2C /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B7394AA86628D94994BEE1 /* UsageStore+Summary.swift */; };
 		47E0CBABCC006AB76D0520DE /* CodexRateLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 865223228D5DC112DC2B943E /* CodexRateLimits.swift */; };
@@ -96,6 +98,7 @@
 		B690D5FE64B100264FED2361 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = 0FA0E5873AE44221C5F8E764 /* index.html */; };
 		B709318DC2A0E03EE7054593 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
 		B7B683091718E966E12425FA /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */; };
+		B92DC53A6B5E710778F7BE80 /* SessionTimingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B40B5B2F36EAA5046A0266 /* SessionTimingTests.swift */; };
 		BBF3D589661BD58666A648E8 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		C3EFCC6A9C5C2CD15868F98F /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD0BC76597EA7B1CA061A1A /* TestSupport.swift */; };
 		C4C3DBC1912494D05F4ACE68 /* CodexRateLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 865223228D5DC112DC2B943E /* CodexRateLimits.swift */; };
@@ -126,6 +129,7 @@
 		F0A03A972CAADA8218FA9636 /* brand-antigravity.png in Resources */ = {isa = PBXBuildFile; fileRef = AB7BF81703006F6E8E06425B /* brand-antigravity.png */; };
 		F27D33A3F027F1A252FF97C8 /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B7394AA86628D94994BEE1 /* UsageStore+Summary.swift */; };
 		F4342FBA8A4CA98A394C52D6 /* MenuBarPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1023FC76A66DAD31754F57CB /* MenuBarPanel.swift */; };
+		F685007654413CF621482408 /* SessionTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 614E551FAF127B664E883DF7 /* SessionTiming.swift */; };
 		F6A65301583E710CE61822B6 /* RollupBoundsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C6399E4E6DDB98439F8769 /* RollupBoundsTests.swift */; };
 		FF91707FE4E3429561D9A895 /* StatsRealTotalTokensTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64A17EA95052E02B82E244B1 /* StatsRealTotalTokensTests.swift */; };
 /* End PBXBuildFile section */
@@ -192,6 +196,8 @@
 		581B74090E8AD015CE9C4DBE /* FallbackTableSeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FallbackTableSeedTests.swift; sourceTree = "<group>"; };
 		58B7579031ABBBFE04A53F94 /* SessionOverlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOverlayTests.swift; sourceTree = "<group>"; };
 		5E8E9E18A677821DEA1BD190 /* NiceScaleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NiceScaleTests.swift; sourceTree = "<group>"; };
+		614E551FAF127B664E883DF7 /* SessionTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTiming.swift; sourceTree = "<group>"; };
+		62B40B5B2F36EAA5046A0266 /* SessionTimingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTimingTests.swift; sourceTree = "<group>"; };
 		64A17EA95052E02B82E244B1 /* StatsRealTotalTokensTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsRealTotalTokensTests.swift; sourceTree = "<group>"; };
 		6B3E5D981FBFF4D027390E89 /* WidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetViews.swift; sourceTree = "<group>"; };
 		7240EDA4C546F2792A21A93D /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
@@ -299,6 +305,7 @@
 				3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */,
 				C843DC8A24FE2FC77A32C289 /* Sample.swift */,
 				3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */,
+				614E551FAF127B664E883DF7 /* SessionTiming.swift */,
 				205E593B8BA7C6E8FFA9B329 /* SQLiteSupport.swift */,
 				E20D62ABBAC169F3225CD479 /* Theme.swift */,
 				53421EF89E45311FE29CC6BF /* TrendChart.swift */,
@@ -335,6 +342,7 @@
 				AEC9BFCBC6414480A918AF37 /* RFC3339Tests.swift */,
 				31C6399E4E6DDB98439F8769 /* RollupBoundsTests.swift */,
 				58B7579031ABBBFE04A53F94 /* SessionOverlayTests.swift */,
+				62B40B5B2F36EAA5046A0266 /* SessionTimingTests.swift */,
 				DA08C33B5F223D420F140905 /* StatsPerformanceTests.swift */,
 				64A17EA95052E02B82E244B1 /* StatsRealTotalTokensTests.swift */,
 				3B0A19B0E75AF7C4A2A7B928 /* SyncCursorCompatTests.swift */,
@@ -564,6 +572,7 @@
 				5C6F71164593F58EBA7DCD7C /* SQLiteSupport.swift in Sources */,
 				4D4D7C0D1F59343D57277E53 /* Sample.swift in Sources */,
 				02EC6FAF4D8399AC5EB17794 /* SessionOverlay.swift in Sources */,
+				4277C8F9F0DACD8EA6CC0E05 /* SessionTiming.swift in Sources */,
 				1C8B58897031EB0BE70B1FC9 /* Theme.swift in Sources */,
 				30D0267489B6604D1EDBBFDE /* TrendChart.swift in Sources */,
 				76BC38DB44AABCA134742251 /* UsageModels.swift in Sources */,
@@ -606,6 +615,7 @@
 				5CD50F8CC7B3020983CAB217 /* SQLiteSupport.swift in Sources */,
 				213C0F0038E91DFADFA61B44 /* Sample.swift in Sources */,
 				B3AAFCB633407D12F38BE394 /* SessionOverlay.swift in Sources */,
+				4337D0C51031275FAFC205AD /* SessionTiming.swift in Sources */,
 				A8E7F6A79EEE15E8B809545A /* Theme.swift in Sources */,
 				EA76484909B3172F0696D31D /* TrendChart.swift in Sources */,
 				8489854C9B2CFB5F223BCDF5 /* UpdateChecker.swift in Sources */,
@@ -656,6 +666,8 @@
 				7768945481BA8CEC1034946D /* Sample.swift in Sources */,
 				B709318DC2A0E03EE7054593 /* SessionOverlay.swift in Sources */,
 				5313ACB4FD9AD929ED4F434C /* SessionOverlayTests.swift in Sources */,
+				F685007654413CF621482408 /* SessionTiming.swift in Sources */,
+				B92DC53A6B5E710778F7BE80 /* SessionTimingTests.swift in Sources */,
 				686043A7B00DB10720709364 /* StatsPerformanceTests.swift in Sources */,
 				FF91707FE4E3429561D9A895 /* StatsRealTotalTokensTests.swift in Sources */,
 				A99CCBF14FF6DCD2F03D296C /* SyncCursorCompatTests.swift in Sources */,

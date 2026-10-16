@@ -201,3 +201,40 @@ enum Fixture {
         UsageStore(path: dbPath, overlay: try emptyOverlay(), ompOverlay: try emptyOmpOverlay())
     }
 }
+
+/// Claude Code 会话日志行，与 cc-switch session_usage.rs 测试里的 chain_line / assistant_block_with /
+/// thinking_block 同形，供计时相关的用例拼日志。uuid 用编号生成，parent 填编号即可。
+enum ClaudeLog {
+    static func uuid(_ n: Int) -> String {
+        String(format: "00000000-0000-4000-8000-0000000000%02x", n)
+    }
+
+    /// 一行不带用量的日志（用户消息、工具结果、attachment），只有链信息。
+    static func chain(_ kind: String, _ n: Int, parent: Int?, _ ts: String) -> String {
+        let p = parent.map { "\"\(uuid($0))\"" } ?? "null"
+        return #"{"parentUuid":\#(p),"type":"\#(kind)","uuid":"\#(uuid(n))","timestamp":"\#(ts)","sessionId":"session-t"}"#
+    }
+
+    /// 一条回复里的一个内容块，同一条回复的各块共用 message.id。主会话整条回复结束时一次写完、各块都带
+    /// 最终用量；子代理逐块写，非末块只带当时的输出、没有 stop_reason（finished: false）。
+    static func block(_ msg: String, _ n: Int, parent: Int, index: Int, _ ts: String,
+                      output: Int = 900, finished: Bool = true,
+                      model: String = "claude-opus-4-8") -> String {
+        let stop = finished ? #""tool_use""# : "null"
+        return #"{"parentUuid":"\#(uuid(parent))","type":"assistant","uuid":"\#(uuid(n))","apiBlockIndex":\#(index),"message":{"id":"\#(msg)","model":"\#(model)","usage":{"input_tokens":10,"output_tokens":\#(output),"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"stop_reason":\#(stop)},"timestamp":"\#(ts)","sessionId":"session-t"}"#
+    }
+
+    /// 回复的第一块，带 Claude Code 记的 thinkingDurationMs（从这一块的 content_block_start 计到
+    /// content_block_stop）。firstType 是 content[0] 的类型，默认思考块。
+    static func thinking(_ msg: String, _ n: Int, parent: Int, _ ts: String, durationMs: Int,
+                         output: Int = 900, finished: Bool = true, firstType: String = "thinking",
+                         model: String = "claude-opus-4-8") -> String {
+        let stop = finished ? #""tool_use""# : "null"
+        return #"{"parentUuid":"\#(uuid(parent))","type":"assistant","uuid":"\#(uuid(n))","message":{"id":"\#(msg)","model":"\#(model)","content":[{"type":"\#(firstType)","thinking":""}],"usage":{"input_tokens":10,"output_tokens":\#(output),"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"stop_reason":\#(stop)},"thinkingDurationMs":\#(durationMs),"apiBlockIndex":0,"timestamp":"\#(ts)","sessionId":"session-t"}"#
+    }
+
+    /// 不带 uuid 也不带用量的大行（形如带图片的 api-request-blob），用来把起点行推出回看窗口。
+    static func padding(bytes: Int) -> String {
+        #"{"type":"api-request-blob","blob":"\#(String(repeating: "x", count: bytes))"}"#
+    }
+}

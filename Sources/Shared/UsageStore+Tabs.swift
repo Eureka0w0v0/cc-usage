@@ -178,7 +178,7 @@ extension UsageStore {
                 inputCostUsd: fmt6(r.inputCost), outputCostUsd: fmt6(r.outputCost),
                 cacheReadCostUsd: fmt6(r.cacheReadCost), cacheCreationCostUsd: fmt6(r.cacheCreationCost),
                 totalCostUsd: fmt6(r.totalCost),
-                isStreaming: true, latencyMs: 0, firstTokenMs: nil, durationMs: nil,
+                isStreaming: true, latencyMs: r.latencyMs, firstTokenMs: r.firstTokenMs, durationMs: nil,
                 statusCode: 200, errorMessage: nil, createdAt: r.createdAt,
                 dataSource: r.dataSource   // 与 dataSourceBreakdown 同一真值，不按 providerId 反推
             )

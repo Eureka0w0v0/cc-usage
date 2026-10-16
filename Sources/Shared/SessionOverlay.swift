@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import os
 
 // 「未入库增量」只读叠加层。
 //
@@ -25,6 +26,9 @@ import SQLite3
 //     按 cache_creation 单价 × 1.6 计(v4.0.7 #7653)。是否拆分跟着本机 CC Switch
 //     的版本走,与它将来补录的值保持一致(见 ClaudeCacheWriteBilling)
 //   * 未匹配到定价 → 成本 0(与 cc-switch 相同),tokens 照计
+//   * 耗时 / 首字按时间戳估(v4.0.12 a0dd3b39 / 7e9b99bc / b0b6559a,见 SessionTiming):从 db 游标起读时
+//     先回看游标前 256KB 建对话链,之后续读接着往里加;每读一段,这一段出现过的回复各估一次,后面的块到了
+//     耗时取大、首字先到先得
 //
 // 已知取舍:cc-switch 入库时还会做「session 行 vs 成功 proxy 行」的指纹去重
 // (should_skip_session_insert)。本机没有 proxy 行,该规则恒为空操作,叠加层
@@ -58,6 +62,11 @@ public struct OverlayRow: Sendable {
     /// SessionOverlay 解析的就是 cc-switch 补录后会写成 'session_log' 的那批行，故同名；
     /// OmpOverlay 是 cc-switch 完全不导入的来源，单列 'omp_session' 不与上游取值冲突。
     public var dataSource: String = "session_log"
+    /// 请求耗时（毫秒，含首字等待），0 = 没有计时——与库里 latency_ms 同一约定。会话日志没有请求
+    /// 计时：SessionOverlay 按上游规则拿时间戳估（见 SessionTiming），OmpOverlay 取 OMP 自己记的 duration。
+    public var latencyMs: Int64 = 0
+    /// 首字时间（毫秒），推不出来为 nil——与库里 first_token_ms 同一约定。
+    public var firstTokenMs: Int64? = nil
 }
 
 /// 两个 overlay 共用的逐行扫描原语。
@@ -65,11 +74,29 @@ enum JSONLScan {
     /// 计费行的必要标记。会话日志里 tool_call / thinking / custom 之类的行占七成以上，
     /// 它们不可能含 "usage"——先做一次字节子串命中再决定要不要 JSONSerialization。
     static let usageMarker = Data(#""usage""#.utf8)
+    /// 对话链节点的必要标记：只有带顶层 uuid 的行才进对话链（估请求起点用，见 ClaudeTimingTracker）。
+    /// api-request-blob 之类不带它的大行（本机实测约占日志两成字节）就不必解析。
+    static let uuidMarker = Data(#""uuid""#.utf8)
 
     static func hasUsageMarker(_ p: UnsafeRawPointer, _ len: Int) -> Bool {
-        usageMarker.withUnsafeBytes { m in
+        contains(usageMarker, p, len)
+    }
+
+    static func hasUUIDMarker(_ p: UnsafeRawPointer, _ len: Int) -> Bool {
+        contains(uuidMarker, p, len)
+    }
+
+    private static func contains(_ marker: Data, _ p: UnsafeRawPointer, _ len: Int) -> Bool {
+        marker.withUnsafeBytes { m in
             memmem(p, len, m.baseAddress!, m.count) != nil
         }
+    }
+
+    /// 一行 JSON → 顶层对象。用 bytesNoCopy 包给 JSONSerialization，省掉每行一次的缓冲区拷贝（调用方保证
+    /// p 在调用期间有效）。解析不了或不是对象的行返回 nil：半行、坏行跳过即可，与上游 `Err(_) => continue` 相同。
+    static func object(_ p: UnsafeRawPointer, _ len: Int) -> NSDictionary? {
+        let line = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: p), count: len, deallocator: .none)
+        return (try? JSONSerialization.jsonObject(with: line)) as? NSDictionary
     }
 
     /// proxy_request_logs 的入库水位：行数 + 最新时间戳。两个 overlay 的预检共用。
@@ -130,6 +157,8 @@ final class DirListCache {
 public final class SessionOverlay {
     public static let shared = SessionOverlay()
 
+    private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "overlay")
+
     /// 两次真实扫描的最小间隔:一个刷新 tick 内 UsageStore 的多个查询共享同一次扫描。
     private let minRefreshInterval: TimeInterval
     /// 定价表缓存时长(cc-switch 更新价格后最迟 5 分钟被叠加层看到)。
@@ -172,6 +201,9 @@ public final class SessionOverlay {
         var bytesRead: Int64      // 已消费到的字节位置(完整行边界)
         var linesRead: Int64      // 已消费的行数(含 db 游标内跳过的行)
         var dbCursor: SyncCursor  // 建立本进度时 session_log_sync 的游标
+        /// 从 db 游标起读到现在的对话链与回复计时(见 scanFileLocked)。续读接着往里加,进度重建时一起
+        /// 重建;内存随本文件未入库的行数增长,每行约百字节。
+        var timing: ClaudeTimingTracker
     }
     private var marks: [String: FileMark] = [:]
 
@@ -188,6 +220,10 @@ public final class SessionOverlay {
 
     /// 文件列表缓存（只在目录树形状变了才重新枚举）。始终在 lock 内使用。
     private let dirCache = DirListCache()
+
+    /// 读失败、已经记过日志的文件：读失败时进度不动、每个刷新 tick 都会重试，日志每个文件只记一次，
+    /// 读成功一次就移出。
+    private var unreadable: Set<String> = []
 
     private let projectsDir: String
 
@@ -305,77 +341,185 @@ public final class SessionOverlay {
             return
         }
 
-        var startBytes: Int64 = 0
-        var linesRead: Int64 = 0
-        var skipLines: Int64 = 0
+        guard var plan = readPlanLocked(path, st, dbState),
+              let data = readTailLocked(path, from: plan.startBytes - plan.seedLen) else { return }
+        // 放掉 marks 里那份对话链的引用:plan.tracker 成了唯一持有者,往里加行时才不会整份写时复制
+        marks[path]?.timing = ClaudeTimingTracker()
+        let consumedBytes = consumeLocked(data, &plan, path: path)
+        marks[path] = FileMark(mtimeNs: st.mtimeNs, bytesRead: consumedBytes,
+                               linesRead: plan.linesRead, dbCursor: dbState, timing: plan.tracker)
+    }
+
+    /// 本文件这一轮从哪读起。
+    private struct ReadPlan {
+        var startBytes: Int64
+        /// 已消费的行数(含 db 游标内跳过的行)
+        var linesRead: Int64
+        /// 旧行号游标(A/B 态)要跳过的前 N 行
+        var skipLines: Int64
+        /// 读取起点前要回看的字节数
+        var seedLen: Int64
+        var tracker: ClaudeTimingTracker
+    }
+
+    /// 续读接着自己的进度和对话链;否则(首次见到、db 游标推进、文件被重写)从 db 游标起读,先回看游标前
+    /// 256KB。内容没变返回 nil。
+    ///
+    /// 对话链跨轮保留:每个刷新 tick 都续读,起点行(常是带截图的大工具结果)上一轮读走、回复这一轮
+    /// 才到是常态,每轮只靠 256KB 回看的话,窗口会落在大行中间、找不到起点。所以只在从 db 游标起读时
+    /// 回看,之后这一份一直用到进度重建——等于「从游标一次读到现在」,与 cc-switch 隔一阵一次性导入时
+    /// 看到的相同。
+    private func readPlanLocked(_ path: String, _ st: (mtimeNs: Int64, size: Int64),
+                                _ dbState: SyncCursor) -> ReadPlan? {
         if let m = marks[path], m.dbCursor.samePosition(as: dbState), m.bytesRead <= st.size {
             // 在自己的进度上续读(不必重数 db 游标内的行)
-            startBytes = m.bytesRead
-            linesRead = m.linesRead
-            if m.mtimeNs == st.mtimeNs { return }   // 内容未变
-        } else {
-            // marks 无记录 = 首次见到该文件，rows 里必然没有它的行。冷启动时若每个
-            // 文件都白跑一次全量 filter，等于把整个结果字典重建上千遍
-            // （~/.claude/projects 本机 1092 个文件，比 OMP 那边语料更大）。
-            if marks[path] != nil {
-                // db 游标推进(cc-switch 刚跑过)或文件被重写 → 从头重建本文件的增量
-                rows = rows.filter { $0.value.sourceFile != path }
+            if m.mtimeNs == st.mtimeNs { return nil }   // 内容未变
+            return ReadPlan(startBytes: m.bytesRead, linesRead: m.linesRead, skipLines: 0, seedLen: 0,
+                            tracker: m.timing)
+        }
+        // marks 无记录 = 首次见到该文件，rows 里必然没有它的行。冷启动时若每个
+        // 文件都白跑一次全量 filter，等于把整个结果字典重建上千遍
+        // （~/.claude/projects 本机 1092 个文件，比 OMP 那边语料更大）。
+        if marks[path] != nil {
+            // db 游标推进(cc-switch 刚跑过)或文件被重写 → 从头重建本文件的增量
+            rows = rows.filter { $0.value.sourceFile != path }
+        }
+        let (startBytes, skipLines) = startPoint(dbState, fileSize: st.size)
+        // 回看窗口:db 游标前最多 256KB,只建对话链和回复计时、不计用量(对齐 read_chain_seed)。
+        // 旧行号游标(A/B 态)的首读从文件头开始,被跳过的行上游只数不解析,这里同样不回看。
+        return ReadPlan(startBytes: startBytes, linesRead: 0, skipLines: skipLines,
+                        seedLen: min(startBytes, SessionTiming.chainSeedBytes), tracker: ClaudeTimingTracker())
+    }
+
+    /// 从 offset 读到文件尾。打开、定位或读取失败返回 nil:进度不动,下个 tick 从同一位置重试——定位失败
+    /// 绝不能接着从文件头读,那会把已消化的行再算一遍。日志每个文件只记一次。
+    private func readTailLocked(_ path: String, from offset: Int64) -> Data? {
+        do {
+            guard let fh = FileHandle(forReadingAtPath: path) else { throw CocoaError(.fileReadUnknown) }
+            defer { try? fh.close() }
+            try fh.seek(toOffset: UInt64(offset))
+            let data = try fh.readToEnd() ?? Data()
+            unreadable.remove(path)
+            return data
+        } catch {
+            if unreadable.insert(path).inserted {
+                Self.log.error("会话日志读取失败，下一轮重试: \(path, privacy: .private) \(error.localizedDescription, privacy: .public)")
             }
-            (startBytes, skipLines) = startPoint(dbState, fileSize: st.size)
+            return nil
         }
+    }
 
-        guard let fh = FileHandle(forReadingAtPath: path) else { return }
-        defer { try? fh.close() }
-        if startBytes > 0 { try? fh.seek(toOffset: UInt64(startBytes)) }
-        guard let data = try? fh.readToEnd(), !data.isEmpty else {
-            marks[path] = FileMark(mtimeNs: st.mtimeNs, bytesRead: startBytes,
-                                   linesRead: linesRead, dbCursor: dbState)
-            return
-        }
-
-        // 只消费完整行(带 \n);写了一半的最后一行留到下个 tick,
-        // 避免把残缺 JSON 当作「已处理」而永久丢失(严于上游,口径不受影响)。
-        //
-        // 走裸指针 + "usage" 字节预筛:这里只需要找换行与子串,没有一处用得上 Data
-        // 的语义,而 Data 的下标/切片在大体量日志上开销压倒性(同一批文件实测逐行
-        // 切分 377ms vs memchr 88ms);七成以上的行不含 usage,不必进 JSON 解析。
-        var consumedBytes = startBytes
+    /// 读到的这一段:先喂回看窗口,再逐行消费,读完按这一段出现过的回复估计时。返回消费到的字节位置。
+    ///
+    /// 只消费完整行(带 \n);写了一半的最后一行留到下个 tick,
+    /// 避免把残缺 JSON 当作「已处理」而永久丢失(严于上游,口径不受影响)。
+    ///
+    /// 走裸指针 + 字节预筛:这里只需要找换行与子串,没有一处用得上 Data
+    /// 的语义,而 Data 的下标/切片在大体量日志上开销压倒性(同一批文件实测逐行
+    /// 切分 377ms vs memchr 88ms)。
+    private func consumeLocked(_ data: Data, _ plan: inout ReadPlan, path: String) -> Int64 {
+        var consumedBytes = plan.startBytes
+        /// 这一段读到的计费回复 → 代表行带不带 stop_reason(同一回复里有一块带了就算:上游按
+        /// message.id 去重时 stop_reason 优先)
+        var seen: [String: Bool] = [:]
         data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             guard let base = raw.baseAddress else { return }
             let total = raw.count
-            var off = 0
+            let bodyStart = Int(plan.seedLen)
+            if plan.seedLen > 0 {
+                Self.feedLookBehind(base, count: bodyStart, startsMidFile: plan.startBytes > plan.seedLen,
+                                    into: &plan.tracker)
+            }
+            var off = bodyStart
             while off < total {
                 guard let nl = memchr(base + off, 0x0A, total - off) else { break }
                 let lineBase = base + off
                 let lineLen = UnsafeRawPointer(nl) - lineBase
                 off += lineLen + 1
-                consumedBytes = startBytes + Int64(off)
-                linesRead += 1
+                consumedBytes = plan.startBytes + Int64(off - bodyStart)
+                plan.linesRead += 1
                 // db 偏移内的行 cc-switch 已消化:只数,不解析
-                if skipLines > 0 && linesRead <= skipLines { continue }
-                guard lineLen > 0, JSONLScan.hasUsageMarker(lineBase, lineLen) else { continue }
-                let lineData = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: lineBase),
-                                    count: lineLen, deallocator: .none)
-                guard let obj = try? JSONSerialization.jsonObject(with: lineData) as? NSDictionary
-                else { continue }
-                ingestLocked(obj, path: path)
+                if plan.skipLines > 0 && plan.linesRead <= plan.skipLines { continue }
+                guard lineLen > 0 else { continue }
+                consumeLineLocked(lineBase, lineLen, path: path, tracker: &plan.tracker, seen: &seen)
             }
         }
-
-        marks[path] = FileMark(mtimeNs: st.mtimeNs, bytesRead: consumedBytes,
-                               linesRead: linesRead, dbCursor: dbState)
+        applyTimingLocked(plan.tracker, seen)
+        return consumedBytes
     }
 
-    /// 单行 JSON → 一条待入库行。不命中计费条件时静默跳过。
+    /// 一行:带 "usage" 的(计费)整行解析、记进对话链、入账;只带 "uuid" 的(对话链)只记进对话链,
+    /// 见 recordChainLine;两样都不带的不解析。
+    private func consumeLineLocked(_ p: UnsafeRawPointer, _ len: Int, path: String,
+                                   tracker: inout ClaudeTimingTracker, seen: inout [String: Bool]) {
+        guard JSONLScan.hasUsageMarker(p, len) else {
+            Self.recordChainLine(p, len, into: &tracker)
+            return
+        }
+        guard let obj = JSONLScan.object(p, len) else { return }
+        tracker.record(obj)
+        if let reply = ingestLocked(obj, path: path) {
+            seen[reply.messageId] = (seen[reply.messageId] ?? false) || reply.hasStop
+        }
+    }
+
+    /// 回看窗口里的行只记对话链和回复计时（对齐 read_chain_seed）。窗口不是从文件头开始时第一段多半是半行，
+    /// 丢掉；最后一段是读取起点前的那一行之后的部分（起点在行边界上时为空）。
+    private static func feedLookBehind(_ base: UnsafeRawPointer, count: Int, startsMidFile: Bool,
+                                       into tracker: inout ClaudeTimingTracker) {
+        var off = 0
+        if startsMidFile {
+            guard let nl = memchr(base, 0x0A, count) else { return }
+            off = UnsafeRawPointer(nl) - base + 1
+        }
+        while off < count {
+            let lineBase = base + off
+            let lineLen = memchr(lineBase, 0x0A, count - off).map { UnsafeRawPointer($0) - lineBase } ?? (count - off)
+            off += lineLen + 1
+            guard lineLen > 0 else { continue }
+            guard JSONLScan.hasUsageMarker(lineBase, lineLen) else {
+                recordChainLine(lineBase, lineLen, into: &tracker)
+                continue
+            }
+            if let obj = JSONLScan.object(lineBase, lineLen) { tracker.record(obj) }
+        }
+    }
+
+    /// 不带用量的行只为建对话链：带 uuid 的整行解析后记进对话链。
+    private static func recordChainLine(_ p: UnsafeRawPointer, _ len: Int,
+                                        into tracker: inout ClaudeTimingTracker) {
+        guard JSONLScan.hasUUIDMarker(p, len), let obj = JSONLScan.object(p, len) else { return }
+        tracker.record(obj)
+    }
+
+    /// 这一段读到的回复各按上游规则估一次计时，并进它们的行（refresh_session_log_entry_on_conn 的合并规则，
+    /// 见 SessionTiming.merged）。行可能是这一段新建的，也可能是前几段留下、这一段又读到了它后面的块。
+    private func applyTimingLocked(_ tracker: ClaudeTimingTracker, _ seen: [String: Bool]) {
+        for (messageId, hasStop) in seen {
+            let requestId = Self.requestId(messageId)
+            guard var row = rows[requestId] else { continue }
+            let merged = SessionTiming.merged(latencyMs: row.latencyMs, firstTokenMs: row.firstTokenMs,
+                                              with: tracker.estimate(messageId: messageId, hasStopReason: hasStop))
+            row.latencyMs = merged.latencyMs
+            row.firstTokenMs = merged.firstTokenMs
+            rows[requestId] = row
+        }
+    }
+
+    /// 与 cc-switch 补录时写的 request_id 同一命名空间（SESSION_REQUEST_ID_PREFIX + message.id）。
+    private static func requestId(_ messageId: String) -> String { "session:" + messageId }
+
+    /// 单行 JSON → 一条待入库行。不命中计费条件时返回 nil；命中时返回这一行所属的回复（message.id、
+    /// 这一行带不带 stop_reason），读完这一段后据此估计时。
     ///
     /// 走 NSDictionary 而非 `as? [String: Any]`:后者会把整棵子树递归桥接成 Swift
     /// 字典,而 message 里挂着整段回复正文——我们只要几个标量字段。
-    private func ingestLocked(_ obj: NSDictionary, path: String) {
+    private func ingestLocked(_ obj: NSDictionary, path: String) -> (messageId: String, hasStop: Bool)? {
         guard obj["type"] as? String == "assistant",
               let message = obj["message"] as? NSDictionary,
               let msgId = message["id"] as? String,
               let usage = message["usage"] as? NSDictionary
-        else { return }
+        else { return nil }
 
         let input = int64(usage["input_tokens"])
         let output = int64(usage["output_tokens"])
@@ -384,37 +528,49 @@ public final class SessionOverlay {
         // 缓存写入里 1 小时那部分（对齐上游 claude_cache_creation_1h_tokens）
         let cacheCreation1h = int64((usage["cache_creation"] as? NSDictionary)?["ephemeral_1h_input_tokens"])
         // 任一计费维度 > 0 才计入(对齐上游 has_billable_tokens)
-        guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { return }
+        guard input > 0 || output > 0 || cacheRead > 0 || cacheCreation > 0 else { return nil }
 
         let model = (message["model"] as? String) ?? "unknown"
         let hasStop = (message["stop_reason"] as? String) != nil
         let ts = (obj["timestamp"] as? String).flatMap(ISO8601Lenient.epochSeconds)
             ?? Int64(Date().timeIntervalSince1970)
-        let requestId = "session:" + msgId
+        let requestId = Self.requestId(msgId)
+        let reply = (messageId: msgId, hasStop: hasStop)
 
-        // message.id 去重:stop_reason 优先,同级取 output 更大者(对齐上游)
+        // message.id 去重:stop_reason 优先,同级取 output 更大者(对齐上游)。替换出来的新行带上
+        // 先前估出的计时,这一段读完后再并上这一轮的(applyTimingLocked)
+        var timing = (latencyMs: Int64(0), firstTokenMs: Int64?.none)
         if let old = rows[requestId] {
             let replace = (hasStop && !old.hasStopReason)
                 || (hasStop == old.hasStopReason && output > old.output)
-            if !replace { return }
+            if !replace { return reply }
+            timing = (old.latencyMs, old.firstTokenMs)
         }
 
-        let p = findPricing(model)
-        let ic = p.map { Double(input) * $0.input / 1_000_000 } ?? 0
-        let oc = p.map { Double(output) * $0.output / 1_000_000 } ?? 0
-        let crc = p.map { Double(cacheRead) * $0.cacheRead / 1_000_000 } ?? 0
-        let ccc = p.map {
-            ClaudeCacheWriteBilling.cost(tokens: cacheCreation, oneHourTokens: cacheCreation1h,
-                                         pricePerMillion: $0.cacheCreation, oneHourRate: oneHourRate ?? true)
-        } ?? 0
-
+        let c = costs(model: model, input: input, output: output, cacheRead: cacheRead,
+                      cacheCreation: cacheCreation, cacheCreation1h: cacheCreation1h)
         rows[requestId] = OverlayRow(
             requestId: requestId, model: model, createdAt: ts,
             input: input, output: output, cacheRead: cacheRead, cacheCreation: cacheCreation,
-            inputCost: ic, outputCost: oc, cacheReadCost: crc, cacheCreationCost: ccc,
-            totalCost: ic + oc + crc + ccc,
-            hasStopReason: hasStop, sourceFile: path
+            inputCost: c.input, outputCost: c.output, cacheReadCost: c.cacheRead, cacheCreationCost: c.cacheCreation,
+            totalCost: c.input + c.output + c.cacheRead + c.cacheCreation,
+            hasStopReason: hasStop, sourceFile: path,
+            latencyMs: timing.latencyMs, firstTokenMs: timing.firstTokenMs
         )
+        return reply
+    }
+
+    /// 四项成本:tokens × 每百万单价,倍率 1;缓存写入里 1 小时那部分按 ClaudeCacheWriteBilling 计。
+    /// 查不到定价全为 0(与 cc-switch 相同)。
+    private func costs(model: String, input: Int64, output: Int64, cacheRead: Int64,
+                       cacheCreation: Int64, cacheCreation1h: Int64)
+        -> (input: Double, output: Double, cacheRead: Double, cacheCreation: Double) {
+        guard let p = findPricing(model) else { return (0, 0, 0, 0) }
+        return (Double(input) * p.input / 1_000_000,
+                Double(output) * p.output / 1_000_000,
+                Double(cacheRead) * p.cacheRead / 1_000_000,
+                ClaudeCacheWriteBilling.cost(tokens: cacheCreation, oneHourTokens: cacheCreation1h,
+                                             pricePerMillion: p.cacheCreation, oneHourRate: oneHourRate ?? true))
     }
 
     /// 已被 cc-switch 入库的行从叠加层剔除(request_id 精确去重的兜底)。

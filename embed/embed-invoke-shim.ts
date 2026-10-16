@@ -186,8 +186,9 @@ function mockFirstDate(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// 三种计时情况各一行：经路由（精确速度 / 首字）、会话日志导入（估算，界面带 ≈）、
-// 还没被 cc-switch 导入的叠加行（没有计时，界面显示「—」）。
+// 三种计时情况各一行：经路由（精确速度 / 首字）、会话日志行（按时间戳估算，界面带 ≈）、
+// 会话日志行没估出计时（回复还没写完、找不到请求起点等，界面显示「—」）。还没被 cc-switch
+// 导入的叠加行同样按上游规则估算，落在后两种里。
 function mockRequestLogs() {
   const now = Math.floor(Date.now() / 1000);
   const row = (
