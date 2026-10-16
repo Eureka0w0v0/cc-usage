@@ -10,6 +10,15 @@ private enum RequestLogCol: Int32 {
          billableInput
 }
 
+/// requestLogSelect 一行的按名取列（列序由 RequestLogCol 与投影共同约定）。
+private struct RequestLogColumns {
+    let stmt: OpaquePointer?
+    func text(_ c: RequestLogCol) -> String { SQLite.text(stmt, c.rawValue) }
+    func textOpt(_ c: RequestLogCol) -> String? { SQLite.textOpt(stmt, c.rawValue) }
+    func int(_ c: RequestLogCol) -> Int64 { sqlite3_column_int64(stmt, c.rawValue) }
+    func intOpt(_ c: RequestLogCol) -> Int64? { SQLite.intOpt(stmt, c.rawValue) }
+}
+
 extension UsageStore {
     // MARK: - Tabs 查询（Request Logs / Provider Stats / Model Stats）
     //
@@ -72,84 +81,12 @@ extension UsageStore {
         let need = offset + size
         var pageBinds = binds
         pageBinds.append(.int(Int64(need)))
-        // SELECT 投影列序 = RequestLogCol 的 case 顺序（改一处必须同步改另一处）
-        let sql = """
-        SELECT l.request_id, l.provider_id, \(Self.providerNameCoalesce) AS provider_name, l.app_type, l.model,
-               l.request_model, l.pricing_model, l.cost_multiplier,
-               l.input_tokens, l.output_tokens, l.cache_read_tokens, l.cache_creation_tokens,
-               l.input_cost_usd, l.output_cost_usd, l.cache_read_cost_usd, l.cache_creation_cost_usd, l.total_cost_usd,
-               l.is_streaming, l.latency_ms, l.first_token_ms, l.duration_ms,
-               l.status_code, l.error_message, l.created_at, l.data_source,
-               \(ModelPricing.billableInputSQL("l", hasSemantics: hasSemantics(db))) AS billable_input
-        FROM proxy_request_logs l
-        \(Self.providersJoinL)
-        \(whereClause)
-        ORDER BY l.created_at DESC
-        LIMIT ?
-        """
+        let sql = "\(requestLogSelect(db)) \(whereClause) ORDER BY l.created_at DESC LIMIT ?"
         let stmt = try prepare(db, sql, pageBinds)
         defer { sqlite3_finalize(stmt) }
-        // 按名取列，列序由 RequestLogCol 与上面的 SELECT 投影共同约定
-        func text(_ c: RequestLogCol) -> String { SQLite.text(stmt, c.rawValue) }
-        func textOpt(_ c: RequestLogCol) -> String? { SQLite.textOpt(stmt, c.rawValue) }
-        func int(_ c: RequestLogCol) -> Int64 { sqlite3_column_int64(stmt, c.rawValue) }
-        func intOpt(_ c: RequestLogCol) -> Int64? { SQLite.intOpt(stmt, c.rawValue) }
-
         var rows: [RequestLogRow] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
-            let mult = text(.costMultiplier)
-            let inTok = int(.inputTokens)
-            let outTok = int(.outputTokens)
-            let crTok = int(.cacheReadTokens)
-            let ccTok = int(.cacheCreationTokens)
-            var costs = (input: text(.inputCost), output: text(.outputCost),
-                         cacheRead: text(.cacheReadCost), cacheCreation: text(.cacheCreationCost),
-                         total: text(.totalCost))
-            // cc-switch 入库时查不到定价 → 成本写死 0,面板显示「未定价」。这里用
-            // 内置表现场补算(只读,不改库);库里已有正成本的行原样保留。
-            if (Double(costs.total) ?? 0) <= 0,
-               inTok > 0 || outTok > 0 || crTok > 0 || ccTok > 0 {
-                // 计价基准与 input 口径都走与 costSQL 同一套规则（占位符判定 +
-                // billable input），否则同一行在 Hero 和明细表里会算出两个数。
-                let effective = ModelPricing.resolvePricingModel(
-                    pricingModel: textOpt(.pricingModel),
-                    model: text(.model),
-                    requestModel: textOpt(.requestModel))
-                if let effective,
-                   let b = ModelPricing.backfilledCosts(
-                    model: effective, multiplier: Double(mult) ?? 1,
-                    billableInput: int(.billableInput),
-                    output: outTok, cacheRead: crTok, cacheCreation: ccTok) {
-                    costs = b
-                }
-            }
-            rows.append(RequestLogRow(
-                requestId: text(.requestId),
-                providerId: text(.providerId),
-                providerName: text(.providerName),
-                appType: text(.appType),
-                model: text(.model),
-                requestModel: textOpt(.requestModel),
-                pricingModel: textOpt(.pricingModel),
-                costMultiplier: mult.isEmpty ? "1" : mult,
-                inputTokens: inTok,
-                outputTokens: outTok,
-                cacheReadTokens: crTok,
-                cacheCreationTokens: ccTok,
-                inputCostUsd: costs.input,
-                outputCostUsd: costs.output,
-                cacheReadCostUsd: costs.cacheRead,
-                cacheCreationCostUsd: costs.cacheCreation,
-                totalCostUsd: costs.total,
-                isStreaming: int(.isStreaming) != 0,
-                latencyMs: int(.latencyMs),
-                firstTokenMs: intOpt(.firstTokenMs),
-                durationMs: intOpt(.durationMs),
-                statusCode: Int(int(.statusCode)),
-                errorMessage: textOpt(.errorMessage),
-                createdAt: int(.createdAt),
-                dataSource: textOpt(.dataSource)
-            ))
+            rows.append(readRequestLogRow(stmt))
         }
         // 增量行:计入总数,并与库内行二路归并后再切页。
         //
@@ -166,23 +103,7 @@ extension UsageStore {
         }
         total += ov.count
 
-        let fmt6 = { (v: Double) in String(format: "%.6f", v) }
-        let ovRows = ov.sorted { $0.createdAt > $1.createdAt }.prefix(need).map { r in
-            RequestLogRow(
-                requestId: r.requestId, providerId: r.providerId,
-                providerName: r.providerName, appType: r.appType,
-                model: r.model, requestModel: r.model, pricingModel: nil,
-                costMultiplier: "1.0",
-                inputTokens: r.input, outputTokens: r.output,
-                cacheReadTokens: r.cacheRead, cacheCreationTokens: r.cacheCreation,
-                inputCostUsd: fmt6(r.inputCost), outputCostUsd: fmt6(r.outputCost),
-                cacheReadCostUsd: fmt6(r.cacheReadCost), cacheCreationCostUsd: fmt6(r.cacheCreationCost),
-                totalCostUsd: fmt6(r.totalCost),
-                isStreaming: true, latencyMs: r.latencyMs, firstTokenMs: r.firstTokenMs, durationMs: nil,
-                statusCode: 200, errorMessage: nil, createdAt: r.createdAt,
-                dataSource: r.dataSource   // 与 dataSourceBreakdown 同一真值，不按 providerId 反推
-            )
-        }
+        let ovRows = ov.sorted { $0.createdAt > $1.createdAt }.prefix(need).map(Self.overlayRequestLogRow)
 
         // 同 created_at 时库内行优先(>=)：cc-switch 补录后同一条响应会先由库内行
         // 顶替、overlay 侧再被 request_id 去重剔除，翻页时不会先后跳位。
@@ -197,6 +118,118 @@ extension UsageStore {
             }
         }
         return RequestLogPage(rows: Array(merged.dropFirst(offset)), total: total)
+    }
+
+    /// 单条请求（详情抽屉）。对齐 get_request_detail（usage_stats.rs）：按 request_id 直查明细、成本照列表一样
+    /// 补算、不套跨源去重；库里没有就找还没入库的叠加行。都没有返回 nil，前端显示「Request not found」。
+    public func requestDetail(_ requestId: String) throws -> RequestLogRow? {
+        let db = try openRO()
+        defer { sqlite3_close(db) }
+        let sql = "\(requestLogSelect(db)) WHERE l.request_id = ?"
+        let stmt = try prepare(db, sql, [.text(requestId)])
+        defer { sqlite3_finalize(stmt) }
+        switch sqlite3_step(stmt) {
+        case SQLITE_ROW:
+            return readRequestLogRow(stmt)
+        case SQLITE_DONE:
+            return overlayRows(db, UsageFilter()).first { $0.requestId == requestId }
+                .map(Self.overlayRequestLogRow)
+        case let rc:
+            // 查询出错不能当「没有这条」：抛给桥接层，前端显示可重试的错误
+            throw UsageStoreError.step(rc, sql)
+        }
+    }
+
+    /// requestLogs / requestDetail 共用的 SELECT 投影，后面接 WHERE。列序 = RequestLogCol 的 case 顺序
+    /// （改一处必须同步改另一处）。
+    private func requestLogSelect(_ db: OpaquePointer) -> String {
+        """
+        SELECT l.request_id, l.provider_id, \(Self.providerNameCoalesce) AS provider_name, l.app_type, l.model,
+               l.request_model, l.pricing_model, l.cost_multiplier,
+               l.input_tokens, l.output_tokens, l.cache_read_tokens, l.cache_creation_tokens,
+               l.input_cost_usd, l.output_cost_usd, l.cache_read_cost_usd, l.cache_creation_cost_usd, l.total_cost_usd,
+               l.is_streaming, l.latency_ms, l.first_token_ms, l.duration_ms,
+               l.status_code, l.error_message, l.created_at, l.data_source,
+               \(ModelPricing.billableInputSQL("l", hasSemantics: hasSemantics(db))) AS billable_input
+        FROM proxy_request_logs l
+        \(Self.providersJoinL)
+        """
+    }
+
+    /// requestLogSelect 的当前一行 → RequestLogRow。
+    private func readRequestLogRow(_ stmt: OpaquePointer?) -> RequestLogRow {
+        let col = RequestLogColumns(stmt: stmt)
+        let mult = col.text(.costMultiplier)
+        let costs = requestLogCosts(col)
+        return RequestLogRow(
+            requestId: col.text(.requestId),
+            providerId: col.text(.providerId),
+            providerName: col.text(.providerName),
+            appType: col.text(.appType),
+            model: col.text(.model),
+            requestModel: col.textOpt(.requestModel),
+            pricingModel: col.textOpt(.pricingModel),
+            costMultiplier: mult.isEmpty ? "1" : mult,
+            inputTokens: col.int(.inputTokens),
+            outputTokens: col.int(.outputTokens),
+            cacheReadTokens: col.int(.cacheReadTokens),
+            cacheCreationTokens: col.int(.cacheCreationTokens),
+            inputCostUsd: costs.input,
+            outputCostUsd: costs.output,
+            cacheReadCostUsd: costs.cacheRead,
+            cacheCreationCostUsd: costs.cacheCreation,
+            totalCostUsd: costs.total,
+            isStreaming: col.int(.isStreaming) != 0,
+            latencyMs: col.int(.latencyMs),
+            firstTokenMs: col.intOpt(.firstTokenMs),
+            durationMs: col.intOpt(.durationMs),
+            statusCode: Int(col.int(.statusCode)),
+            errorMessage: col.textOpt(.errorMessage),
+            createdAt: col.int(.createdAt),
+            dataSource: col.textOpt(.dataSource)
+        )
+    }
+
+    /// 这一行的五项成本。cc-switch 入库时查不到定价 → 成本写死 0,面板显示「未定价」:这里用
+    /// 内置表现场补算(只读,不改库);库里已有正成本的行原样保留。
+    private func requestLogCosts(_ col: RequestLogColumns)
+        -> (input: String, output: String, cacheRead: String, cacheCreation: String, total: String) {
+        let stored = (input: col.text(.inputCost), output: col.text(.outputCost),
+                      cacheRead: col.text(.cacheReadCost), cacheCreation: col.text(.cacheCreationCost),
+                      total: col.text(.totalCost))
+        let inTok = col.int(.inputTokens), outTok = col.int(.outputTokens)
+        let crTok = col.int(.cacheReadTokens), ccTok = col.int(.cacheCreationTokens)
+        guard (Double(stored.total) ?? 0) <= 0, inTok > 0 || outTok > 0 || crTok > 0 || ccTok > 0 else { return stored }
+        // 计价基准与 input 口径都走与 costSQL 同一套规则（占位符判定 +
+        // billable input），否则同一行在 Hero 和明细表里会算出两个数。
+        guard let effective = ModelPricing.resolvePricingModel(
+                pricingModel: col.textOpt(.pricingModel), model: col.text(.model),
+                requestModel: col.textOpt(.requestModel)),
+              let backfilled = ModelPricing.backfilledCosts(
+                model: effective, multiplier: Double(col.text(.costMultiplier)) ?? 1,
+                billableInput: col.int(.billableInput),
+                output: outTok, cacheRead: crTok, cacheCreation: ccTok) else { return stored }
+        return backfilled
+    }
+
+    /// 叠加行 → RequestLogRow：provider 是行自带的占位身份，状态恒 200，计时是叠加层现场估的（SessionOverlay）
+    /// 或 OMP 自己记的（OmpOverlay），没有计时时 latencyMs 0、firstTokenMs nil，与库里的约定相同。
+    static func overlayRequestLogRow(_ r: OverlayRow) -> RequestLogRow {
+        let fmt6 = { (v: Double) in String(format: "%.6f", v) }
+        return RequestLogRow(
+            requestId: r.requestId, providerId: r.providerId,
+            providerName: r.providerName, appType: r.appType,
+            model: r.model, requestModel: r.model, pricingModel: nil,
+            costMultiplier: "1.0",
+            inputTokens: r.input, outputTokens: r.output,
+            cacheReadTokens: r.cacheRead, cacheCreationTokens: r.cacheCreation,
+            inputCostUsd: fmt6(r.inputCost), outputCostUsd: fmt6(r.outputCost),
+            cacheReadCostUsd: fmt6(r.cacheReadCost), cacheCreationCostUsd: fmt6(r.cacheCreationCost),
+            totalCostUsd: fmt6(r.totalCost),
+            isStreaming: true, latencyMs: r.latencyMs, firstTokenMs: r.firstTokenMs, durationMs: nil,
+            statusCode: 200, errorMessage: nil, createdAt: r.createdAt,
+            dataSource: r.dataSource   // 与 dataSourceBreakdown 同一真值，不按 providerId 反推
+        )
     }
 
     /// Provider 统计。对齐 get_provider_stats（v4.0.12）：明细行与整日 rollup UNION ALL 后按

@@ -175,6 +175,12 @@ struct PanelWebView: NSViewRepresentable {
                 )
                 let pageResult = try store.requestLogs(f, page: page, pageSize: pageSize)
                 return requestLogsDict(pageResult, page: page, pageSize: pageSize)
+            case "get_request_detail":
+                // 入参：invoke("get_request_detail", { requestId })，点请求日志的一行打开详情抽屉时发。
+                // 查不到回 null，前端显示「Request not found」；查询出错照常抛，前端显示可重试的错误。
+                guard let requestId = args["requestId"] as? String, !requestId.isEmpty else { return NSNull() }
+                guard let row = try store.requestDetail(requestId) else { return NSNull() }
+                return requestLogDict(row)
             case "get_provider_stats":
                 let f = LogQueryFilter(start: start, end: end, appType: appType,
                                        providerName: providerName, model: model)

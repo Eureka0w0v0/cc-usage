@@ -180,6 +180,24 @@ final class ModelPricingFallbackTests: XCTestCase {
         XCTAssertEqual(Double(row.cacheCreationCostUsd) ?? 0, 0.0625, accuracy: 1e-6)
     }
 
+    /// 补算出来的合计要乘这一行的倍率（cost_multiplier），与 Hero 的成本 SQL 同口径；各分项不乘（同上游）。
+    /// 列表、详情两条路径共用同一个补算。
+    /// 杀变异体：补算时倍率写死 1（列表 / 详情里的合计只有 Hero 的一半）。
+    func testBackfilledRequestLogAppliesCostMultiplier() throws {
+        try Fixture.insertLog(dbPath, id: "p6", model: "claude-opus-5",
+                              input: inTok, output: outTok,
+                              cacheRead: crTok, cacheCreation: ccTok,
+                              cost: 0, createdAt: Fixture.ts(2026, 6, 10, 12))
+        try Fixture.exec(dbPath, "UPDATE proxy_request_logs SET cost_multiplier = '2' WHERE request_id = 'p6';")
+        let window = LogQueryFilter(start: Fixture.ts(2026, 6, 10), end: Fixture.ts(2026, 6, 10, 23))
+        let row = try XCTUnwrap(store.requestLogs(window, page: 0, pageSize: 20).rows.first { $0.requestId == "p6" })
+        XCTAssertEqual(Double(row.totalCostUsd) ?? 0, expected * 2, accuracy: 1e-6)
+        XCTAssertEqual(Double(row.outputCostUsd) ?? 0, 0.05, accuracy: 1e-6, "分项不乘倍率")
+        XCTAssertEqual(try store.requestDetail("p6")?.totalCostUsd, row.totalCostUsd)
+        let hero = try store.rangeSummary(UsageFilter(start: window.start, end: window.end), calendar: cal)
+        XCTAssertEqual(hero.cost, expected * 2, accuracy: 1e-6, "前提：Hero 也按倍率算")
+    }
+
     func testRequestLogDetailKeepsExistingCost() throws {
         try Fixture.insertLog(dbPath, id: "p5", model: "claude-opus-5",
                               input: inTok, output: outTok,

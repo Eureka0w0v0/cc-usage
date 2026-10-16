@@ -46,10 +46,12 @@ public struct UsageSnapshot: Sendable {
 public enum UsageStoreError: Error, CustomStringConvertible {
     case open(Int32)
     case prepare(String)
+    case step(Int32, String)
     public var description: String {
         switch self {
         case .open(let rc): return "cannot open database (sqlite rc=\(rc))"
         case .prepare(let sql): return "failed to prepare SQL: \(sql)"
+        case .step(let rc, let sql): return "failed to read rows (sqlite rc=\(rc)): \(sql)"
         }
     }
 }
@@ -91,7 +93,7 @@ public struct LogQueryFilter: Sendable {
 }
 
 /// 对齐 RequestLogDetail（usage_stats.rs）→ RequestLog（types/usage.ts）。
-public struct RequestLogRow: Sendable {
+public struct RequestLogRow: Sendable, Equatable {
     public var requestId: String
     public var providerId: String
     public var providerName: String
