@@ -448,7 +448,7 @@ public final class SessionOverlay {
         return consumedBytes
     }
 
-    /// 一行:带 "usage" 的(计费)整行解析、记进对话链、入账;只带 "uuid" 的(对话链)只记进对话链,
+    /// 一行:带 "usage" 的(计费)整行解析、记进对话链、入账;只带 "uuid" 的(对话链)快扫顶层四个字段,
     /// 见 recordChainLine;两样都不带的不解析。
     private func consumeLineLocked(_ p: UnsafeRawPointer, _ len: Int, path: String,
                                    tracker: inout ClaudeTimingTracker, seen: inout [String: Bool]) {
@@ -485,11 +485,17 @@ public final class SessionOverlay {
         }
     }
 
-    /// 不带用量的行只为建对话链：带 uuid 的整行解析后记进对话链。
+    /// 不带用量的行只为建对话链：带 uuid 的先快扫顶层四个字段（JSONLScan.chainFields），快扫不了的
+    /// （有转义、assistant 行、结构不完整）再整行解析——结果与整行解析完全一致，只是省掉大行的解析开销。
     private static func recordChainLine(_ p: UnsafeRawPointer, _ len: Int,
                                         into tracker: inout ClaudeTimingTracker) {
-        guard JSONLScan.hasUUIDMarker(p, len), let obj = JSONLScan.object(p, len) else { return }
-        tracker.record(obj)
+        guard JSONLScan.hasUUIDMarker(p, len) else { return }
+        switch JSONLScan.chainFields(p, len) {
+        case .fields(let fields):
+            tracker.record(fields)
+        case .needsFullParse:
+            if let obj = JSONLScan.object(p, len) { tracker.record(obj) }
+        }
     }
 
     /// 这一段读到的回复各按上游规则估一次计时，并进它们的行（refresh_session_log_entry_on_conn 的合并规则，

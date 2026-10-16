@@ -328,6 +328,16 @@ final class SessionTimingTests: XCTestCase {
         XCTAssertEqual(r["session:msg_nots"]?.latencyMs, 5_000)
     }
 
+    /// 对话链行先快扫顶层字段；快扫不了的（这里是时间戳带了转义）回落整行解析，起点照样找得到、时间照样对。
+    /// 杀变异体：快扫不了的行直接丢掉（→ 0）。
+    func testChainLineThatNeedsAFullParseStillCounts() throws {
+        let escaped = chain("user", 1, parent: nil, "2026-06-07T13:00:00.000Z")
+            .replacingOccurrences(of: "13:00:00.000Z", with: #"13:00:00.000\u005A"#)
+        XCTAssertEqual(JSONLScan.chainFields(escaped, escaped.utf8.count), .needsFullParse, "前提：这一行快扫不了")
+        try write([escaped, block("msg_t", 2, parent: 1, index: 0, "2026-06-07T13:00:09.000Z")])
+        XCTAssertEqual(rows()["session:msg_t"]?.latencyMs, 9_000)
+    }
+
     // MARK: - 叠加层特有的路径
 
     /// 起点行被叠加层自己的上一轮续读读走（cc-switch 不在、文件持续追加的常态）。

@@ -119,6 +119,13 @@ struct ClaudeTimingTracker {
         timings[msgId] = timing
     }
 
+    /// 记一行快扫出来的链信息（JSONLScan.chainFields；assistant 行不走快扫，所以这里只有对话链）。
+    mutating func record(_ fields: JSONLScan.ChainFields) {
+        recordChainNode(uuid: fields.uuid, parentUuid: fields.parentUuid,
+                        timestampMs: fields.timestamp.flatMap(RFC3339.epochMillis),
+                        isAttachment: fields.type == "attachment")
+    }
+
     private mutating func recordChainNode(uuid: String?, parentUuid: String?, timestampMs: Int64?,
                                           isAttachment: Bool) {
         guard let id = Self.uuid(uuid) else { return }
