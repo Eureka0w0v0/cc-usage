@@ -5,7 +5,8 @@ import Foundation
 // → 解析出各限流窗口的真实 utilization%（而非拿 token 数除以占位额度猜）。
 //
 // 凭据来源（按优先级，与 cc-switch 一致）：
-//   1. macOS Keychain: `security find-generic-password -s "Claude Code-credentials" -w`
+//   1. macOS Keychain: `security find-generic-password -s "Claude Code-credentials" -a $USER -w`，
+//      没有可用的登录再不带 `-a` 查一次（同名条目可能只存了 MCP 登录，上游 #8764）
 //   2. 文件: ~/.claude/.credentials.json
 //   JSON 结构（两种 key 名都兼容）：
 //   { "claudeAiOauth": { "accessToken": "...", "expiresAt": <ms>, "subscriptionType": "..." } }
@@ -145,20 +146,16 @@ enum QuotaService {
 
 // MARK: - 凭据读取（照搬 subscription.rs 的 read_claude_credentials）
 
-/// 解析出的 Claude 凭据（expiresAt 不解析——无论本地判过期与否都会尝试调 API，
-/// 过期与否由服务端 401/403 裁决）。
-struct ClaudeCredential: Sendable {
-    let accessToken: String
-    let subscriptionType: String?
-}
-
-/// 纯 Foundation、可在后台线程执行的凭据读取器。
+/// 纯 Foundation、可在后台线程执行的凭据读取器。取舍规则（先当前用户账户、再旧查法、
+/// 最后凭据文件）和 JSON 解析都在 `Sources/Shared/ClaudeCredentialSource.swift`，这里只起进程、读文件。
 enum ClaudeCredentialReader {
     /// 按优先级读取：Keychain → 文件。返回凭据或降级状态。
     static func read() -> Result<ClaudeCredential, QuotaStatus> {
-        // 来源 1：macOS Keychain
-        if let json = keychainJSON() {
-            return parse(json)
+        // 来源 1：macOS Keychain。上游取 $USER；从访达启动时环境里没有它的话退回登录名（同一个值）。
+        let env = ProcessInfo.processInfo.environment["USER"] ?? ""
+        let user = env.isEmpty ? NSUserName() : env
+        if let credential = ClaudeKeychainLookup.select(user: user, run: runSecurity) {
+            return .success(credential)
         }
         // 来源 2：~/.claude/.credentials.json
         let path = (NSHomeDirectory() as NSString)
@@ -169,48 +166,31 @@ enum ClaudeCredentialReader {
         guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
             return .failure(.failed("读取凭据文件失败"))
         }
-        return parse(content)
+        switch ClaudeCredentialParser.parse(content) {
+        case .success(let credential):
+            return .success(credential)
+        case .failure(.invalidJSON):
+            return .failure(.failed("凭据 JSON 解析失败"))
+        case .failure(.missingOAuthEntry):
+            return .failure(.failed("凭据中缺少 OAuth 条目"))
+        case .failure(.missingAccessToken):
+            return .failure(.failed("accessToken 为空或缺失"))
+        }
     }
 
-    /// `security find-generic-password -s "Claude Code-credentials" -w`
-    private static func keychainJSON() -> String? {
+    /// 跑一次 `/usr/bin/security <arguments>`；进程起不来返回 nil。
+    /// stderr 接空设备：不读的管道一旦写满，子进程会卡在 write 上、这里的 waitUntilExit 永远等不到。
+    private static func runSecurity(_ arguments: [String]) -> SecurityLookupOutput? {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        proc.arguments = [
-            "find-generic-password", "-s", "Claude Code-credentials", "-w",
-        ]
+        proc.arguments = arguments
         let out = Pipe()
         proc.standardOutput = out
-        proc.standardError = Pipe()
+        proc.standardError = FileHandle.nullDevice
         do { try proc.run() } catch { return nil }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         proc.waitUntilExit()
-        guard proc.terminationStatus == 0 else { return nil }
-        let s = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (s?.isEmpty == false) ? s : nil
-    }
-
-    /// 解析凭据 JSON（Keychain / 文件共用）
-    private static func parse(_ json: String) -> Result<ClaudeCredential, QuotaStatus> {
-        guard let data = json.data(using: .utf8),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return .failure(.failed("凭据 JSON 解析失败"))
-        }
-        // 兼容两种 key 名
-        guard let entry = (root["claudeAiOauth"] ?? root["claude.ai_oauth"]) as? [String: Any]
-        else {
-            return .failure(.failed("凭据中缺少 OAuth 条目"))
-        }
-        guard let token = entry["accessToken"] as? String, !token.isEmpty else {
-            return .failure(.failed("accessToken 为空或缺失"))
-        }
-
-        return .success(ClaudeCredential(
-            accessToken: token,
-            subscriptionType: entry["subscriptionType"] as? String
-        ))
+        return SecurityLookupOutput(status: proc.terminationStatus, stdout: data)
     }
 }
 
