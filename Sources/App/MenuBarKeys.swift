@@ -24,7 +24,7 @@ enum MBKey {
     static let groupCodex       = "mb.group.codex"
     static let groupGemini      = "mb.group.gemini"
     static let groupOpencode    = "mb.group.opencode"
-    static let groupAntigravity = "mb.group.antigravity"
+    static let groupAntigravity = "mb.group.antigravity"   // 历史键名保留（对应 MBApp.agy）
     static let groupGrok        = "mb.group.grok"      // 历史键名保留（对应 MBApp.grokbuild）
     static let groupPi          = "mb.group.pi"
     static let groupMcode       = "mb.group.mcode"
@@ -44,23 +44,23 @@ enum EmbedKey {
 enum MBApp: String, CaseIterable {
     // rawValue 必须等于 cc-switch DB 的 app_type（grokbuild 而非 grok）。
     //
-    // 覆盖上游 `KNOWN_APP_TYPES`（src/types/usage.ts）的全部 7 项，外加本 app 独有的
-    // antigravity。上游那份清单里没有的 `openclaw` / `hermes` 只是"被管理的 app"，
-    // 压根不产生用量行，故不进本枚举；`claude-desktop` 在查询层就折叠进 `claude`
-    // （见 foldedAppL/R），单列会只显示半个数、反而误导。
+    // 覆盖上游 `KNOWN_APP_TYPES`（src/types/usage.ts，v4.0.18）的全部 8 项。上游那份清单里没有的
+    // `openclaw` / `hermes` / `omp` 只是"被管理的 app"，压根不产生用量行（OMP 的用量由本应用的
+    // OmpOverlay 按模型家族记到 Claude / Grok 名下），故不进本枚举；`claude-desktop` 在查询层就折叠进
+    // `claude`（见 foldedAppL/R），单列会只显示半个数、反而误导。
+    // `agy` 原名 `antigravity`：上游 v4.0.18 有 agy 之前，本应用只拿它查额度、键是自起的名字；v2.1.0 起
+    // 上游导入 Antigravity 的会话用量（app_type = agy），改成同名，旧码片键由 MenuBarChipMigration 迁移。
     // 追加新项一律放末尾：allCases 的顺序就是菜单栏里各段的排列，插在中间会平白
     // 打乱用户已经习惯的位置。
-    case claude, codex, gemini, opencode, antigravity, grokbuild, pi, mcode
+    case claude, codex, gemini, opencode, agy, grokbuild, pi, mcode
     var title: String {
         switch self {
         case .claude: return "Claude"; case .codex: return "Codex"
         case .gemini: return "Gemini"; case .opencode: return "OpenCode"
-        case .antigravity: return "Antigravity"; case .grokbuild: return "Grok"
+        case .agy: return "Antigravity"; case .grokbuild: return "Grok"
         case .pi: return "Pi"; case .mcode: return "MiniMax Code"
         }
     }
-    /// Antigravity 没有本地用量库（Tokens/Cost 无从谈起），只有各模型配额。
-    var hasUsageBuckets: Bool { self != .antigravity }
     /// 品牌模板图标（BrandIcons 里的 64×64 黑色 alpha PNG，菜单栏段前缀与设置分组
     /// 标题共用）。nil = 该家没有可用图标，调用方只渲染文字——上游对 Pi 同样没有
     /// 图标（`ProviderIcon icon="pi" showFallback={false}`），这里如实照搬而不是
@@ -69,7 +69,7 @@ enum MBApp: String, CaseIterable {
         switch self {
         case .claude: return "brand-claude"; case .codex: return "brand-openai"
         case .gemini: return "brand-gemini"; case .opencode: return "brand-opencode"
-        case .antigravity: return "brand-antigravity"; case .grokbuild: return "brand-grok"
+        case .agy: return "brand-antigravity"; case .grokbuild: return "brand-grok"
         case .mcode: return "brand-minimax"
         case .pi: return nil
         }

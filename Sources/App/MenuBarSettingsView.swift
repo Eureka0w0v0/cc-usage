@@ -2,8 +2,9 @@ import SwiftUI
 import AppKit
 
 /// 菜单栏「显示设置」：按 AI 分组的手风琴。All = 全部 AI 合计（旧 Tokens/Cost 语义不变），
-/// Claude/Codex/Gemini/OpenCode 各自展开选该 AI 的 Tokens/Cost，有配额数据的 AI 多一行 Quota
-/// （Claude = 官方接口 5H/Week，Codex = 本地会话快照、窗口自适应）。折叠状态持久化，默认只展开 All。
+/// 各 AI 分组展开选该 AI 的 Tokens/Cost，有配额数据的 AI 多一行 Quota
+/// （Claude = 官方接口 5H/Week，Codex = 本地会话快照、窗口自适应，Antigravity = 官方接口两组 × 5H/7D）。
+/// 折叠状态持久化，默认只展开 All。
 struct MenuBarSettingsView: View {
     @ObservedObject var model: PanelModel
     @AppStorage(MBKey.groupAll)         private var expAll = true
@@ -81,25 +82,26 @@ struct MenuBarSettingsView: View {
                 appRows(.mcode)
                 row("Quota") { noQuota("No quota API") }
             }
-            // Antigravity 各模型实时配额（联网查询，无本地用量库），逐模型勾选、显示已用 %
-            group("Antigravity", $expAntigravity, icon: MBApp.antigravity.iconAsset) {
-                let pools = AntigravityQuota.pools(model.mbAntigravityQuota)
-                if pools.isEmpty {
+            // Antigravity：用量来自 cc-switch v4.0.18 起导入的会话日志（库里 app_type = agy，含 IDE 会话）；
+            // 额度联网查官方接口，按档勾选（服务端回几档就列几档），显示已用 %
+            group("Antigravity", $expAntigravity, icon: MBApp.agy.iconAsset) {
+                appRows(.agy)
+                let tiers = model.mbAntigravityQuota
+                if tiers.isEmpty {
                     row("Quota") { noQuota("No Antigravity data") }
                 } else {
-                    // 按家族折叠：同家族共用配额，一个勾选即可，勾选后菜单栏显示已用 %
                     row("Quota") {
                         VStack(alignment: .leading, spacing: 6) {
-                            ForEach(pools) { p in
-                                check("\(p.family) · \(Int(p.usedPercent.rounded()))%",
-                                      model.chipBinding("antigravity.quota.\(p.family)"))
+                            ForEach(tiers) { t in
+                                check("\(t.label) · \(Int(t.usedPercent.rounded()))%",
+                                      model.chipBinding("agy.quota.\(t.bucketId)"))
                             }
                         }
                     }
                 }
             }
             .onChange(of: expAntigravity) { _, on in
-                if on { model.refreshAntigravityNow() }   // 展开分组即联网拉取模型列表
+                if on { model.refreshAntigravityNow() }   // 展开分组即联网拉取额度档位
             }
 
             Text("All = every AI combined; D/W/M = Day/Week/Month. Quota windows are labelled by duration (5H/7D/30D) so they never clash with the W of Week, and show % used — as a bar unless you turn that off, filled solid once past 80% (under 20% left, same as CC Switch). Length is unlimited; only if macOS squeezes the item out does it auto-shrink to fit, truncated with ….")

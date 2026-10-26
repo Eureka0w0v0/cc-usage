@@ -45,8 +45,9 @@ if not m:
     sys.exit("❌ 解析不到 MBApp 的 case 行 —— 本仓库结构可能变了")
 local_apps = {c.strip() for c in m.group(1).split(",")}
 
-# 本仓库独有且合法的项（不来自 cc-switch 的 app_type，是本 app 自己的数据源）
-LOCAL_ONLY = {"antigravity"}
+# 本仓库独有且合法的项（不来自 cc-switch 的 app_type，是本 app 自己的数据源）。
+# v2.1.0 起为空：原来独有的 antigravity 已改名为上游的 agy（v4.0.18 起有用量导入）。
+LOCAL_ONLY: set = set()
 
 missing = upstream_apps - local_apps
 if missing:

@@ -57,8 +57,8 @@ final class PanelModel: ObservableObject {
     @Published var mbAppSummaries: [String: AppPeriods] = [:]
     /// Codex 限额窗口快照（勾了 codex.quota 才扫描）。
     @Published var mbCodexQuota: [CodexQuota.Window] = []
-    /// Antigravity 各模型配额快照（勾了 antigravity.quota.* 才扫描）。
-    @Published var mbAntigravityQuota: [AntigravityQuota.Model] = []
+    /// Antigravity 官方额度各档（勾了 agy.quota.* 或展开设置分组才联网查）。
+    @Published var mbAntigravityQuota: [AntigravityTier] = []
 
     /// 菜单栏宽度上限：nil = 全宽（默认）。原则：**有空间就绝不截断**——只在状态项此刻
     /// 真被 macOS 挤掉时按溢出量精确收缩；内容变短到能放下就立刻解除上限。不做持久化、
@@ -123,6 +123,12 @@ final class PanelModel: ObservableObject {
             chips.insert("codex.quota.7D")
             d.set(Array(chips).sorted(), forKey: MBKey.appChips)
         }
+        // v2.1.0：Antigravity 的键从自起的 antigravity 改成库里的 app_type agy，额度从「家族」改成「桶」
+        let migrated = MenuBarChipMigration.migrateAntigravity(chips)
+        if migrated != chips {
+            chips = migrated
+            d.set(Array(chips).sorted(), forKey: MBKey.appChips)
+        }
     }
 
     /// embed 面板刷新选择器写穿过来的间隔（ms），0 = 关闭自动刷新。
@@ -153,7 +159,7 @@ final class PanelModel: ObservableObject {
         reload()
         restartTimer()
         if mbAnyQuotaOn { refreshQuotaNow() }   // 启动时若已开启额度码片，立即取一次
-        if mbAppChips.contains(where: { $0.hasPrefix("antigravity.quota.") }) { refreshAntigravityNow() }
+        if mbAppChips.contains(where: { $0.hasPrefix("agy.quota.") }) { refreshAntigravityNow() }
         updater.start()
         // 状态项可见性巡检：真被挤掉后 2s 内按实测空位一步压回；全屏/锁屏等遮蔽不动宽度
         observeMenuBarConcealment()
@@ -190,16 +196,16 @@ final class PanelModel: ObservableObject {
         }
     }
 
-    /// 联网取 Antigravity 各模型实时配额（30s actor 内节流）。设置面板展开或勾选时触发。
+    /// 联网取 Antigravity 官方额度（30s actor 内节流）。设置面板展开或勾选时触发。
     private var antigravityFetching = false
     func refreshAntigravityNow() {
         guard !antigravityFetching else { return }
         antigravityFetching = true
         Task { [weak self] in
-            let models = await AntigravityQuota.shared.latest()
+            let tiers = await AntigravityQuota.shared.latest()
             await MainActor.run {
                 guard let self else { return }
-                self.mbAntigravityQuota = models
+                self.mbAntigravityQuota = tiers
                 self.antigravityFetching = false
             }
         }
@@ -291,7 +297,7 @@ final class PanelModel: ObservableObject {
                 self.error = nil
                 // Antigravity 走联网查询（OAuth + Google API），独立 Task 不阻塞 reload；
                 // 有勾选或设置面板需要列表时才发起。
-                if self.mbAppChips.contains(where: { $0.hasPrefix("antigravity.quota.") }) {
+                if self.mbAppChips.contains(where: { $0.hasPrefix("agy.quota.") }) {
                     self.refreshAntigravityNow()
                 }
                 self.reloadWidgetsThrottled()

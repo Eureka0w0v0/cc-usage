@@ -1,56 +1,22 @@
 import Foundation
 import SQLite3
 
-/// Antigravity（Google Gemini Code Assist IDE）各模型**实时**配额。
+/// Antigravity（Google Antigravity IDE）的官方**实时**额度。
 ///
-/// Antigravity 的余量不落盘（本地只有登录时的静态快照），实时值只能查服务端。
-/// 链路照搬 AntigravityQuotaWatcher 的 Google API 路径：
+/// Antigravity 的余量不落盘（本地只有登录时的静态快照），实时值只能查服务端。链路：
 ///   1. 从 state.vscdb 的 oauthToken 提取 Google refresh_token（嵌套 base64 → `1//…`）
 ///   2. refresh_token → access_token（oauth2.googleapis.com，缓存到过期前）
 ///   3. loadCodeAssist（metadata.ideType=ANTIGRAVITY）→ cloudaicompanionProject
-///   4. fetchAvailableModels（project + User-Agent 头）→ 各模型 quotaInfo.remainingFraction
-/// usedPercent = (1 - remainingFraction) * 100。
+///   4. retrieveUserQuotaSummary（project + User-Agent）→ 两组（Gemini；Claude 和 GPT 共用）× 两个窗口
+///      （5 小时、每周）的剩余比例与重置时间。和 agy 的 `/usage`、cc-switch v4.0.18 起的官方卡是同一个接口，
+///      解析规则在 `Sources/Shared/AntigravityQuotaParsing.swift`。
+///
+/// 第 4 步必须带 project：10-26 实测 IDE 的令牌发 `{}` 会 403「没有有效许可」，带上 project 才 200
+/// （cc-switch 用的是 agy CLI 的令牌，`{}` 就够）。早先查的是 fetchAvailableModels 的逐模型剩余比例、
+/// 再按家族折叠——那只有一个窗口（重置时间与每周桶一致，实为每周），看不到 5 小时。
 ///
 /// 只读本机凭据、只在本机发起查询、不外传。属未公开私有接口，Antigravity 大更新可能改。
 actor AntigravityQuota {
-    struct Model: Equatable, Sendable {
-        let label: String        // displayName，如 "Claude Sonnet 4.6 (Thinking)"
-        let usedPercent: Double
-        let resetAt: Date?
-    }
-
-    /// 按家族折叠后的配额池：Antigravity 同家族模型共用一个配额（如全部 Gemini 变体共享），
-    /// 逐个列出全是重复。按 family 分组、同 % 合并为一行。
-    struct Pool: Equatable, Sendable, Identifiable {
-        let family: String       // "Claude" / "Gemini" / "GPT-OSS"
-        let usedPercent: Double
-        let resetAt: Date?
-        var id: String { family }
-    }
-
-    /// 模型名 → 家族。用于折叠重复项。
-    static func family(of label: String) -> String {
-        if label.range(of: "GPT", options: .caseInsensitive) != nil { return "GPT-OSS" }
-        if label.range(of: "Claude", options: .caseInsensitive) != nil { return "Claude" }
-        if label.range(of: "Gemini", options: .caseInsensitive) != nil { return "Gemini" }
-        return label.split(separator: " ").first.map(String.init) ?? label
-    }
-
-    /// 把模型列表折叠成配额池：每个家族取"已用最多"的那档（min remaining）作代表。
-    static func pools(_ models: [Model]) -> [Pool] {
-        var byFamily: [String: Pool] = [:]
-        for m in models {
-            let fam = family(of: m.label)
-            if let cur = byFamily[fam], cur.usedPercent >= m.usedPercent { continue }
-            byFamily[fam] = Pool(family: fam, usedPercent: m.usedPercent, resetAt: m.resetAt)
-        }
-        // 稳定顺序：Claude、Gemini、GPT-OSS、其他按字母
-        let order = ["Claude": 0, "Gemini": 1, "GPT-OSS": 2]
-        return byFamily.values.sorted {
-            (order[$0.family] ?? 9, $0.family) < (order[$1.family] ?? 9, $1.family)
-        }
-    }
-
     static let shared = AntigravityQuota()
 
     // Antigravity 桌面应用公开内置的 Google OAuth 客户端凭据（每个安装包都含，社区工具通用，
@@ -61,19 +27,23 @@ actor AntigravityQuota {
     private static let clientSecret = ["GOCSPX", "K58FWR486LdLJ1mLB8sXC4z6qDAf"].joined(separator: "-")
     private static let tokenEndpoint = "https://oauth2.googleapis.com/token"
     private static let apiBase = "https://cloudcode-pa.googleapis.com"
-    private static let userAgent = "AntigravityQuotaWatcher/1.0"
+    /// loadCodeAssist 沿用旧 UA：它不看 User-Agent 回不同内容，没必要动一条正常工作的请求。
+    private static let legacyUserAgent = "AntigravityQuotaWatcher/1.0"
     private static let dbPath = (NSHomeDirectory() as NSString)
         .appendingPathComponent("Library/Application Support/Antigravity/User/globalStorage/state.vscdb")
+    /// `agy --version` 最多等多久（上游 VERSION_PROBE_TIMEOUT）。
+    private static let versionProbeTimeout: TimeInterval = 5
 
     private var accessToken: String?
     private var accessExpiry = Date.distantPast
     private var projectID: String?
-    private var cache: [Model] = []
+    private var agyVersion: String?
+    private var cache: [AntigravityTier] = []
     private var cacheAt = Date.distantPast
 
-    /// 各模型实时配额；未装 Antigravity / 未登录 / 网络失败返回空。30s 节流。
+    /// 各档实时额度；未装 Antigravity / 未登录 / 网络失败返回上次结果（首次为空）。30s 节流。
     /// 失败时保留上次结果（stale-if-error），不闪空。
-    func latest() async -> [Model] {
+    func latest() async -> [AntigravityTier] {
         if Date().timeIntervalSince(cacheAt) < 30 { return cache }
         // 闸门在入口就推进,成败一视同仁。只在成功后推进的话 30s 节流对失败路径完全
         // 失效——Dashboard 每 5 秒调一次,凭据一过期就是每小时 720 次带 client_secret
@@ -82,9 +52,9 @@ actor AntigravityQuota {
         cacheAt = Date()
         guard let token = await validAccessToken() else { return cache }
         guard let proj = await ensureProject(token: token) else { return cache }
-        guard let models = await fetchModels(token: token, project: proj) else { return cache }
-        cache = models
-        return models
+        guard let tiers = await fetchSummary(token: token, project: proj) else { return cache }
+        cache = tiers
+        return tiers
     }
 
     // MARK: - OAuth
@@ -176,7 +146,7 @@ actor AntigravityQuota {
     private func ensureProject(token: String) async -> String? {
         if let p = projectID { return p }
         guard var req = post("\(Self.apiBase)/v1internal:loadCodeAssist") else { return nil }
-        auth(&req, token)
+        auth(&req, token, userAgent: Self.legacyUserAgent)
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["metadata": ["ideType": "ANTIGRAVITY"]])
         guard let obj = await json(req) else { return nil }
         let p = obj["cloudaicompanionProject"] as? String ?? ""
@@ -185,30 +155,60 @@ actor AntigravityQuota {
         return p
     }
 
-    private func fetchModels(token: String, project: String) async -> [Model]? {
-        guard var req = post("\(Self.apiBase)/v1internal:fetchAvailableModels") else { return nil }
-        auth(&req, token)
+    private func fetchSummary(token: String, project: String) async -> [AntigravityTier]? {
+        guard var req = post("\(Self.apiBase)/v1internal:retrieveUserQuotaSummary") else { return nil }
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        let ua = AntigravityQuotaParsing.userAgent(appVersion: appVersion, agyVersion: await resolvedAgyVersion())
+        auth(&req, token, userAgent: ua)
         let body: [String: Any] = project.isEmpty ? [:] : ["project": project]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        guard let obj = await json(req), let map = obj["models"] as? [String: Any] else { return nil }
-        var out: [Model] = []
-        var seen = Set<String>()
-        for (name, v) in map {
-            guard let info = v as? [String: Any] else { continue }
-            // 只留正式对话模型（含 gemini/claude/gpt 的 displayName），滤掉 tab_/chat_ 等内部项
-            guard let display = info["displayName"] as? String,
-                  display.range(of: "gemini|claude|gpt", options: [.regularExpression, .caseInsensitive]) != nil,
-                  name.range(of: "^(tab_|chat_)", options: .regularExpression) == nil else { continue }
-            // 无 quotaInfo = 已用尽（remaining 0）；有则取 remainingFraction
-            let qi = info["quotaInfo"] as? [String: Any]
-            let rf = (qi?["remainingFraction"] as? Double) ?? (qi == nil ? nil : 0)
-            guard let remaining = rf else { continue }
-            guard seen.insert(display).inserted else { continue }
-            // protobuf Timestamp 的 JSON 带 3/6/9 位小数秒，裸 ISO8601DateFormatter 一律解析失败
-            let reset = (qi?["resetTime"] as? String).flatMap { ISO8601Lenient.date($0) }
-            out.append(Model(label: display, usedPercent: max(0, min(100, (1 - remaining) * 100)), resetAt: reset))
+        guard let obj = await json(req) else { return nil }
+        return AntigravityQuotaParsing.parseSummary(obj)
+    }
+
+    // MARK: - 本机 agy 版本（写进 User-Agent）
+
+    /// 每个进程只探测一次（上游同样只探一次）；找不到或读不出用兜底版本。
+    /// 探测会起子进程、最多等 5 秒，放到 GCD 队列上跑，不占 Swift 并发的协作线程。
+    private func resolvedAgyVersion() async -> String {
+        if let v = agyVersion { return v }
+        let v = await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
+            DispatchQueue.global(qos: .utility).async {
+                cont.resume(returning: Self.probeAgyVersion() ?? AntigravityQuotaParsing.fallbackAgyVersion)
+            }
         }
-        return out.sorted { $0.label < $1.label }
+        agyVersion = v
+        return v
+    }
+
+    /// 找 agy 的顺序照上游 real_agy_bin：PATH → ~/.local/bin → /opt/homebrew/bin → /usr/local/bin。
+    /// 上游最后还会问登录 shell（`command -v agy`）；这里不跑用户的 rc 文件，找不到就用兜底版本——
+    /// 兜底版本服务端同样认，差别只在 User-Agent 里的版本号。
+    private nonisolated static func probeAgyVersion() -> String? {
+        let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+            .split(separator: ":").map(String.init).filter { !$0.isEmpty }
+        let dirs = pathDirs + [(NSHomeDirectory() as NSString).appendingPathComponent(".local/bin"),
+                               "/opt/homebrew/bin", "/usr/local/bin"]
+        guard let bin = dirs.map({ ($0 as NSString).appendingPathComponent("agy") })
+            .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return nil }
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: bin)
+        proc.arguments = ["--version"]
+        let out = Pipe()
+        proc.standardOutput = out
+        proc.standardError = FileHandle.nullDevice
+        proc.standardInput = FileHandle.nullDevice
+        let finished = DispatchSemaphore(value: 0)
+        proc.terminationHandler = { _ in finished.signal() }
+        do { try proc.run() } catch { return nil }
+        if finished.wait(timeout: .now() + versionProbeTimeout) == .timedOut {
+            proc.terminate()
+            return nil
+        }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        guard proc.terminationStatus == 0 else { return nil }
+        return AntigravityQuotaParsing.parseVersion(String(decoding: data, as: UTF8.self))
     }
 
     // MARK: - HTTP helpers
@@ -218,10 +218,10 @@ actor AntigravityQuota {
         var r = URLRequest(url: u); r.httpMethod = "POST"; r.timeoutInterval = 15
         return r
     }
-    private func auth(_ r: inout URLRequest, _ token: String) {
+    private func auth(_ r: inout URLRequest, _ token: String, userAgent: String) {
         r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        r.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        r.setValue(userAgent, forHTTPHeaderField: "User-Agent")
     }
     private func json(_ req: URLRequest) async -> [String: Any]? {
         guard let (data, resp) = try? await URLSession.shared.data(for: req),

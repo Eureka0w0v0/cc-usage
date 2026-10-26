@@ -140,15 +140,15 @@ struct MenuBarLabel: View {
                     quotas.append(contentsOf: sel.map { QuotaChip(label: $0.label, pct: $0.usedPercent) })
                 }
             }
-            if app == .antigravity {
-                // 按家族折叠：同家族共用配额，避免菜单栏 "Flash 10% Flash 10%…" 重复
-                let pools = AntigravityQuota.pools(model.mbAntigravityQuota)
-                let anyOn = model.mbAppChips.contains { $0.hasPrefix("antigravity.quota.") }
-                let sel = pools.filter { model.chipOn("antigravity.quota.\($0.family)") }
-                if anyOn && pools.isEmpty {
+            if app == .agy {
+                // 官方额度按桶勾选（Gemini 5H / Gemini 7D / Claude 5H / Claude 7D，服务端回几档就有几档）
+                let tiers = model.mbAntigravityQuota
+                let anyOn = model.mbAppChips.contains { $0.hasPrefix("agy.quota.") }
+                let sel = tiers.filter { model.chipOn("agy.quota.\($0.bucketId)") }
+                if anyOn && tiers.isEmpty {
                     quotas.append(QuotaChip(label: "—", pct: nil))   // 勾了但没查到（没装 / 未登录 / 网络失败）
                 } else {
-                    quotas.append(contentsOf: sel.map { QuotaChip(label: $0.family, pct: $0.usedPercent) })
+                    quotas.append(contentsOf: sel.map { QuotaChip(label: $0.label, pct: $0.usedPercent) })
                 }
             }
             if !segs.isEmpty || !quotas.isEmpty {
