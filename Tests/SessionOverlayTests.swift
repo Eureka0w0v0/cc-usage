@@ -80,6 +80,47 @@ final class SessionOverlayTests: XCTestCase {
         XCTAssertEqual(r.totalCost, 0.252, accuracy: 1e-12)
     }
 
+    // MARK: - 查价不分大小写（对齐上游 #8414：query_model_pricing_exact 的 `= ? COLLATE NOCASE`、前缀匹配的 LIKE）
+
+    private func customModelLine(_ id: String, model: String) -> String {
+        #"{"type":"assistant","sessionId":"s1","timestamp":"2026-10-20T10:00:00Z","message":{"id":"\#(id)","stop_reason":"end_turn","model":"\#(model)","usage":{"input_tokens":100,"output_tokens":20}}}"#
+    }
+
+    // 自定义定价常按界面显示名原样入库（带大写），查价候选却全是小写。
+    // 负责杀的变异体：按库里原样大小写建键（成本落空成 0）。
+    func testUppercaseCustomPricingRowMatchesExactly() throws {
+        try Fixture.exec(dbPath,
+            "INSERT INTO model_pricing VALUES('GLM-5.3-Flash-EXL3','1.4','4.4','0.26','0');")
+        _ = try writeSession([customModelLine("u1", model: "GLM-5.3-Flash-EXL3")])
+        let r = try XCTUnwrap(overlay.pendingRows(db: db).first)
+        // 100×$1.4/1M + 20×$4.4/1M
+        XCTAssertEqual(r.totalCost, 0.000228, accuracy: 1e-12)
+    }
+
+    // 前缀兜底同样不分大小写：上游 `model_id LIKE 'glm-9-air-%'` 命中大写入库的长 id。
+    // 负责杀的变异体：前缀匹配用库里原样大小写的 id 做 hasPrefix。
+    func testPrefixMatchHitsUppercaseRow() throws {
+        try Fixture.exec(dbPath,
+            "INSERT INTO model_pricing VALUES('GLM-9-Air-20261001','2','8','0','0');")
+        _ = try writeSession([customModelLine("p1", model: "glm-9-air")])
+        let r = try XCTUnwrap(overlay.pendingRows(db: db).first)
+        // 100×$2/1M + 20×$8/1M
+        XCTAssertEqual(r.totalCost, 0.00036, accuracy: 1e-12)
+    }
+
+    // 只差大小写的两行同时在库里时，上游按表的自然顺序扫、先到先得；这里同样取先插入的那行。
+    // 负责杀的变异体：小写键撞车时后读到的覆盖先读到的。
+    func testCaseCollisionKeepsFirstInsertedRow() throws {
+        try Fixture.exec(dbPath, """
+            INSERT INTO model_pricing VALUES('GLM-X-1','1','1','0','0');
+            INSERT INTO model_pricing VALUES('glm-x-1','2','2','0','0');
+            """)
+        _ = try writeSession([customModelLine("c1", model: "glm-x-1")])
+        let r = try XCTUnwrap(overlay.pendingRows(db: db).first)
+        // 100×$1/1M + 20×$1/1M
+        XCTAssertEqual(r.totalCost, 0.00012, accuracy: 1e-12)
+    }
+
     func testIncrementalAppendAndPruneOnceInDB() throws {
         let file = try writeSession([assistantLine(id: "m1", output: 10, stop: true)])
         XCTAssertEqual(overlay.pendingRows(db: db).count, 1)

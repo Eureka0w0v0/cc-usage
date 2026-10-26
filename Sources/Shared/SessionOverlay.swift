@@ -208,8 +208,8 @@ public final class SessionOverlay {
     private var marks: [String: FileMark] = [:]
 
     private struct Pricing { var input: Double; var output: Double; var cacheRead: Double; var cacheCreation: Double }
-    private var pricingExact: [String: Pricing] = [:]
-    private var pricingIds: [String] = []          // 前缀匹配用(短 id 优先)
+    private var pricingExact: [String: Pricing] = [:]   // 键是小写 model_id（见 loadPricingIfStale）
+    private var pricingIds: [String] = []          // 前缀匹配用(小写、短 id 优先)
     private var pricingLoadedAt: Date?
     /// 1 小时缓存写入是否按 1.6 倍计，随定价一起按 TTL 重判。nil = 还没判过；
     /// 每轮真扫都先经 loadPricingIfStale 判定，ingest 时不会是 nil。
@@ -712,7 +712,12 @@ public final class SessionOverlay {
         defer { sqlite3_finalize(stmt) }
         while sqlite3_step(stmt) == SQLITE_ROW {
             guard let c = sqlite3_column_text(stmt, 0) else { continue }
-            let id = String(cString: c)
+            // 键一律转小写：查价候选（ModelId.pricingCandidates）全是小写，而自定义定价常按界面
+            // 显示名原样入库（如 GLM-5.3-Flash-EXL3）。上游 #8414 起精确匹配是 `= ? COLLATE NOCASE`、
+            // 前缀匹配是 LIKE，都不分大小写。只差大小写的两行撞车时先读到的留下：上游那条查询用不上
+            // BINARY 主键索引、按表的自然顺序扫，同样先到先得。
+            let id = String(cString: c).lowercased()
+            guard exact[id] == nil else { continue }
             func col(_ i: Int32) -> Double {
                 sqlite3_column_text(stmt, i).flatMap { Double(String(cString: $0)) } ?? 0
             }
