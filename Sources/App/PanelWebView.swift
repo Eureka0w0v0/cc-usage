@@ -219,6 +219,15 @@ struct PanelWebView: NSViewRepresentable {
                     Task { @MainActor in notify(ms) }
                 }
                 return NSNull()
+            // 上游 v4.0.20 的用量页和趋势图经 useSettingsQuery 读 settings：只给它认的两样——
+            // usageDisplay（本应用自己存，页面经 set_setting("usageDisplay", JSON 字符串) 写）与
+            // visibleApps（只读镜像 cc-switch 的 settings.json）。拼装与白名单见 EmbedSettings。
+            case "get_settings":
+                let settingsPath = (NSHomeDirectory() as NSString)
+                    .appendingPathComponent(".cc-switch/settings.json")
+                return EmbedSettings.compose(
+                    usageDisplayJSON: UserDefaults.standard.string(forKey: EmbedKey.usageDisplay),
+                    ccSwitchSettings: FileManager.default.contents(atPath: settingsPath))
 
             // 次要命令(Pricing/Sync/Limits)—返回空/桩，面板未用
             case "get_model_pricing":

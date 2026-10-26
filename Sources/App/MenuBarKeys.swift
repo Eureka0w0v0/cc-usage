@@ -38,6 +38,8 @@ enum EmbedKey {
     static func setting(_ name: String) -> String { prefix + name }
     static let refreshIntervalName = "refreshIntervalMs"
     static let refreshIntervalMs = setting(refreshIntervalName)
+    /// 主窗口的显示设置（请求日志列显隐、趋势图样式），JSON 字符串；桥接 get_settings 读它。
+    static let usageDisplay = setting("usageDisplay")
 }
 
 /// 菜单栏可分组展示的 AI 来源。All（全部合计）不在此枚举里——它就是 MBKey 那组旧开关。

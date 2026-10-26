@@ -102,6 +102,19 @@ function mockInvoke(cmd: string, args?: InvokeArgs): unknown {
       return { imported: 0, skipped: 0, filesScanned: 0, errors: [] };
     case "get_quota":
       return mockQuota();
+    // 设置：原生存 UserDefaults；预览里放内存，切图表样式、列显隐、页签时能看到效果
+    case "get_setting":
+      return mockSettings.get(String((args as { key?: string })?.key)) ?? null;
+    case "set_setting": {
+      const { key, value } = (args ?? {}) as { key?: string; value?: unknown };
+      if (key) mockSettings.set(key, value);
+      return null;
+    }
+    case "get_settings": {
+      // 原生拼的是 { usageDisplay（本应用存的 JSON）, visibleApps（cc-switch settings.json） }
+      const raw = mockSettings.get("usageDisplay");
+      return typeof raw === "string" ? { usageDisplay: JSON.parse(raw) } : {};
+    }
     case "get_init_error":
       return null;
     default:
@@ -122,6 +135,8 @@ function mockQuota() {
     { name: "seven_day_opus", utilization: 47.5, resetsAt: iso(50), planLabel: "max" },
   ];
 }
+
+const mockSettings = new Map<string, unknown>();
 
 function mockSummary() {
   const input = 1_234_567;
@@ -226,6 +241,18 @@ function mockRequestLogs() {
     row("session:pending", "Claude (Session)", "session_log", 640, 0, undefined, 30),
     row("session:imported", "Claude (Session)", "session_log", 820, 16_400, 2_100, 400),
     row("proxy-1", "PackyCode", "proxy", 900, 9_800, 1_150, 900),
+    {
+      ...row("agy:s1:3", "Antigravity (Session)", "agy_session", 300, 0, undefined, 1500),
+      providerId: "_agy_session",
+      appType: "agy",
+      model: "gemini-4-argon",
+    },
+    {
+      ...row("kimi:p:1", "Kimi Code (Session)", "kimi_session", 410, 7_200, 900, 2400),
+      providerId: "_kimi_session",
+      appType: "kimi",
+      model: "kimi-k3.1-pro",
+    },
   ];
   return { data, total: data.length, page: 0, pageSize: 20 };
 }
@@ -264,6 +291,38 @@ function mockProviders() {
       estSpeedOutputTokens: 0,
       estSpeedDurationMs: 0,
       firstTokenMedianMs: 1_100,
+      estFirstTokenMedianMs: null,
+    },
+    {
+      providerId: "_agy_session",
+      appType: "agy",
+      providerName: "Antigravity (Session)",
+      requestCount: 6,
+      totalTokens: 120_000,
+      totalCost: "0.041000",
+      successRate: 100,
+      avgLatencyMs: 0,
+      speedOutputTokens: 0,
+      speedGenerationMs: 0,
+      estSpeedOutputTokens: 0,
+      estSpeedDurationMs: 0,
+      firstTokenMedianMs: null,
+      estFirstTokenMedianMs: null,
+    },
+    {
+      providerId: "_kimi_session",
+      appType: "kimi",
+      providerName: "Kimi Code (Session)",
+      requestCount: 4,
+      totalTokens: 80_000,
+      totalCost: "0.022000",
+      successRate: 100,
+      avgLatencyMs: 7200,
+      speedOutputTokens: 1_640,
+      speedGenerationMs: 26_000,
+      estSpeedOutputTokens: 0,
+      estSpeedDurationMs: 0,
+      firstTokenMedianMs: 900,
       estFirstTokenMedianMs: null,
     },
   ];

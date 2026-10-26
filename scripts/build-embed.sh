@@ -21,7 +21,7 @@ ROOT=$(pwd)
 CC_SWITCH_DIR="${CC_SWITCH_DIR:-$ROOT/../cc-switch}"
 # 面板桥接层验证过的上游提交（升级上游后先回归再更新此值）。
 # The upstream commit this embed bridge was last verified against.
-CC_SWITCH_REF="${CC_SWITCH_REF:-51ac86f1c59abfefabadebd05ec5a5415b8ad72c}"
+CC_SWITCH_REF="${CC_SWITCH_REF:-85ad4969b3399500baaea9d46b1e08f87aba80e1}"   # v4.0.20
 
 if [ ! -d "$CC_SWITCH_DIR/src" ]; then
   echo "❌ 未找到 cc-switch 源码（${CC_SWITCH_DIR}）。先执行 / clone it first:"
