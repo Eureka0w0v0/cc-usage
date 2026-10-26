@@ -92,4 +92,20 @@ final class DataSourceBreakdownTests: XCTestCase {
         let stats = try store.providerStats(LogQueryFilter())
         XCTAssertEqual(stats.first?.providerName, "Pi (Session)")
     }
+
+    /// v4.0.18 / v4.0.19 新增的会话来源（Antigravity、Kimi Code）：名字逐字对齐上游
+    /// provider_name_coalesce，否则按 providerName 筛选时对不上上游前端传来的值。
+    /// 负责杀的变异体：providerNameSQL 漏掉 `_agy_session` / `_kimi_session` 分支。
+    func testAgyAndKimiSessionProvidersRenderReadableNames() throws {
+        let t = Fixture.ts(2026, 10, 24, 12)
+        try Fixture.insertLog(dbPath, id: "a1", app: "agy", model: "gemini-4-argon",
+                              input: 100, output: 10, cost: 1.5, createdAt: t,
+                              dataSource: "agy_session", providerId: "_agy_session")
+        try Fixture.insertLog(dbPath, id: "k1", app: "kimi", model: "kimi-k3.1-pro",
+                              input: 100, output: 10, cost: 0.5, createdAt: t,
+                              dataSource: "kimi_session", providerId: "_kimi_session")
+
+        let names = Set(try store.providerStats(LogQueryFilter()).map(\.providerName))
+        XCTAssertEqual(names, ["Antigravity (Session)", "Kimi Code (Session)"])
+    }
 }

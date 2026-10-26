@@ -40,6 +40,8 @@ extension UsageStore {
             WHEN '_gemini_session' THEN 'Gemini (Session)'
             WHEN '_opencode_session' THEN 'OpenCode (Session)'
             WHEN '_grok_session' THEN 'Grok Build (Session)'
+            WHEN '_agy_session' THEN 'Antigravity (Session)'
+            WHEN '_kimi_session' THEN 'Kimi Code (Session)'
             WHEN '_mcode_session' THEN 'MiniMax Code (Session)'
             WHEN '_pi_session' THEN 'Pi (Session)'
             ELSE \(l).provider_id END)
