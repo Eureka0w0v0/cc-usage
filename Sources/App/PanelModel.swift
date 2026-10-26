@@ -10,7 +10,8 @@ final class PanelModel: ObservableObject {
     @Published var snap: UsageSnapshot?
     @Published var error: String?
 
-    // 菜单栏专用汇总（始终「全部来源/模型」，不随主窗口的来源/模型筛选变化）：今日 / 本周 / 本月。
+    // 菜单栏专用汇总（始终「全部来源/模型」，不随主窗口的来源/模型筛选变化）：今日 / 近 7 天 / 近 30 天
+    // （按自然日回溯，见 UsageWindow.lookbackStart）。
     // 口径 = store.rangeSummary（logs + rollups 两表合并），与 cc-switch 对应区间数字一致。
     @Published var mbToday: UsageSummary?
     @Published var mbWeek: UsageSummary?
@@ -246,13 +247,18 @@ final class PanelModel: ObservableObject {
                     // 菜单栏只读 today/trend/lastEventAt，累计值拿了就扔 → 跳过那次全库聚合。
                     o.snap = try store.snapshot(filter: UsageFilter(), includeCumulative: false)
                     o.today = o.snap?.today
-                    // 菜单栏 W/M：近 7 天 / 近 30 天（滚动窗口），全部来源。
-                    // 用滚动窗口而非日历「本周/本月」——否则月初时「本周」会跨回上月、反比「本月」多，违反「月≥周≥日」直觉。
-                    let now = Int64(Date().timeIntervalSince1970)
-                    o.week  = try? store.rangeSummary(UsageFilter(start: now - 7 * 86400, end: now))
-                    o.month = try? store.rangeSummary(UsageFilter(start: now - 30 * 86400, end: now))
+                    // 菜单栏 W/M：近 7 天 / 近 30 天，全部来源。按自然日回溯（含今天、从当地零点起），
+                    // 和主窗口的 7d / 30d 预设同一口径；不用日历「本周/本月」——月初时「本周」会跨回上月、
+                    // 反比「本月」多。回溯起点 30 天 ≤ 7 天 ≤ 今天零点，「月≥周≥日」照样成立。
+                    let nowDate = Date()
+                    let now = Int64(nowDate.timeIntervalSince1970)
+                    let cal = Calendar.current
+                    let weekStart = UsageWindow.lookbackStart(days: 7, now: nowDate, calendar: cal)
+                    let monthStart = UsageWindow.lookbackStart(days: 30, now: nowDate, calendar: cal)
+                    o.week  = try? store.rangeSummary(UsageFilter(start: weekStart, end: now))
+                    o.month = try? store.rangeSummary(UsageFilter(start: monthStart, end: now))
                     // 按 AI 分组的码片：只查勾了的 (app, 周期)，避免白白多跑 SQL
-                    let dayStart = Int64(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
+                    let dayStart = UsageWindow.lookbackStart(days: 1, now: nowDate, calendar: cal)
                     for app in MBApp.allCases.map(\.rawValue) {
                         func need(_ p: String) -> Bool {
                             chips.contains("\(app).tokens.\(p)") || chips.contains("\(app).cost.\(p)")
@@ -260,8 +266,8 @@ final class PanelModel: ObservableObject {
                         guard need("today") || need("week") || need("month") else { continue }
                         var s = AppPeriods()
                         if need("today") { s.today = try? store.rangeSummary(UsageFilter(start: dayStart, end: now, appType: app)) }
-                        if need("week")  { s.week  = try? store.rangeSummary(UsageFilter(start: now - 7 * 86400, end: now, appType: app)) }
-                        if need("month") { s.month = try? store.rangeSummary(UsageFilter(start: now - 30 * 86400, end: now, appType: app)) }
+                        if need("week")  { s.week  = try? store.rangeSummary(UsageFilter(start: weekStart, end: now, appType: app)) }
+                        if need("month") { s.month = try? store.rangeSummary(UsageFilter(start: monthStart, end: now, appType: app)) }
                         o.appSummaries[app] = s
                     }
                     // codex.quota.<窗口标签>（如 codex.quota.5H / codex.quota.30D）
