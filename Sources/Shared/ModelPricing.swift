@@ -29,7 +29,7 @@ public enum ModelPricing {
         Row(input: i, output: o, cacheRead: cr, cacheCreation: cw)
     }
 
-    /// 对齐 cc-switch seed_model_pricing 的 222 条内置定价（同步至 v4.0.12）。
+    /// 对齐 cc-switch seed_model_pricing 的 232 条内置定价（同步至 v4.0.20）。
     /// 由 scripts/sync-pricing.sh 生成，勿手改；新模型先放下面的 `localExtras`。
     static let upstream: [String: Row] = [
         "claude-fable-5-1": R(10, 50, 0.25, 12.5),  // Claude Fable 5.1
@@ -128,6 +128,7 @@ public enum ModelPricing {
         "gpt-5.2-pro": R(21, 168, 0, 0),  // GPT-5.2 Pro
         "gpt-4o": R(2.5, 10, 1.25, 0),  // GPT-4o
         "gpt-4o-mini": R(0.15, 0.6, 0.075, 0),  // GPT-4o Mini
+        "gemini-4-argon": R(2, 10, 0.1, 0),  // Gemini 4 Argon
         "gemini-3.8-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.8 Flash
         "gemini-3.7-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.7 Flash
         "gemini-3.6-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.6 Flash
@@ -142,7 +143,7 @@ public enum ModelPricing {
         "gemini-2.5-flash": R(0.3, 2.5, 0.03, 0),  // Gemini 2.5 Flash
         "gemini-2.5-flash-lite": R(0.1, 0.4, 0.01, 0),  // Gemini 2.5 Flash Lite
         "gemini-2.0-flash": R(0.1, 0.4, 0.025, 0),  // Gemini 2.0 Flash
-        "step-5-preview": R(0.98, 2.8, 0.05, 0),  // Step 5 Preview
+        "step-5-preview": R(0.98, 2.8, 0.1, 0),  // Step 5 Preview
         "step-3.7-flash": R(0.19, 1.13, 0.04, 0),  // Step 3.7 Flash
         "step-3.5-flash": R(0.1, 0.3, 0.02, 0),  // Step 3.5 Flash
         "step-3.5-flash-2603": R(0.1, 0.3, 0.02, 0),  // Step 3.5 Flash 2603
@@ -161,6 +162,7 @@ public enum ModelPricing {
         "deepseek-chat": R(0.44, 1.32, 0.014, 0),  // DeepSeek Chat
         "deepseek-reasoner": R(0.44, 1.32, 0.014, 0),  // DeepSeek Reasoner
         "deepseek-flash": R(0.3, 1.2, 0.006, 0),  // DeepSeek V4.1 Flash
+        "deepseek-v4.1-flash": R(0.3, 1.2, 0.006, 0),  // DeepSeek V4.1 Flash
         "deepseek-v4-flash": R(0.3, 1.2, 0.006, 0),  // DeepSeek V4 Flash
         "deepseek-v4-flash-0731": R(0.3, 1.2, 0.006, 0),  // DeepSeek V4 Flash
         "deepseek-v4-flash-vision-exp": R(0.3, 1.2, 0.006, 0),  // DeepSeek V4 Flash Vision Exp
@@ -173,8 +175,12 @@ public enum ModelPricing {
         "kimi-k2.7-code": R(0.95, 4, 0.19, 0),  // Kimi K2.7 Code
         // HighSpeed 加速档 = 本体 2 倍价（Kimi 官方一贯模式，同 K2 Turbo）
         "kimi-k2.7-code-highspeed": R(1.9, 8, 0.38, 0),  // Kimi K2.7 Code HighSpeed
-        "kimi-k3": R(3, 15, 0.3, 0),  // Kimi K3
-        "k3": R(3, 15, 0.3, 0),  // Kimi K3
+        "kimi-k3": R(3, 15, 0.3, 3),  // Kimi K3
+        "k3": R(3, 15, 0.3, 3),  // Kimi K3
+        "kimi-k3.1-pro": R(2, 10, 0.2, 2),  // Kimi K3.1 Pro
+        "kimi-k3.1-pro-highspeed": R(4, 20, 0.2, 4),  // Kimi K3.1 Pro HighSpeed
+        "k3.1-pro": R(2, 10, 0.2, 2),  // Kimi K3.1 Pro
+        "k3.1-pro-highspeed": R(4, 20, 0.2, 4),  // Kimi K3.1 Pro HighSpeed
         "hunyuan-hy3": R(0.14, 0.56, 0.035, 0),  // Hunyuan Hy3
         "hy3": R(0.14, 0.56, 0.035, 0),  // Hunyuan Hy3
         "hy4-preview": R(0.84, 2.52, 0.042, 0),  // Hunyuan Hy4 Preview
@@ -187,6 +193,7 @@ public enum ModelPricing {
         "minimax-m2.7-highspeed": R(0.6, 2.4, 0.06, 0.375),  // MiniMax M2.7 Highspeed
         // 官方标准档（此前记的是高价档，2026-07 对齐挂牌价下调）
         "minimax-m3": R(0.3, 1.2, 0.06, 0),  // MiniMax M3
+        "minimax-m3.1-flash": R(0.15, 0.6, 0.015, 0),  // MiniMax M3.1 Flash
         "glm-4.7": R(0.6, 2.2, 0.11, 0),  // GLM-4.7
         "glm-4.6": R(0.6, 2.2, 0.11, 0),  // GLM-4.6
         "glm-5": R(1, 3.2, 0.2, 0),  // GLM-5
@@ -207,6 +214,9 @@ public enum ModelPricing {
         "qwen3.8-27b": R(0.5, 3, 0.1, 0.625),  // Qwen3.8 27B
         "qwen3.7-max": R(2.5, 7.5, 0.25, 0),  // Qwen3.7 Max
         "qwen3.7-plus": R(0.4, 1.6, 0.08, 0),  // Qwen3.7 Plus
+        "qwen3.7-flash": R(0.03, 0.13, 0.006, 0.0375),  // Qwen3.7 Flash
+        "qwen3.6-27b": R(0.6, 3.6, 0, 0),  // Qwen3.6 27B
+        "qwen3.8-omni-flash": R(0.15, 0.47, 0.016, 0),  // Qwen3.8 Omni Flash
         "qwen3.6-plus": R(0.325, 1.95, 0.065, 0),  // Qwen3.6 Plus
         "qwen3.6-flash": R(0.1875, 1.125, 0.0375, 0),  // Qwen3.6 Flash
         "qwen3.5-plus": R(0.26, 1.56, 0.052, 0),  // Qwen3.5 Plus
