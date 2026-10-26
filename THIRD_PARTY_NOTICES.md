@@ -13,6 +13,8 @@ CC Usage is a derivative work of [cc-switch](https://github.com/farion1231/cc-sw
     `Sources/App/web-panel/index.html` 是由 cc-switch 真实前端(Usage 面板 React 组件、样式与 i18n)与 `embed/` 桥接入口共同编译出的单文件产物。
   - The Swift data layer (`Sources/Shared/UsageStore.swift`) reimplements the aggregation semantics of cc-switch's `usage_stats.rs` to keep numbers identical.
     Swift 数据层逐条复刻了 cc-switch `usage_stats.rs` 的统计口径。
+  - The menu bar brand icons (`Sources/App/BrandIcons/*.png`) are converted from the SVG icons shipped in cc-switch's `src/icons/extracted/` (recoloured to single-colour template images).
+    菜单栏品牌图标(`Sources/App/BrandIcons/*.png`)由 cc-switch `src/icons/extracted/` 里的 SVG 图标转成单色模板图。
 
 ```
 MIT License

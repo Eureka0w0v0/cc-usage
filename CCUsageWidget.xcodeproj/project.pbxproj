@@ -88,6 +88,7 @@
 		94E0C286A069D61FA18F185B /* ModelId.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D2EACA64431BC2B2245A81B /* ModelId.swift */; };
 		9506B37DD244CFAC61845035 /* RequestDetailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0F2F0653160D2C8B1A27D1E /* RequestDetailTests.swift */; };
 		95AE0E2B462B23B7C6B989A1 /* MenuBarStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E66BA024EC17C0383C62FD /* MenuBarStrip.swift */; };
+		95B9E1DC3AA51F0859995ACF /* brand-kimi.png in Resources */ = {isa = PBXBuildFile; fileRef = FCD0820202DA7BEE030DC3CC /* brand-kimi.png */; };
 		95F4FDE148D12D8EA048820D /* MenuBarWidthGovernor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD92AB9ED76B0ADA5CD07CC /* MenuBarWidthGovernor.swift */; };
 		99E489EF52A92F4BEE5B8C08 /* DataSourceBreakdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450359DFC5AEC0C170B78D45 /* DataSourceBreakdownTests.swift */; };
 		9AE1641C5739599FED93C3D8 /* ClaudeCacheWriteBilling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 132C63AC6A14F314F5E12482 /* ClaudeCacheWriteBilling.swift */; };
@@ -267,6 +268,7 @@
 		F6A6BC20DF49E1A6989FCF94 /* ClaudeQuotaParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeQuotaParsingTests.swift; sourceTree = "<group>"; };
 		F6EBED98C0A4EED2EDD79A8D /* UsageStore+Trend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+Trend.swift"; sourceTree = "<group>"; };
 		F731768D17E00AD7C1F4FFBC /* UsageWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWindow.swift; sourceTree = "<group>"; };
+		FCD0820202DA7BEE030DC3CC /* brand-kimi.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-kimi.png"; sourceTree = "<group>"; };
 		FE46559B13C9C8A264B5681B /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -461,6 +463,7 @@
 				CAA25E78D961070EDBD05FBD /* brand-claude.png */,
 				7C5506EFDDB250B8217B59FD /* brand-gemini.png */,
 				3B12A88A474853068E9E3317 /* brand-grok.png */,
+				FCD0820202DA7BEE030DC3CC /* brand-kimi.png */,
 				E50FA82869360DF5BE4941CF /* brand-minimax.png */,
 				E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */,
 				09D1E9749B8E07DB4B72929A /* brand-opencode.png */,
@@ -579,6 +582,7 @@
 				B37D66ED135407352107CDAE /* brand-claude.png in Resources */,
 				A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */,
 				0DB32A66B84D5E260ECB71C5 /* brand-grok.png in Resources */,
+				95B9E1DC3AA51F0859995ACF /* brand-kimi.png in Resources */,
 				E34D5CCE71FDDE308668470A /* brand-minimax.png in Resources */,
 				4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */,
 				71893AB2B92CBF17DDB60DEF /* brand-opencode.png in Resources */,

@@ -16,6 +16,7 @@ struct MenuBarSettingsView: View {
     @AppStorage(MBKey.groupGrok)        private var expGrok = false
     @AppStorage(MBKey.groupPi)          private var expPi = false
     @AppStorage(MBKey.groupMcode)       private var expMcode = false
+    @AppStorage(MBKey.groupKimi)        private var expKimi = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -102,6 +103,12 @@ struct MenuBarSettingsView: View {
             }
             .onChange(of: expAntigravity) { _, on in
                 if on { model.refreshAntigravityNow() }   // 展开分组即联网拉取额度档位
+            }
+            // Kimi Code：用量来自 cc-switch v4.0.19 起导入的会话日志。上游的 Kimi 官方账号额度走
+            // 它的授权中心（OAuth），本应用没做，如实标注。
+            group("Kimi Code", $expKimi, icon: MBApp.kimi.iconAsset) {
+                appRows(.kimi)
+                row("Quota") { noQuota("Not supported") }
             }
 
             Text("All = every AI combined; D/W/M = Day/Week/Month. Quota windows are labelled by duration (5H/7D/30D) so they never clash with the W of Week, and show % used — as a bar unless you turn that off, filled solid once past 80% (under 20% left, same as CC Switch). Length is unlimited; only if macOS squeezes the item out does it auto-shrink to fit, truncated with ….")
