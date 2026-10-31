@@ -29,7 +29,7 @@ public enum ModelPricing {
         Row(input: i, output: o, cacheRead: cr, cacheCreation: cw)
     }
 
-    /// 对齐 cc-switch seed_model_pricing 的 232 条内置定价（同步至 v4.0.20）。
+    /// 对齐 cc-switch seed_model_pricing 的 232 条内置定价（同步至 v4.0.22）。
     /// 由 scripts/sync-pricing.sh 生成，勿手改；新模型先放下面的 `localExtras`。
     static let upstream: [String: Row] = [
         "claude-fable-5-1": R(10, 50, 0.25, 12.5),  // Claude Fable 5.1
@@ -282,7 +282,16 @@ public enum ModelPricing {
     ///   $0.50），上游 v4.0.0 收录（PR #7600，同价）后于 2026-10-10 移除。
     ///
     /// 本区清空时空字典是正常状态，不是遗漏。
-    static let localExtras: [String: Row] = [:]
+    static let localExtras: [String: Row] = [
+        // 上游 main `258c367f`（2026-10-31，v4.0.22 之后、未发版）新增的 Grok Build 三条。
+        // 查价层不剥 `-build`、`grok-` 也不走前缀匹配，必须逐条收录。
+        // 4.6 / 4.7 Build 与 grok-4.7 标准档同价（< 200k：输入 2、输出 6、缓存读 0.50）；
+        // 4.7 Build Fast 是只在 Cursor / Grok Build 提供的 Fast 档（< 200k：4 / 12、缓存读 1）。
+        // 第三方价格汇总与上游 seed 一致；docs.x.ai 原页未取到（2026-11-01）。
+        "grok-4.6-build": R(2, 6, 0.50, 0),  // Grok 4.6 Build
+        "grok-4.7-build": R(2, 6, 0.50, 0),  // Grok 4.7 Build
+        "grok-4.7-build-fast": R(4, 12, 1, 0),  // Grok 4.7 Build Fast
+    ]
 
     /// 查价与 TEMP 兜底表用的全集。上游优先：用户在 cc-switch 改过的价、上游修正过的价
     /// 都不该被本地行盖掉。

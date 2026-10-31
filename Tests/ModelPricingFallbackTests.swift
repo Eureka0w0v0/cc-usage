@@ -109,6 +109,22 @@ final class ModelPricingFallbackTests: XCTestCase {
     // 本地先行区只在上游 seed 缺席时存在：上游收录后本用例报红，提醒把本地行删掉
     //（否则同一 id 两处各一份，下次改价容易漏）。顺带锁住「合并没把任何一边丢掉」。
     // 负责杀的变异体：table 只取 upstream 忘了 merge / localExtras 里塞了上游已有的 id。
+    /// 上游 main `258c367f`（v4.0.22 之后、未发版）新增的三条 Grok Build 定价先行收进 localExtras。
+    /// `grok-` 不走前缀匹配、查价层也不剥 `-build`，所以必须逐条精确收录。
+    /// 负责杀的变异体：漏掉任一条 / 单价抄错。
+    func testGrokBuildLocalExtrasCarryUpstreamMainPrices() {
+        let expected: [String: (Double, Double, Double, Double)] = [
+            "grok-4.6-build": (2, 6, 0.50, 0),
+            "grok-4.7-build": (2, 6, 0.50, 0),
+            "grok-4.7-build-fast": (4, 12, 1, 0),
+        ]
+        for (id, p) in expected {
+            guard let row = ModelPricing.lookup(id) else { return XCTFail("缺少 \(id)") }
+            XCTAssertEqual(row.input, p.0, id); XCTAssertEqual(row.output, p.1, id)
+            XCTAssertEqual(row.cacheRead, p.2, id); XCTAssertEqual(row.cacheCreation, p.3, id)
+        }
+    }
+
     func testLocalExtrasAreAbsentUpstream() {
         let dup = Set(ModelPricing.localExtras.keys).intersection(ModelPricing.upstream.keys)
         XCTAssertTrue(dup.isEmpty, "上游已收录，请从 localExtras 删除：\(dup.sorted())")
