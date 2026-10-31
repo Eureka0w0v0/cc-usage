@@ -108,4 +108,24 @@ final class DataSourceBreakdownTests: XCTestCase {
         let names = Set(try store.providerStats(LogQueryFilter()).map(\.providerName))
         XCTAssertEqual(names, ["Antigravity (Session)", "Kimi Code (Session)"])
     }
+
+    /// v4.0.22 新增的会话来源（Oh My Pi、DeepSeek Harness 的会话与官方账号登录）：名字逐字对齐上游
+    /// provider_name_coalesce。负责杀的变异体：providerNameSQL 漏掉 `_omp_session` / `_dsh_session` /
+    /// `_dsh_account_session` 任一分支。
+    func testOmpAndDshSessionProvidersRenderReadableNames() throws {
+        let t = Fixture.ts(2026, 10, 30, 12)
+        try Fixture.insertLog(dbPath, id: "o1", app: "omp", model: "claude-opus-5-5",
+                              input: 100, output: 10, cost: 1.5, createdAt: t,
+                              dataSource: "omp_session", providerId: "_omp_session")
+        try Fixture.insertLog(dbPath, id: "d1", app: "dsh", model: "deepseek-v4.1-flash",
+                              input: 100, output: 10, cost: 0.5, createdAt: t,
+                              dataSource: "dsh_session", providerId: "_dsh_session")
+        try Fixture.insertLog(dbPath, id: "d2", app: "dsh", model: "deepseek-v4.1-flash",
+                              input: 100, output: 10, cost: 0.4, createdAt: t,
+                              dataSource: "dsh_session", providerId: "_dsh_account_session")
+
+        let names = Set(try store.providerStats(LogQueryFilter()).map(\.providerName))
+        XCTAssertEqual(names, ["Oh My Pi (Session)", "DeepSeek Harness (Session)",
+                               "DeepSeek Harness (OAuth)"])
+    }
 }
