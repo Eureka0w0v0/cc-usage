@@ -212,14 +212,15 @@ extension UsageStore {
         return backfilled
     }
 
-    /// 叠加行 → RequestLogRow：provider 是行自带的占位身份，状态恒 200，计时是叠加层现场估的（SessionOverlay）
-    /// 或 OMP 自己记的（OmpOverlay），没有计时时 latencyMs 0、firstTokenMs nil，与库里的约定相同。
+    /// 叠加行 → RequestLogRow：provider、状态码、错误信息都是行自带的（SessionOverlay 恒 200；OmpOverlay
+    /// 照上游有 499 / 500），计时是叠加层现场估的（SessionOverlay）或 OMP 自己记的（OmpOverlay），没有计时时
+    /// latencyMs 0、firstTokenMs nil，与库里的约定相同。
     static func overlayRequestLogRow(_ r: OverlayRow) -> RequestLogRow {
         let fmt6 = { (v: Double) in String(format: "%.6f", v) }
         return RequestLogRow(
             requestId: r.requestId, providerId: r.providerId,
             providerName: r.providerName, appType: r.appType,
-            model: r.model, requestModel: r.model, pricingModel: nil,
+            model: r.model, requestModel: r.requestModel ?? r.model, pricingModel: nil,
             costMultiplier: "1.0",
             inputTokens: r.input, outputTokens: r.output,
             cacheReadTokens: r.cacheRead, cacheCreationTokens: r.cacheCreation,
@@ -227,7 +228,7 @@ extension UsageStore {
             cacheReadCostUsd: fmt6(r.cacheReadCost), cacheCreationCostUsd: fmt6(r.cacheCreationCost),
             totalCostUsd: fmt6(r.totalCost),
             isStreaming: true, latencyMs: r.latencyMs, firstTokenMs: r.firstTokenMs, durationMs: nil,
-            statusCode: 200, errorMessage: nil, createdAt: r.createdAt,
+            statusCode: Int(r.statusCode), errorMessage: r.errorMessage, createdAt: r.createdAt,
             dataSource: r.dataSource   // 与 dataSourceBreakdown 同一真值，不按 providerId 反推
         )
     }
@@ -308,7 +309,7 @@ extension UsageStore {
                 requestCount: requests,
                 totalTokens: sqlite3_column_int64(stmt, 4) + ov.tokens,
                 totalCost: sqlite3_column_double(stmt, 5) + ov.cost,
-                successRate: Self.successRate(sqlite3_column_int64(stmt, 6) + ov.requests, of: requests),
+                successRate: Self.successRate(sqlite3_column_int64(stmt, 6) + ov.successes, of: requests),
                 avgLatencyMs: Self.averageLatency(sqlite3_column_int64(stmt, 7) + ov.latencySum, of: requests),
                 performance: performance
             ))
@@ -320,7 +321,7 @@ extension UsageStore {
             ov.addEstimatedSpeed(to: &performance)
             out.append(ProviderStatRow(providerId: ov.providerId, appType: ov.appType, providerName: ov.providerName,
                                        requestCount: ov.requests, totalTokens: ov.tokens, totalCost: ov.cost,
-                                       successRate: Self.successRate(ov.requests, of: ov.requests),
+                                       successRate: Self.successRate(ov.successes, of: ov.requests),
                                        avgLatencyMs: Self.averageLatency(ov.latencySum, of: ov.requests),
                                        performance: performance))
         }
@@ -391,7 +392,7 @@ extension UsageStore {
                 totalTokens: sqlite3_column_int64(stmt, 2) + ov.tokens,
                 totalCost: totalCost,
                 avgCostPerRequest: requests > 0 ? totalCost / Double(requests) : 0,
-                successRate: Self.successRate(sqlite3_column_int64(stmt, 4) + ov.requests, of: requests),
+                successRate: Self.successRate(sqlite3_column_int64(stmt, 4) + ov.successes, of: requests),
                 performance: performance
             ))
         }
@@ -403,7 +404,7 @@ extension UsageStore {
             out.append(ModelStatRow(model: model, requestCount: ov.requests, totalTokens: ov.tokens,
                                     totalCost: ov.cost,
                                     avgCostPerRequest: ov.requests > 0 ? ov.cost / Double(ov.requests) : 0,
-                                    successRate: Self.successRate(ov.requests, of: ov.requests),
+                                    successRate: Self.successRate(ov.successes, of: ov.requests),
                                     performance: performance))
         }
         if hasOverlay { out.sort { $0.totalCost > $1.totalCost } }
@@ -451,7 +452,7 @@ extension UsageStore {
         requests > 0 ? sum / requests : 0
     }
 
-    /// 叠加行按统计表的行身份汇总。叠加行恒 200，全部计入成功；计时是叠加层现场估的（或 OMP 自己记的），
+    /// 叠加行按统计表的行身份汇总。成功只认 2xx（OMP 的中断 / 报错请求是 499 / 500）；计时是叠加层现场估的（或 OMP 自己记的），
     /// 非路由来源一律按估算口径：耗时之和进平均耗时；够门槛的（输出 ≥ 200、耗时 ≥ 1s，同 speedEstimateEligibleL）
     /// 进估算速度；推出了首字的进估算首字中位数（同 estFirstTokenEligibleL）。没有计时的行（耗时 0）只算请求数、
     /// Tokens、成本，平均耗时里按 0 计——与库里没有计时的行同一口径。
@@ -461,6 +462,7 @@ extension UsageStore {
         var appType = ""
         var providerName = ""
         var requests: Int64 = 0
+        var successes: Int64 = 0
         var tokens: Int64 = 0
         var cost: Double = 0
         var latencySum: Int64 = 0
@@ -470,6 +472,7 @@ extension UsageStore {
 
         mutating func add(_ r: OverlayRow) {
             requests += 1
+            if UsageStore.isSuccess(r) { successes += 1 }
             tokens += r.realTotalTokens
             cost += r.totalCost
             latencySum += r.latencyMs

@@ -97,20 +97,23 @@ public final class UsageStore: @unchecked Sendable {
     }
 
     /// LogQueryFilter 版(Tabs 用):多两个维度——provider 名与状态码。
-    /// overlay 行状态码恒 200;provider 展示名由行自带("Claude (Session)" / "OMP (…)")。
+    /// 状态码按行自带的比(SessionOverlay 恒 200,OmpOverlay 有 499 / 500);provider 展示名由行自带。
     func overlayLogRows(_ db: OpaquePointer, _ f: LogQueryFilter) -> [OverlayRow] {
-        if let sc = f.statusCode, sc != 200 { return [] }
-        return overlayRows(db, UsageFilter(start: f.start, end: f.end, appType: f.appType,
-                                           providerName: f.providerName, model: f.model))
+        let rows = overlayRows(db, UsageFilter(start: f.start, end: f.end, appType: f.appType,
+                                               providerName: f.providerName, model: f.model))
+        guard let sc = f.statusCode else { return rows }
+        return rows.filter { $0.statusCode == Int64(sc) }
     }
+
+    /// 成功 = 2xx，与 SQL 里 `status_code >= 200 AND status_code < 300` 同口径。
+    static func isSuccess(_ r: OverlayRow) -> Bool { (200..<300).contains(r.statusCode) }
 
     /// 把增量行累加进汇总(claude 的 fresh_input = input,无 cache 扣减)。
     func addOverlay(_ s: inout UsageSummary, _ rows: [OverlayRow]) {
         guard !rows.isEmpty else { return }
         s.requests += rows.count
-        // 增量行来自已完成的响应（JSONL 里只有拿到 usage 的 assistant 消息才成行），
-        // 没有失败态可言，全部计入成功。
-        s.successes += rows.count
+        // 请求数照算全部行；成功只认 2xx——OMP 的中断 / 报错请求（499 / 500）不算成功。
+        s.successes += rows.lazy.filter(Self.isSuccess).count
         for r in rows {
             s.input += r.input
             s.output += r.output

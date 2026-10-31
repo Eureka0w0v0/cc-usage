@@ -67,6 +67,13 @@ public struct OverlayRow: Sendable {
     public var latencyMs: Int64 = 0
     /// 首字时间（毫秒），推不出来为 nil——与库里 first_token_ms 同一约定。
     public var firstTokenMs: Int64? = nil
+    /// 状态码，与库里 status_code 同一约定。SessionOverlay 的行恒为 200（JSONL 里只有拿到 usage 的
+    /// 回复才成行）；OmpOverlay 照上游把中断 / 报错的请求记成 499 / 500，用量可以是 0。
+    public var statusCode: Int64 = 200
+    /// 失败请求的错误信息（上游截到 4096 字符），成功的行为 nil。
+    public var errorMessage: String? = nil
+    /// 请求时指定的模型（库里的 request_model）。nil = 与 model 相同。
+    public var requestModel: String? = nil
 }
 
 /// 两个 overlay 共用的逐行扫描原语。
