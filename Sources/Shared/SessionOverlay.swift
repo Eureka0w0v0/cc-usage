@@ -214,9 +214,8 @@ public final class SessionOverlay {
     }
     private var marks: [String: FileMark] = [:]
 
-    private struct Pricing { var input: Double; var output: Double; var cacheRead: Double; var cacheCreation: Double }
-    private var pricingExact: [String: Pricing] = [:]   // 键是小写 model_id（见 loadPricingIfStale）
-    private var pricingIds: [String] = []          // 前缀匹配用(小写、短 id 优先)
+    /// 库里 model_pricing 的快照（查价规则见 PricingTable），按 pricingTTL 重读。
+    private var pricing = PricingTable()
     private var pricingLoadedAt: Date?
     /// 1 小时缓存写入是否按 1.6 倍计，随定价一起按 TTL 重判。nil = 还没判过；
     /// 每轮真扫都先经 loadPricingIfStale 判定，ingest 时不会是 nil。
@@ -578,7 +577,7 @@ public final class SessionOverlay {
     private func costs(model: String, input: Int64, output: Int64, cacheRead: Int64,
                        cacheCreation: Int64, cacheCreation1h: Int64)
         -> (input: Double, output: Double, cacheRead: Double, cacheCreation: Double) {
-        guard let p = findPricing(model) else { return (0, 0, 0, 0) }
+        guard let p = pricing.find(model) else { return (0, 0, 0, 0) }
         return (Double(input) * p.input / 1_000_000,
                 Double(output) * p.output / 1_000_000,
                 Double(cacheRead) * p.cacheRead / 1_000_000,
@@ -709,29 +708,9 @@ public final class SessionOverlay {
     private func loadPricingIfStale(_ db: OpaquePointer) {
         if let at = pricingLoadedAt, Date().timeIntervalSince(at) < pricingTTL { return }
         refreshBillingRuleLocked()
-        var exact: [String: Pricing] = [:]
-        var stmt: OpaquePointer?
-        let sql = """
-        SELECT model_id, input_cost_per_million, output_cost_per_million,
-               cache_read_cost_per_million, cache_creation_cost_per_million FROM model_pricing
-        """
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let c = sqlite3_column_text(stmt, 0) else { continue }
-            // 键一律转小写：查价候选（ModelId.pricingCandidates）全是小写，而自定义定价常按界面
-            // 显示名原样入库（如 GLM-5.3-Flash-EXL3）。上游 #8414 起精确匹配是 `= ? COLLATE NOCASE`、
-            // 前缀匹配是 LIKE，都不分大小写。只差大小写的两行撞车时先读到的留下：上游那条查询用不上
-            // BINARY 主键索引、按表的自然顺序扫，同样先到先得。
-            let id = String(cString: c).lowercased()
-            guard exact[id] == nil else { continue }
-            func col(_ i: Int32) -> Double {
-                sqlite3_column_text(stmt, i).flatMap { Double(String(cString: $0)) } ?? 0
-            }
-            exact[id] = Pricing(input: col(1), output: col(2), cacheRead: col(3), cacheCreation: col(4))
-        }
-        pricingExact = exact
-        pricingIds = exact.keys.sorted { $0.count < $1.count }   // 前缀匹配取最短命中,对齐 LENGTH ASC
+        // 读不出（缺表等）就沿用旧快照、不记时间，下一轮再试——与搬出前的行为相同。
+        guard let table = PricingTable.load(db) else { return }
+        pricing = table
         pricingLoadedAt = Date()
     }
 
@@ -744,28 +723,6 @@ public final class SessionOverlay {
             marks.removeAll()
         }
         oneHourRate = rule
-    }
-
-    // MARK: - 定价匹配(对齐 find_model_pricing_row:候选精确匹配 → 前缀匹配)
-
-    private func findPricing(_ modelId: String) -> Pricing? {
-        let candidates = ModelId.pricingCandidates(modelId)
-        for c in candidates {
-            if let p = pricingExact[c] { return p }
-        }
-        for c in candidates where ModelId.shouldTryPrefixMatch(c) {
-            // model_id LIKE 'c-%' ORDER BY LENGTH LIMIT 1(pricingIds 已按长度升序)
-            if let hit = pricingIds.first(where: { $0.hasPrefix(c + "-") }) {
-                return pricingExact[hit]
-            }
-        }
-        // db 没有该模型(上游 seed 尚未跟进新模型)→ 回落内置表。库里已有的定价
-        // 永远优先，所以用户在 cc-switch 改过的价不会被这里覆盖。
-        if let b = ModelPricing.lookup(modelId) {
-            return Pricing(input: b.input, output: b.output,
-                           cacheRead: b.cacheRead, cacheCreation: b.cacheCreation)
-        }
-        return nil
     }
 
     // MARK: - 小工具

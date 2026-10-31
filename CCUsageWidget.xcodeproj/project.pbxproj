@@ -23,6 +23,7 @@
 		1EF095B56A1423C2E40C5197 /* ClaudeCredentialSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = C062E2836BEEAC77F0E414CE /* ClaudeCredentialSource.swift */; };
 		213C0F0038E91DFADFA61B44 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = C843DC8A24FE2FC77A32C289 /* Sample.swift */; };
 		22985D97C9AF72DDF79CFFD9 /* ModelId.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D2EACA64431BC2B2245A81B /* ModelId.swift */; };
+		27ACEE93A6D3F570668467C2 /* PricingTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B06356A9F09C380F2167894A /* PricingTable.swift */; };
 		28B4E4426A12A6D943DE79E0 /* NiceScaleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E8E9E18A677821DEA1BD190 /* NiceScaleTests.swift */; };
 		28CBB792D9B92A327E575772 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = FE46559B13C9C8A264B5681B /* libsqlite3.tbd */; };
 		29A9DBED720330ABC4A5ECE5 /* OmpOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852F6FC486224DEFA66DC312 /* OmpOverlay.swift */; };
@@ -97,6 +98,7 @@
 		A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */ = {isa = PBXBuildFile; fileRef = 7C5506EFDDB250B8217B59FD /* brand-gemini.png */; };
 		A544C29B51D80C37C8543012 /* EmbedSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B51CCF10A133C711AD635E /* EmbedSettings.swift */; };
 		A61F23745122D8A4D9FC74BA /* CCUsageWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015B95E0A6E30643E43E6880 /* CCUsageWidgetBundle.swift */; };
+		A6543F9F82C8834C721C299F /* PricingTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B06356A9F09C380F2167894A /* PricingTable.swift */; };
 		A82AE276EBA63B9FB4DDF303 /* UsageSQL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40C9249F54B1DB05E9E9CC84 /* UsageSQL.swift */; };
 		A8E7F6A79EEE15E8B809545A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
 		A99CCBF14FF6DCD2F03D296C /* SyncCursorCompatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B0A19B0E75AF7C4A2A7B928 /* SyncCursorCompatTests.swift */; };
@@ -149,6 +151,7 @@
 		F0A03A972CAADA8218FA9636 /* brand-antigravity.png in Resources */ = {isa = PBXBuildFile; fileRef = AB7BF81703006F6E8E06425B /* brand-antigravity.png */; };
 		F27D33A3F027F1A252FF97C8 /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B7394AA86628D94994BEE1 /* UsageStore+Summary.swift */; };
 		F294F18AEAB9F7B544FEEAD2 /* ClaudeCredentialSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = C062E2836BEEAC77F0E414CE /* ClaudeCredentialSource.swift */; };
+		F3F6DF41B992C0A0E25CF5BF /* PricingTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B06356A9F09C380F2167894A /* PricingTable.swift */; };
 		F431BB6863A334616BFE75F1 /* ClaudeCredentialSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = C062E2836BEEAC77F0E414CE /* ClaudeCredentialSource.swift */; };
 		F4342FBA8A4CA98A394C52D6 /* MenuBarPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1023FC76A66DAD31754F57CB /* MenuBarPanel.swift */; };
 		F49625740A47136DD83F63A5 /* UsageWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C6F71B17198DB1346AD0B71 /* UsageWindowTests.swift */; };
@@ -245,6 +248,7 @@
 		A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPricingFallbackTests.swift; sourceTree = "<group>"; };
 		AB7BF81703006F6E8E06425B /* brand-antigravity.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-antigravity.png"; sourceTree = "<group>"; };
 		AEC9BFCBC6414480A918AF37 /* RFC3339Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFC3339Tests.swift; sourceTree = "<group>"; };
+		B06356A9F09C380F2167894A /* PricingTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingTable.swift; sourceTree = "<group>"; };
 		B2723C22CB8FA7B771A6853F /* AntigravityQuotaParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityQuotaParsing.swift; sourceTree = "<group>"; };
 		B630AB07F7C1A6EB7B7A1D56 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -342,6 +346,7 @@
 				97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */,
 				E4AA5CE26A92288C346C292B /* NiceScale.swift */,
 				852F6FC486224DEFA66DC312 /* OmpOverlay.swift */,
+				B06356A9F09C380F2167894A /* PricingTable.swift */,
 				3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */,
 				C843DC8A24FE2FC77A32C289 /* Sample.swift */,
 				3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */,
@@ -622,6 +627,7 @@
 				095C61E167A7253744FED7A8 /* ModelPricing.swift in Sources */,
 				EDF2674C1654E5556470D38C /* NiceScale.swift in Sources */,
 				430272EA72A336833DA9941E /* OmpOverlay.swift in Sources */,
+				27ACEE93A6D3F570668467C2 /* PricingTable.swift in Sources */,
 				43884E8A3CE005F12FEB30E4 /* QuotaWarning.swift in Sources */,
 				5C6F71164593F58EBA7DCD7C /* SQLiteSupport.swift in Sources */,
 				4D4D7C0D1F59343D57277E53 /* Sample.swift in Sources */,
@@ -669,6 +675,7 @@
 				29A9DBED720330ABC4A5ECE5 /* OmpOverlay.swift in Sources */,
 				D235AF54DE908310AA3C85D7 /* PanelModel.swift in Sources */,
 				DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */,
+				A6543F9F82C8834C721C299F /* PricingTable.swift in Sources */,
 				77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */,
 				B05EF786E95DADBCD5B13469 /* QuotaWarning.swift in Sources */,
 				5CD50F8CC7B3020983CAB217 /* SQLiteSupport.swift in Sources */,
@@ -725,6 +732,7 @@
 				B577BCB5242D1078D673C3E4 /* OverlayStatusTests.swift in Sources */,
 				487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */,
 				CCBC5F29DF2F3BE14EF8DAE4 /* PricingCandidatesTests.swift in Sources */,
+				F3F6DF41B992C0A0E25CF5BF /* PricingTable.swift in Sources */,
 				A9FED5E7C3C42C8FA79EDDA7 /* ProviderFilterTests.swift in Sources */,
 				186BAD2B5F7F3BD476D7CC9A /* ProviderStatsIdentityTests.swift in Sources */,
 				B7B683091718E966E12425FA /* QuotaWarning.swift in Sources */,
