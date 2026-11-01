@@ -210,6 +210,41 @@ final class OmpOverlayTests: XCTestCase {
         XCTAssertTrue(rows().isEmpty, "没有 entry id 的旧行同内容 → 已入库")
     }
 
+    /// semantic 查询被账本里一条无关的旧式行触发时，有 entry id 的记录仍只认没有 entry id 的同内容行。
+    /// 负责杀的变异体：semantic 判定不分 entry id（has_entry_id = 1 的同内容行也算重复）。
+    func testSemanticQueryIgnoresEntryIdRowsForEntryIdRecords() throws {
+        let line = assistant("sem-2")
+        try write([line])
+        let entry = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(line.utf8)) as? NSDictionary)
+        let semantic = try XCTUnwrap(OmpUsage.record(from: entry, sessionId: "s1", sessionTimestamp: nil,
+                                                     fileTimestamp: 0)).semanticId
+        try Fixture.exec(dbPath, """
+            INSERT INTO session_usage_dedup VALUES ('omp_session', 'unrelated', 'omp_session_semantic:unrelated', 0);
+            INSERT INTO session_usage_dedup VALUES ('omp_session', 'twin', '\(semantic)', 1);
+            """)
+        XCTAssertEqual(rows().count, 1)
+    }
+
+    /// 同一个 request_id 在两个文件里内容不同（同 id 同时间被改写）：照上游账本按文件排序先到先得。
+    /// 负责杀的变异体：跨文件不去重（结果字典后写覆盖前写，留下的是后一个文件的值）。
+    func testDuplicateRequestIdKeepsFirstFileInSortedOrder() throws {
+        try write([assistant("same", input: 10)], to: "a.jsonl")
+        try write([assistant("same", input: 99)], to: "b.jsonl")
+        XCTAssertEqual(rows().map(\.input), [10])
+    }
+
+    /// 先出现的条目没有 entry id、后出现的同内容条目带 id：semantic 相同即重复（上游 legacy 规则）。
+    /// 负责杀的变异体：跨文件不去重（两条 request_id 不同，结果字典去不掉）。
+    func testEntryWithIdDuplicatesEarlierIdlessEntryBySemantic() throws {
+        let withId = assistant("legacy")
+        let idless = withId.replacingOccurrences(of: #""id":"legacy","#, with: "")
+        XCTAssertNotEqual(idless, withId)
+        try write([idless], to: "a.jsonl")
+        try write([withId], to: "b.jsonl")
+        XCTAssertEqual(rows().count, 1)
+        XCTAssertTrue(rows().first?.requestId.hasPrefix("omp_session_semantic:") ?? false, "留下的是先到的无 id 条目")
+    }
+
     /// 旧库（cc-switch < v17）没有账本表：只查明细，不报错。
     func testMissingLedgerTableIsTolerated() throws {
         try Fixture.exec(dbPath, "DROP TABLE session_usage_dedup;")
