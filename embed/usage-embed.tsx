@@ -687,6 +687,7 @@ function EmbedUsagePanel() {
 
   // ── 范围栏（照 v4.0.20）：时间排第一，图表和指标都跟着它 ─────────────────
   // 只列 cc-switch「应用」页设为显示的应用；Claude Code 的用量在 Claude Desktop 显示时也算，
+  // DeepSeek Harness（Web 与 Desktop 的会话用量合并记在 dsh 下）在 Desktop 显示时也算，
   // 当前选中的即使被隐藏也留着，免得筛选状态无处可见
   const filterApps = useMemo(() => {
     const visible = { ...DEFAULT_VISIBLE_APPS, ...settings?.visibleApps };

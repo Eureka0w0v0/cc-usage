@@ -253,6 +253,28 @@ function mockRequestLogs() {
       appType: "kimi",
       model: "kimi-k3.1-pro",
     },
+    // v4.0.22：Oh My Pi 的会话导入（provider 是 OMP 自己的供应商名）、中断的请求（499）、
+    // DeepSeek Harness 走 DeepSeek 账号登录的会话行（前端显示「DeepSeek 账号（OAuth）」）
+    {
+      ...row("omp_session:1", "anthropic", "omp_session", 520, 6_744, undefined, 3000),
+      providerId: "anthropic",
+      appType: "omp",
+      model: "claude-opus-5-5",
+    },
+    {
+      ...row("omp_session:2", "anthropic", "omp_session", 0, 0, undefined, 3100),
+      providerId: "anthropic",
+      appType: "omp",
+      model: "claude-opus-5-5",
+      statusCode: 499,
+      errorMessage: "Request was aborted",
+    },
+    {
+      ...row("dsh_session:1", "DeepSeek Harness (OAuth)", "dsh_session", 610, 0, undefined, 3600),
+      providerId: "_dsh_account_session",
+      appType: "dsh",
+      model: "deepseek-v4.1-flash",
+    },
   ];
   return { data, total: data.length, page: 0, pageSize: 20 };
 }
