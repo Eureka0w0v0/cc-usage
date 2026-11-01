@@ -19,7 +19,7 @@ public struct QuotaTier: Identifiable, Sendable, Equatable {
     public let utilization: Double
     /// 窗口重置时间
     public let resetsAt: Date?
-    /// 套餐标签（来自凭据 subscriptionType，如 "max"）
+    /// 套餐显示名（凭据里的 subscriptionType + rateLimitTier 经 ClaudePlan 格式化，如 "Max 20x"）
     public var planLabel: String?
 
     public var id: String { name }

@@ -10,10 +10,12 @@ import Foundation
 struct ClaudeCredential: Sendable, Equatable {
     let accessToken: String
     let subscriptionType: String?
+    /// 套餐档位，如 `default_claude_max_20x`（非机密字段，只用来显示套餐名，见 ClaudePlan）。
+    let rateLimitTier: String?
 }
 
 /// 凭据 JSON 的解析（钥匙串条目与 `~/.claude/.credentials.json` 同一格式）：
-/// `{ "claudeAiOauth": { "accessToken": "...", "subscriptionType": "..." } }`，
+/// `{ "claudeAiOauth": { "accessToken": "...", "subscriptionType": "...", "rateLimitTier": "..." } }`，
 /// 旧版的键名 `claude.ai_oauth` 同样认。
 enum ClaudeCredentialParser {
     enum Failure: Error, Equatable {
@@ -32,7 +34,8 @@ enum ClaudeCredentialParser {
         guard let token = entry["accessToken"] as? String, !token.isEmpty
         else { return .failure(.missingAccessToken) }
         return .success(ClaudeCredential(accessToken: token,
-                                         subscriptionType: entry["subscriptionType"] as? String))
+                                         subscriptionType: entry["subscriptionType"] as? String,
+                                         rateLimitTier: entry["rateLimitTier"] as? String))
     }
 }
 

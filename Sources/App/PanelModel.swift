@@ -19,6 +19,8 @@ final class PanelModel: ObservableObject {
     // 官方订阅额度窗口（five_hour / seven_day），供菜单栏电池码片用。
     // 仅当有「额度」码片开启时才发起查询；实际是否命中官方接口由 QuotaCache 5 分钟节流决定。
     @Published var quotaTiers: [QuotaTier] = []
+    /// Claude 套餐显示名（如 "Max 20x"），随额度一起从凭据里读出来；还没拉过额度时为 nil、界面上不显示。
+    var claudePlanLabel: String? { quotaTiers.lazy.compactMap(\.planLabel).first }
 
     // 菜单栏码片开关——放在 @Published（而非视图里的 @AppStorage）里，因为 MenuBarExtra 的 label
     // 对 @AppStorage 变化不可靠响应，但对本 model 的 @Published 变化一定响应（Tokens 数已验证）。

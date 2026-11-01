@@ -19,7 +19,7 @@ final class ClaudeCredentialSourceTests: XCTestCase {
             return self.output(0, #"{"claudeAiOauth":{"accessToken":"current-user-token","subscriptionType":"max"}}"#)
         }
         XCTAssertEqual(calls, [withAccount])
-        XCTAssertEqual(cred, ClaudeCredential(accessToken: "current-user-token", subscriptionType: "max"))
+        XCTAssertEqual(cred, ClaudeCredential(accessToken: "current-user-token", subscriptionType: "max", rateLimitTier: nil))
     }
 
     // 账户条目找不到（44）、只存了 mcpOAuth、不是合法 JSON、claudeAiOauth 里没有 token → 都再试一次不带账户的旧查法。
@@ -106,9 +106,17 @@ final class ClaudeCredentialSourceTests: XCTestCase {
 
     func testParseAcceptsBothKeyNamesAndTrimsWhitespace() {
         XCTAssertEqual(try ClaudeCredentialParser.parse("  {\"claudeAiOauth\":{\"accessToken\":\"a\"}}\n").get(),
-                       ClaudeCredential(accessToken: "a", subscriptionType: nil))
+                       ClaudeCredential(accessToken: "a", subscriptionType: nil, rateLimitTier: nil))
         XCTAssertEqual(try ClaudeCredentialParser.parse(#"{"claude.ai_oauth":{"accessToken":"b","subscriptionType":"pro"}}"#).get(),
-                       ClaudeCredential(accessToken: "b", subscriptionType: "pro"))
+                       ClaudeCredential(accessToken: "b", subscriptionType: "pro", rateLimitTier: nil))
+    }
+
+    /// 套餐档位（非机密字段）随凭据一起读出来，主窗口和菜单栏据此显示 Max 5x / 20x。
+    /// 负责杀的变异体：不读 rateLimitTier / 读错键名。
+    func testParseReadsRateLimitTier() {
+        let json = #"{"claudeAiOauth":{"accessToken":"t","subscriptionType":"max","rateLimitTier":"default_claude_max_20x"}}"#
+        XCTAssertEqual(try ClaudeCredentialParser.parse(json).get(),
+                       ClaudeCredential(accessToken: "t", subscriptionType: "max", rateLimitTier: "default_claude_max_20x"))
     }
 
     func testParseFailuresAreDistinguished() {

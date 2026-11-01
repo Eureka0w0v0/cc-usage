@@ -126,7 +126,8 @@ enum QuotaService {
 
         switch await ClaudeUsageAPI.query(token: cred.accessToken) {
         case .success(var tiers):
-            for i in tiers.indices { tiers[i].planLabel = cred.subscriptionType }
+            let plan = ClaudePlan.label(subscriptionType: cred.subscriptionType, rateLimitTier: cred.rateLimitTier)
+            for i in tiers.indices { tiers[i].planLabel = plan }
             return tiers
         case .failure:
             return nil

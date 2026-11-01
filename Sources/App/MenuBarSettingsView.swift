@@ -37,7 +37,14 @@ struct MenuBarSettingsView: View {
             }
             group("Claude", $expClaude, icon: MBApp.claude.iconAsset) {
                 appRows(.claude)
-                row("Quota") { check("5H", $model.mbQuota5H); check("Week", $model.mbQuotaWeek) }
+                row("Quota") {
+                    check("5H", $model.mbQuota5H); check("Week", $model.mbQuotaWeek)
+                    // 套餐名靠右（凭据里的 subscriptionType + rateLimitTier，同上游卡片上的显示）
+                    if let plan = model.claudePlanLabel {
+                        Spacer(minLength: 8)
+                        Text(plan).font(.caption).foregroundStyle(Theme.textDim)
+                    }
+                }
             }
             group("Codex", $expCodex, icon: MBApp.codex.iconAsset) {
                 appRows(.codex)

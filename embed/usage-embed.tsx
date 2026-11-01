@@ -352,8 +352,15 @@ function QuotaBadges({ pollMs }: { pollMs: number }) {
     const id = window.setInterval(() => setTick((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
+  // 套餐名（如 Max 20x）放在徽标左边，同上游卡片「额度块标题 = 套餐」的做法；读不到就不显示
+  const plan = tiers.find((t) => t.planLabel)?.planLabel;
   return (
     <div className="flex shrink-0 items-center gap-1.5">
+      {plan && (
+        <span className="shrink-0 px-1 text-caption font-medium text-fg-2" title="Claude plan">
+          {plan}
+        </span>
+      )}
       {QUOTA_BADGES.map(({ name, label, always }) => {
         const tier = tiers.find((t) => t.name === name);
         if (!tier && !always) return null;

@@ -129,10 +129,10 @@ function mockInvoke(cmd: string, args?: InvokeArgs): unknown {
 function mockQuota() {
   const iso = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
   return [
-    { name: "five_hour", utilization: 42, resetsAt: iso(2), planLabel: "max" },
-    { name: "seven_day", utilization: 78, resetsAt: iso(50), planLabel: "max" },
-    { name: "seven_day_fable", utilization: 12, resetsAt: iso(50), planLabel: "max" },
-    { name: "seven_day_opus", utilization: 47.5, resetsAt: iso(50), planLabel: "max" },
+    { name: "five_hour", utilization: 42, resetsAt: iso(2), planLabel: "Max 20x" },
+    { name: "seven_day", utilization: 78, resetsAt: iso(50), planLabel: "Max 20x" },
+    { name: "seven_day_fable", utilization: 12, resetsAt: iso(50), planLabel: "Max 20x" },
+    { name: "seven_day_opus", utilization: 47.5, resetsAt: iso(50), planLabel: "Max 20x" },
   ];
 }
 
