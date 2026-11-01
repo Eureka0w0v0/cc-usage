@@ -137,6 +137,7 @@
 		D0CA38B4062ABCFD957CACC8 /* RFC3339Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC9BFCBC6414480A918AF37 /* RFC3339Tests.swift */; };
 		D0CED0E83C8A971F5437B63C /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D5177768EABBA97BE2A6C7 /* Formatting.swift */; };
 		D235AF54DE908310AA3C85D7 /* PanelModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A501873EFB84588DAFDFBB6A /* PanelModel.swift */; };
+		D325AC355D65B2F4B40E77AD /* DirListCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE10AA933B9FCA97C92C6EA /* DirListCacheTests.swift */; };
 		D467AB086C4AC71B7300F1C2 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
 		D4DCFE0E2892D763ECC6EEFE /* CodexRateLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 865223228D5DC112DC2B943E /* CodexRateLimits.swift */; };
 		D75B6DEE30954D9970BE096C /* SQLiteSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 205E593B8BA7C6E8FFA9B329 /* SQLiteSupport.swift */; };
@@ -266,6 +267,7 @@
 		B788D2D872F106E2F2EC0A22 /* CCUsageApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCUsageApp.swift; sourceTree = "<group>"; };
 		B9BD9FF5731326FD2CED9258 /* UsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStore.swift; sourceTree = "<group>"; };
 		BA8DAFF3CCEE62A47CCC0700 /* UsageStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStoreTests.swift; sourceTree = "<group>"; };
+		BAE10AA933B9FCA97C92C6EA /* DirListCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirListCacheTests.swift; sourceTree = "<group>"; };
 		C062E2836BEEAC77F0E414CE /* ClaudeCredentialSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCredentialSource.swift; sourceTree = "<group>"; };
 		C0D5177768EABBA97BE2A6C7 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		C4D584EE6E87C0844CE987F0 /* QuotaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaService.swift; sourceTree = "<group>"; };
@@ -390,6 +392,7 @@
 				40CDBEA70D4CF12353B80A47 /* CodexRateLimitsTests.swift */,
 				02EC91B3D0364F51E74D43D4 /* CrossSourceDedupTests.swift */,
 				450359DFC5AEC0C170B78D45 /* DataSourceBreakdownTests.swift */,
+				BAE10AA933B9FCA97C92C6EA /* DirListCacheTests.swift */,
 				6CA2B9D133F5B1BEA18E82D8 /* EmbedSettingsTests.swift */,
 				581B74090E8AD015CE9C4DBE /* FallbackTableSeedTests.swift */,
 				E1AB14D881996E7BEEB26551 /* FormattingTests.swift */,
@@ -733,6 +736,7 @@
 				EF35541C241CCFC24EC49BBE /* CodexRateLimitsTests.swift in Sources */,
 				1AB9D7324DF34BF91A2E4087 /* CrossSourceDedupTests.swift in Sources */,
 				99E489EF52A92F4BEE5B8C08 /* DataSourceBreakdownTests.swift in Sources */,
+				D325AC355D65B2F4B40E77AD /* DirListCacheTests.swift in Sources */,
 				1BD4F6B34CD1BF14B8935EB9 /* EmbedSettings.swift in Sources */,
 				36ADA7BAC26F33E0F1EEB585 /* EmbedSettingsTests.swift in Sources */,
 				80090AAACF2B93A81A1F657A /* FallbackTableSeedTests.swift in Sources */,

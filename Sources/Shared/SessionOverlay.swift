@@ -145,7 +145,8 @@ final class DirListCache {
     /// 少记一个目录 = 那一层的增删会被漏看，故凡是 contentsOfDirectory 过、或
     /// 据其内容决定过分支的目录都要记进去。
     func files(_ enumerate: () -> (files: [String], dirs: [String])) -> [String] {
-        if primed, dirMtimes.allSatisfy({ Self.mtimeNs($0.path) == $0.mtime }) { return cached }
+        // 不存在的目录记的是 0，比对时同样按 0 算（nil 直接和 0 比永远不等，缓存会每轮失效）。
+        if primed, dirMtimes.allSatisfy({ (Self.mtimeNs($0.path) ?? 0) == $0.mtime }) { return cached }
         let r = enumerate()
         cached = r.files
         // 目录不存在 → 记 0；将来被创建时 mtime 变为真值，缓存自然失效。

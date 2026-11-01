@@ -80,12 +80,15 @@ final class OmpSessionFilesTests: XCTestCase {
         XCTAssertEqual(relative(OmpSessionFiles.discover(roots(pi: root)).files), ["p/omp.jsonl"])
     }
 
-    /// 枚举时读过的目录都要交给 DirListCache，包括还不存在的子会话目录（被创建时缓存才会失效）。
-    func testReportsEveryDirectoryItReadIncludingMissingChildDirs() throws {
+    /// 枚举时读过的目录都要交给 DirListCache；还不存在的子会话目录不记（它被创建时上一级目录的 mtime 会变），
+    /// 记了会让缓存每轮都失效。负责杀的变异体：漏记读过的目录 / 把不存在的目录也记进去。
+    func testReportsEveryDirectoryItReadButNotMissingOnes() throws {
         try touch("p/a.jsonl")
+        try touch("p/b.jsonl")
+        try touch("p/b/child.jsonl")
         let dirs = Set(OmpSessionFiles.discover(roots()).dirs)
-        XCTAssertTrue(dirs.isSuperset(of: [root, (root as NSString).appendingPathComponent("p"),
-                                           (root as NSString).appendingPathComponent("p/a")]))
+        let p = (root as NSString).appendingPathComponent("p")
+        XCTAssertEqual(dirs, [root, p, (p as NSString).appendingPathComponent("b")])
     }
 
     /// 负责杀的变异体：`~` 展开规则与上游 resolve_override_path 不一致；空串当成覆盖。

@@ -83,10 +83,9 @@ enum OmpSessionFiles {
     /// 子会话：递归、跳过 `subagent-artifacts`（里面是转录和审计日志，没有 session header）、不跟符号链接。
     private static func collectChildren(_ dir: String, into output: inout [String], dirs: inout [String]) {
         let list = entries(dir)
-        guard !list.isEmpty || isDirectory(dir) else {
-            dirs.append(dir)   // 还不存在：记下来，等它被创建时缓存失效
-            return
-        }
+        // 还不存在的目录不用记：它被创建时上一级目录（已经记着）的 mtime 会变，缓存照样失效。
+        // 记了反而坏事——DirListCache 拿 nil 和记下的 0 比永远不等，每轮都会整棵重新枚举。
+        guard !list.isEmpty || isDirectory(dir) else { return }
         dirs.append(dir)
         for entry in list {
             switch entry.kind {
