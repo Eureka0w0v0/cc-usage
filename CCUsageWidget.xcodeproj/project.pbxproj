@@ -60,6 +60,7 @@
 		5D54F8F3E7A0D2EEFB893E82 /* JSONLChainScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = F260C5E2D4CFDCF5B6A4AFBD /* JSONLChainScan.swift */; };
 		60B00681B5B422EF73D89690 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D5177768EABBA97BE2A6C7 /* Formatting.swift */; };
 		629EC9F597E8AF006207531E /* UsageWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F731768D17E00AD7C1F4FFBC /* UsageWindow.swift */; };
+		62D9343B3826C066952A880A /* brand-deepseek.png in Resources */ = {isa = PBXBuildFile; fileRef = A12ACCE40C9007DC7CB66822 /* brand-deepseek.png */; };
 		630F3E568A5660DC08F0CD38 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		63FF2EB44BB1017E5D054153 /* ClaudeCacheWriteBilling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 132C63AC6A14F314F5E12482 /* ClaudeCacheWriteBilling.swift */; };
 		641603E9BC751BD6E97CA710 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D5177768EABBA97BE2A6C7 /* Formatting.swift */; };
@@ -123,6 +124,7 @@
 		B709318DC2A0E03EE7054593 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBA104B27652B13E74A7E2B /* SessionOverlay.swift */; };
 		B7B683091718E966E12425FA /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECB944FBB7364EB543C36A9 /* QuotaWarning.swift */; };
 		B92DC53A6B5E710778F7BE80 /* SessionTimingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B40B5B2F36EAA5046A0266 /* SessionTimingTests.swift */; };
+		B9C758ECE87B764FE9A61245 /* brand-omp.png in Resources */ = {isa = PBXBuildFile; fileRef = 214423B6ACA620FF6424C192 /* brand-omp.png */; };
 		BBF3D589661BD58666A648E8 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BD9FF5731326FD2CED9258 /* UsageStore.swift */; };
 		C3EFCC6A9C5C2CD15868F98F /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD0BC76597EA7B1CA061A1A /* TestSupport.swift */; };
 		C4C3DBC1912494D05F4ACE68 /* CodexRateLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 865223228D5DC112DC2B943E /* CodexRateLimits.swift */; };
@@ -206,6 +208,7 @@
 		17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityQuota.swift; sourceTree = "<group>"; };
 		1D2EACA64431BC2B2245A81B /* ModelId.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelId.swift; sourceTree = "<group>"; };
 		205E593B8BA7C6E8FFA9B329 /* SQLiteSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteSupport.swift; sourceTree = "<group>"; };
+		214423B6ACA620FF6424C192 /* brand-omp.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-omp.png"; sourceTree = "<group>"; };
 		257C11FFFD819FF62888DFFC /* ProviderStatsIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderStatsIdentityTests.swift; sourceTree = "<group>"; };
 		26C266A4921348C72AED88BE /* CCUsageWidgetTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CCUsageWidgetTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C680FCBEA94CAC502E56E10 /* ClaudeCacheWriteBillingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCacheWriteBillingTests.swift; sourceTree = "<group>"; };
@@ -256,6 +259,7 @@
 		97E60C44A772B5C661AEA1F1 /* ModelPricing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPricing.swift; sourceTree = "<group>"; };
 		9822FBCF71C828C44E65F6D5 /* ClaudeCredentialSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCredentialSourceTests.swift; sourceTree = "<group>"; };
 		9AD0BC76597EA7B1CA061A1A /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
+		A12ACCE40C9007DC7CB66822 /* brand-deepseek.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-deepseek.png"; sourceTree = "<group>"; };
 		A501873EFB84588DAFDFBB6A /* PanelModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelModel.swift; sourceTree = "<group>"; };
 		A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPricingFallbackTests.swift; sourceTree = "<group>"; };
 		AB7BF81703006F6E8E06425B /* brand-antigravity.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-antigravity.png"; sourceTree = "<group>"; };
@@ -496,10 +500,12 @@
 			children = (
 				AB7BF81703006F6E8E06425B /* brand-antigravity.png */,
 				CAA25E78D961070EDBD05FBD /* brand-claude.png */,
+				A12ACCE40C9007DC7CB66822 /* brand-deepseek.png */,
 				7C5506EFDDB250B8217B59FD /* brand-gemini.png */,
 				3B12A88A474853068E9E3317 /* brand-grok.png */,
 				FCD0820202DA7BEE030DC3CC /* brand-kimi.png */,
 				E50FA82869360DF5BE4941CF /* brand-minimax.png */,
+				214423B6ACA620FF6424C192 /* brand-omp.png */,
 				E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */,
 				09D1E9749B8E07DB4B72929A /* brand-opencode.png */,
 			);
@@ -615,10 +621,12 @@
 				6F3F114D755ECABD55C6ADBE /* AppIcon.icns in Resources */,
 				F0A03A972CAADA8218FA9636 /* brand-antigravity.png in Resources */,
 				B37D66ED135407352107CDAE /* brand-claude.png in Resources */,
+				62D9343B3826C066952A880A /* brand-deepseek.png in Resources */,
 				A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */,
 				0DB32A66B84D5E260ECB71C5 /* brand-grok.png in Resources */,
 				95B9E1DC3AA51F0859995ACF /* brand-kimi.png in Resources */,
 				E34D5CCE71FDDE308668470A /* brand-minimax.png in Resources */,
+				B9C758ECE87B764FE9A61245 /* brand-omp.png in Resources */,
 				4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */,
 				71893AB2B92CBF17DDB60DEF /* brand-opencode.png in Resources */,
 				B690D5FE64B100264FED2361 /* index.html in Resources */,

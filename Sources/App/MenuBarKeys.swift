@@ -29,6 +29,8 @@ enum MBKey {
     static let groupPi          = "mb.group.pi"
     static let groupMcode       = "mb.group.mcode"
     static let groupKimi        = "mb.group.kimi"
+    static let groupOmp         = "mb.group.omp"
+    static let groupDsh         = "mb.group.dsh"
 }
 
 /// embed 面板经 set_setting 写进 UserDefaults 的键（PanelWebView 桥接与 PanelModel 启动接管共用）。
@@ -47,15 +49,16 @@ enum EmbedKey {
 enum MBApp: String, CaseIterable {
     // rawValue 必须等于 cc-switch DB 的 app_type（grokbuild 而非 grok）。
     //
-    // 覆盖上游 `KNOWN_APP_TYPES`（src/types/usage.ts，v4.0.20）的全部 9 项。上游那份清单里没有的
-    // `openclaw` / `hermes` / `omp` 只是"被管理的 app"，压根不产生用量行（OMP 的用量由本应用的
-    // OmpOverlay 按模型家族记到 Claude / Grok 名下），故不进本枚举；`claude-desktop` 在查询层就折叠进
-    // `claude`（见 foldedAppL/R），单列会只显示半个数、反而误导。
+    // 覆盖上游 `KNOWN_APP_TYPES`（src/types/usage.ts，v4.0.22）的全部 11 项。上游那份清单里没有的
+    // `openclaw` / `hermes` 只是"被管理的 app"，压根不产生用量行，故不进本枚举；`claude-desktop` 在查询层
+    // 就折叠进 `claude`（见 foldedAppL/R），单列会只显示半个数、反而误导。
+    // `omp`（Oh My Pi）v4.0.22 起由上游导入用量（本应用的 OmpOverlay 叠加还没入库的部分）；`dsh`
+    // （DeepSeek Harness）是 v4.0.22 新增的应用，用量同样来自上游的会话导入。
     // `agy` 原名 `antigravity`：上游 v4.0.18 有 agy 之前，本应用只拿它查额度、键是自起的名字；v2.1.0 起
     // 上游导入 Antigravity 的会话用量（app_type = agy），改成同名，旧码片键由 MenuBarChipMigration 迁移。
     // 追加新项一律放末尾：allCases 的顺序就是菜单栏里各段的排列，插在中间会平白
     // 打乱用户已经习惯的位置。
-    case claude, codex, gemini, opencode, agy, grokbuild, pi, mcode, kimi
+    case claude, codex, gemini, opencode, agy, grokbuild, pi, mcode, kimi, omp, dsh
     var title: String {
         switch self {
         case .claude: return "Claude"; case .codex: return "Codex"
@@ -63,19 +66,22 @@ enum MBApp: String, CaseIterable {
         case .agy: return "Antigravity"; case .grokbuild: return "Grok"
         case .pi: return "Pi"; case .mcode: return "MiniMax Code"
         case .kimi: return "Kimi Code"
+        case .omp: return "Oh My Pi"; case .dsh: return "DeepSeek Harness"
         }
     }
     /// 品牌模板图标（BrandIcons 里的 64×64 黑色 alpha PNG，菜单栏段前缀与设置分组
     /// 标题共用）。nil = 该家没有可用图标，调用方只渲染文字——上游对 Pi 同样没有
     /// 图标（`ProviderIcon icon="pi" showFallback={false}`），这里如实照搬而不是
-    /// 指向一个不存在的文件名靠 NSImage 返回 nil 兜底。brand-kimi 由上游 `src/icons/extracted/kimi.svg`
-    /// 转来（颜色统一成黑、只留 alpha）。
+    /// 指向一个不存在的文件名靠 NSImage 返回 nil 兜底。brand-kimi / brand-deepseek 由上游
+    /// `src/icons/extracted/` 的 kimi.svg / deepseek.svg 转来（颜色统一成黑、只留 alpha）；brand-omp 取上游
+    /// `src/icons/extracted/index.ts` 里 Oh My Pi 内联 SVG 的 π 字形（去掉深色底块，否则模板图是一整块实心方块）。
     var iconAsset: String? {
         switch self {
         case .claude: return "brand-claude"; case .codex: return "brand-openai"
         case .gemini: return "brand-gemini"; case .opencode: return "brand-opencode"
         case .agy: return "brand-antigravity"; case .grokbuild: return "brand-grok"
         case .mcode: return "brand-minimax"; case .kimi: return "brand-kimi"
+        case .omp: return "brand-omp"; case .dsh: return "brand-deepseek"
         case .pi: return nil
         }
     }

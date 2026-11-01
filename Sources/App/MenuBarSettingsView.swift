@@ -17,6 +17,8 @@ struct MenuBarSettingsView: View {
     @AppStorage(MBKey.groupPi)          private var expPi = false
     @AppStorage(MBKey.groupMcode)       private var expMcode = false
     @AppStorage(MBKey.groupKimi)        private var expKimi = false
+    @AppStorage(MBKey.groupOmp)         private var expOmp = false
+    @AppStorage(MBKey.groupDsh)         private var expDsh = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -108,6 +110,18 @@ struct MenuBarSettingsView: View {
             // 它的授权中心（OAuth），本应用没做，如实标注。
             group("Kimi Code", $expKimi, icon: MBApp.kimi.iconAsset) {
                 appRows(.kimi)
+                row("Quota") { noQuota("Not supported") }
+            }
+            // Oh My Pi：cc-switch v4.0.22 起导入它的会话用量（app_type omp），还没入库的部分由 OmpOverlay 叠加。
+            // 它按各家 API key 计费，没有统一的额度可查。
+            group("Oh My Pi", $expOmp, icon: MBApp.omp.iconAsset) {
+                appRows(.omp)
+                row("Quota") { noQuota("Not supported") }
+            }
+            // DeepSeek Harness：cc-switch v4.0.22 新增的应用，用量来自它的会话导入。上游在授权中心查 DeepSeek
+            // 账号余额，本应用没做。
+            group("DeepSeek Harness", $expDsh, icon: MBApp.dsh.iconAsset) {
+                appRows(.dsh)
                 row("Quota") { noQuota("Not supported") }
             }
 
