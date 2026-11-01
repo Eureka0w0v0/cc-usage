@@ -44,11 +44,16 @@ final class ProviderStatsIdentityTests: XCTestCase {
     }
 
     /// overlay 行和库内行同一套身份：按 (provider, app) 分组，只并进同一 (provider, app) 的行。
-    /// 杀变异体：overlay 仍只按 providerId 分组（同一个 OMP provider 打两家模型时被并成一行）。
+    /// 杀变异体：overlay 仍只按 providerId 分组（OMP 的「gw」与库里 Claude 的「gw」被并成一行）。
     func testOverlayRowsSplitByAppLikeDatabaseRows() throws {
+        try Fixture.insertLog(dbPath, id: "db-gw", app: "claude", model: "claude-opus-5",
+                              input: 10, output: 100, cost: 1.0, createdAt: t,
+                              dataSource: "proxy", providerId: "gw")
         let lines = [
-            ompLine(rid: "r-claude", model: "claude-opus-5", cost: 0.5),
-            ompLine(rid: "r-grok", model: "grok-4.5", cost: 0.25),
+            #"{"type":"title","v":1,"title":"","pad":""}"#,
+            #"{"type":"session","version":3,"id":"s1","timestamp":"2026-10-10T02:59:00.000Z"}"#,
+            ompLine(rid: "r-claude", id: "e1", model: "claude-opus-5", cost: 0.5),
+            ompLine(rid: "r-grok", id: "e2", model: "grok-4.5", cost: 0.25),
         ]
         try (lines.joined(separator: "\n") + "\n").write(
             toFile: ((sessionsDir as NSString).appendingPathComponent("-Proj") as NSString)
@@ -58,15 +63,14 @@ final class ProviderStatsIdentityTests: XCTestCase {
                                ompOverlay: OmpOverlay(sessionsDir: sessionsDir, minRefreshInterval: 0))
 
         let rows = try store.providerStats(LogQueryFilter())
-        XCTAssertEqual(rows.map { "\($0.appType)/\($0.providerId)" },
-                       ["claude/_omp_gw", "grokbuild/_omp_gw"])
-        XCTAssertEqual(rows.map(\.requestCount), [1, 1])
+        XCTAssertEqual(rows.map { "\($0.appType)/\($0.providerId)" }, ["claude/gw", "omp/gw"])
+        XCTAssertEqual(rows.map(\.requestCount), [1, 2])
     }
 
     /// OMP 的 assistant 消息行（同一个 provider「gw」，模型家族由调用方给）。
-    private func ompLine(rid: String, model: String, cost: Double) -> String {
+    private func ompLine(rid: String, id: String, model: String, cost: Double) -> String {
         #"""
-        {"type":"message","id":"e1","timestamp":"2026-10-10T03:00:00.000Z","message":{"role":"assistant","provider":"gw","model":"\#(model)","responseId":"\#(rid)","timestamp":\#(t * 1000),"usage":{"input":10,"output":100,"cacheRead":0,"cacheWrite":0,"totalTokens":110,"cost":{"input":0.1,"output":0.1,"cacheRead":0,"cacheWrite":0,"total":\#(cost)}}}}
+        {"type":"message","id":"\#(id)","timestamp":"2026-10-10T03:00:00.000Z","message":{"role":"assistant","provider":"gw","model":"\#(model)","responseId":"\#(rid)","timestamp":\#(t * 1000),"usage":{"input":10,"output":100,"cacheRead":0,"cacheWrite":0,"totalTokens":110,"cost":{"input":0.1,"output":0.1,"cacheRead":0,"cacheWrite":0,"total":\#(cost)}}}}
         """#
     }
 }

@@ -62,6 +62,15 @@ enum Fixture {
       cache_read_cost_per_million TEXT DEFAULT '0',
       cache_creation_cost_per_million TEXT DEFAULT '0'
     );
+    CREATE TABLE session_usage_dedup(
+      data_source TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      semantic_id TEXT NOT NULL,
+      has_entry_id INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (data_source, request_id)
+    );
+    CREATE INDEX idx_session_usage_dedup_semantic
+      ON session_usage_dedup(data_source, semantic_id, has_entry_id);
     """
 
     /// 固定时区日历：让「本地日」相关断言与跑测试的机器时区无关。

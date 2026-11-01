@@ -52,15 +52,15 @@ public struct OverlayRow: Sendable {
     public var totalCost: Double
     var hasStopReason: Bool
     var sourceFile: String
-    /// 归属的 cc-switch app_type，决定这行进哪个分组。SessionOverlay 恒为 claude；
-    /// OmpOverlay 一个日志里混着多家 provider，逐行分流（见 OmpOverlay.classify）。
+    /// 归属的 cc-switch app_type，决定这行进哪个分组。SessionOverlay 恒为 claude；OmpOverlay 恒为 omp
+    /// （与上游 v4.0.22 的 Oh My Pi 导入同一归属）。
     public var appType: String = "claude"
     /// Request Logs / Provider Stats 里的占位 provider 身份（库里没有对应 providers 行）。
     public var providerId: String = "_session"
     public var providerName: String = "Claude (Session)"
     /// 「按来源」分组键，对齐库里 proxy_request_logs.data_source 的取值空间。
     /// SessionOverlay 解析的就是 cc-switch 补录后会写成 'session_log' 的那批行，故同名；
-    /// OmpOverlay 是 cc-switch 完全不导入的来源，单列 'omp_session' 不与上游取值冲突。
+    /// OmpOverlay 同理用上游 Oh My Pi 导入的 'omp_session'。
     public var dataSource: String = "session_log"
     /// 请求耗时（毫秒，含首字等待），0 = 没有计时——与库里 latency_ms 同一约定。会话日志没有请求
     /// 计时：SessionOverlay 按上游规则拿时间戳估（见 SessionTiming），OmpOverlay 取 OMP 自己记的 duration。

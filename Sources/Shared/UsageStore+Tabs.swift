@@ -285,7 +285,7 @@ extension UsageStore {
         var estimated = try firstTokenSamples(db, key: medianKey, from: medianFrom, where: detailWhere,
                                               binds: detailBinds, eligible: Self.estFirstTokenEligibleL)
         // 增量行按 (provider, app) 汇总，与库内行同一套身份。OMP 日志里混着多家 provider，必须分组累加——
-        // 一股脑塞进 "Claude (Session)" 会把 grok 的花费记到 Claude 头上。估出来的首字先并进样本，再统一取中位数。
+        // 同名 provider 在库里属于别的应用时也要分开。估出来的首字先并进样本，再统一取中位数。
         var overlay = Self.groupOverlay(overlayLogRows(db, f)) { "\($0.providerId)\u{1F}\($0.appType)" }
         let hasOverlay = !overlay.isEmpty
         Self.mergeFirstTokens(of: overlay, into: &estimated)
@@ -553,8 +553,8 @@ extension UsageStore {
             acc[String(cString: c)] = (sqlite3_column_int64(stmt, 1),
                                        sqlite3_column_double(stmt, 2))
         }
-        // 未入库增量按各自来源并入（SessionOverlay=session_log 会与库内同名桶合并，
-        // 补录后自动收敛；OmpOverlay=omp_session 单列）。
+        // 未入库增量按各自来源并入（SessionOverlay=session_log、OmpOverlay=omp_session，
+        // 都与库内同名桶合并，入库后自动收敛）。
         for r in overlayRows(db, UsageFilter()) {
             var a = acc[r.dataSource] ?? (0, 0)
             a.req += 1

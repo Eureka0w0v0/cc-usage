@@ -126,8 +126,8 @@ extension UsageStore {
             if s.requests == 0 && s.tokensProcessed == 0 { continue }
             out.append((appType: app, summary: s))
         }
-        // 增量行按各自 app_type 并入(桶不存在则新建)。OMP 日志一个文件里混着
-        // Claude 与 Grok，全塞进 claude 桶会让 Grok 的用量假装成 Claude 的。
+        // 增量行按各自 app_type 并入(桶不存在则新建):SessionOverlay 进 claude、OmpOverlay 进 omp,
+        // 不能一股脑塞进 claude 桶。
         let ov = overlayRows(db, noApp)
         if !ov.isEmpty {
             var byApp: [String: [OverlayRow]] = [:]

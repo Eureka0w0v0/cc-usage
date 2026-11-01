@@ -1,13 +1,19 @@
 import XCTest
 import SQLite3
 
-// OmpOverlay 端到端：临时 sessions 目录 + 临时库，覆盖 OMP 日志解析、归属分流、
-// 自带成本采用、增量续读，以及与 SessionOverlay 共用命名空间的防双算语义。
+// OmpOverlay 端到端：临时 sessions 目录 + 临时库。覆盖对齐上游 v4.0.22 OMP 导入后的口径——
+// 整文件规则、跨文件去重、入库剔除（明细 / 账本 / semantic）、成本回落、展示名、续读与改写、
+// 以及叠加行进入 UsageStore 后的分组与状态码。
 final class OmpOverlayTests: XCTestCase {
     private var dbPath = ""
     private var sessionsDir = ""
     private var overlay: OmpOverlay!
     private var db: OpaquePointer!
+
+    private static let title = #"{"type":"title","v":1,"title":"","updatedAt":"2026-10-29T13:17:48.750Z","pad":""}"#
+    private static func header(_ id: String = "s1") -> String {
+        #"{"type":"session","version":3,"id":"\#(id)","timestamp":"2026-10-29T13:16:32.926Z","cwd":"/work"}"#
+    }
 
     override func setUpWithError() throws {
         dbPath = try Fixture.makeDB("omp")
@@ -16,7 +22,7 @@ final class OmpOverlayTests: XCTestCase {
         try FileManager.default.createDirectory(
             atPath: (sessionsDir as NSString).appendingPathComponent("-Proj"),
             withIntermediateDirectories: true)
-        overlay = OmpOverlay(sessionsDir: sessionsDir, minRefreshInterval: 0)
+        overlay = OmpOverlay(sessionsDir: sessionsDir, minRefreshInterval: 0, pricingTTL: 0)
         var handle: OpaquePointer?
         XCTAssertEqual(sqlite3_open(dbPath, &handle), SQLITE_OK)
         db = handle
@@ -28,306 +34,253 @@ final class OmpOverlayTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: sessionsDir)
     }
 
-    private func sessionFile(_ name: String = "sess.jsonl") -> String {
-        ((sessionsDir as NSString).appendingPathComponent("-Proj") as NSString)
-            .appendingPathComponent(name)
+    private func path(_ name: String) -> String {
+        ((sessionsDir as NSString).appendingPathComponent("-Proj") as NSString).appendingPathComponent(name)
     }
 
+    /// 写一个会话文件：默认带 title 行与 header（Oh My Pi 的真实开头）。
     @discardableResult
-    private func write(_ lines: [String], to name: String = "sess.jsonl") throws -> String {
-        let path = sessionFile(name)
-        try (lines.joined(separator: "\n") + "\n")
-            .write(toFile: path, atomically: true, encoding: .utf8)
-        return path
+    private func write(_ entries: [String], to name: String = "sess.jsonl", header: Bool = true,
+                       trailingNewline: Bool = true) throws -> String {
+        let p = path(name)
+        try FileManager.default.createDirectory(atPath: (p as NSString).deletingLastPathComponent,
+                                                withIntermediateDirectories: true)
+        let lines = (header ? [Self.title, Self.header()] : []) + entries
+        try (lines.joined(separator: "\n") + (trailingNewline ? "\n" : ""))
+            .write(toFile: p, atomically: true, encoding: .utf8)
+        return p
     }
 
-    /// OMP 的 assistant 消息行：usage 用 input/output/cacheRead/cacheWrite，
-    /// 成本自带，timestamp 是毫秒 epoch。duration / ttft 是原样写进 JSON 的值（nil = 不带这个字段）。
-    private func msgLine(rid: String, provider: String, model: String,
-                         output: Int = 100, input: Int = 10,
-                         cacheRead: Int = 0, cacheWrite: Int = 0,
-                         cost: Double = 0.5, tsMs: Int64 = 1_785_072_483_377,
-                         duration: String? = nil, ttft: String? = nil) -> String {
-        let timing = (duration.map { #""duration":\#($0),"# } ?? "") + (ttft.map { #""ttft":\#($0),"# } ?? "")
-        return #"""
-        {"type":"message","id":"e1","timestamp":"2026-07-26T13:28:12.890Z","message":{"role":"assistant","provider":"\#(provider)","model":"\#(model)","responseId":"\#(rid)","timestamp":\#(tsMs),\#(timing)"usage":{"input":\#(input),"output":\#(output),"cacheRead":\#(cacheRead),"cacheWrite":\#(cacheWrite),"totalTokens":\#(input + output + cacheRead + cacheWrite),"cost":{"input":0.1,"output":0.2,"cacheRead":0.1,"cacheWrite":0.1,"total":\#(cost)}}}}
-        """#
-    }
-
-    // MARK: - 归属分流（本次修复的核心：Claude 的账不能记到 Grok 头上，反之亦然）
-
-    func testClassifyRoutesByModelFamily() {
-        XCTAssertEqual(OmpOverlay.classify(provider: "anthropic", model: "claude-opus-5").appType, "claude")
-        XCTAssertEqual(OmpOverlay.classify(provider: "custom-gateway", model: "grok-4.5").appType, "grokbuild")
-        XCTAssertEqual(OmpOverlay.classify(provider: "google", model: "gemini-3-pro").appType, "gemini")
-        XCTAssertEqual(OmpOverlay.classify(provider: "openai", model: "gpt-5.5").appType, "codex")
-        XCTAssertEqual(OmpOverlay.classify(provider: "openai", model: "o3-mini").appType, "codex")
-        // 第三方中转的 Claude 仍是 Claude（provider 名不参与家族判定）
-        XCTAssertEqual(OmpOverlay.classify(provider: "xrapi", model: "claude-haiku-4-5").appType, "claude")
-        // 认不出 → 归 claude，但 provider 名照实透出
-        let unknown = OmpOverlay.classify(provider: "weird", model: "mystery-1")
-        XCTAssertEqual(unknown.appType, "claude")
-        XCTAssertEqual(unknown.providerName, "OMP (weird)")
-    }
-
-    func testProviderIdsAreDistinctPerProvider() {
-        let a = OmpOverlay.classify(provider: "anthropic", model: "claude-opus-5")
-        let g = OmpOverlay.classify(provider: "custom-gateway", model: "grok-4.5")
-        XCTAssertNotEqual(a.providerId, g.providerId)
-    }
-
-    func testMixedProvidersSplitIntoOwnAppTypes() throws {
-        try write([
-            msgLine(rid: "msg_a1", provider: "anthropic", model: "claude-opus-5", output: 100, cost: 1.0),
-            msgLine(rid: "gw-1", provider: "custom-gateway", model: "grok-4.5", output: 200, cost: 0),
-        ])
-        let rows = overlay.pendingRows(db: db)
-        XCTAssertEqual(rows.count, 2)
-        let claude = try XCTUnwrap(rows.first { $0.appType == "claude" })
-        let grok = try XCTUnwrap(rows.first { $0.appType == "grokbuild" })
-        XCTAssertEqual(claude.output, 100)
-        XCTAssertEqual(grok.output, 200)
-        XCTAssertEqual(claude.totalCost, 1.0, accuracy: 1e-12)
-    }
-
-    // MARK: - 解析
-
-    func testUsesOwnCostAndMillisecondTimestamp() throws {
-        try write([msgLine(rid: "msg_c1", provider: "anthropic", model: "claude-opus-5",
-                           output: 453, input: 2, cacheRead: 49_679, cacheWrite: 166,
-                           cost: 0.037212, tsMs: 1_785_072_483_377)])
-        let r = try XCTUnwrap(overlay.pendingRows(db: db).first)
-        XCTAssertEqual(r.input, 2)
-        XCTAssertEqual(r.output, 453)
-        XCTAssertEqual(r.cacheRead, 49_679)
-        XCTAssertEqual(r.cacheCreation, 166)
-        // 直接采用 OMP 自带成本，不走 cc-switch 价格表（那里根本没有这些自定义端点）
-        XCTAssertEqual(r.totalCost, 0.037212, accuracy: 1e-12)
-        XCTAssertEqual(r.createdAt, 1_785_072_483)   // 毫秒 → 秒
-    }
-
-    func testSkipsNonAssistantAndZeroUsage() throws {
-        try write([
-            #"{"type":"session","id":"s1","timestamp":"2026-07-26T13:00:00.000Z"}"#,
-            #"{"type":"message","id":"u1","message":{"role":"user","content":"hi"}}"#,
-            msgLine(rid: "msg_z", provider: "anthropic", model: "claude-opus-5",
-                    output: 0, input: 0, cost: 0),
-            msgLine(rid: "msg_ok", provider: "anthropic", model: "claude-opus-5", output: 5),
-        ])
-        XCTAssertEqual(overlay.pendingRows(db: db).map(\.requestId), ["session:msg_ok"])
-    }
-
-    func testIgnoresPartialTrailingLine() throws {
-        let path = sessionFile()
-        let good = msgLine(rid: "msg_p1", provider: "anthropic", model: "claude-opus-5", output: 9)
-        try (good + "\n" + #"{"type":"message","message":{"role":"assis"#)
-            .write(toFile: path, atomically: true, encoding: .utf8)
-        XCTAssertEqual(overlay.pendingRows(db: db).count, 1)
-    }
-
-    func testRecursesIntoSubagentDirectories() throws {
-        let nested = ((sessionsDir as NSString).appendingPathComponent("-Proj") as NSString)
-            .appendingPathComponent("sess/subagents")
-        try FileManager.default.createDirectory(atPath: nested, withIntermediateDirectories: true)
-        try (msgLine(rid: "msg_sub", provider: "anthropic", model: "claude-opus-5", output: 3) + "\n")
-            .write(toFile: (nested as NSString).appendingPathComponent("Scout.jsonl"),
-                   atomically: true, encoding: .utf8)
-        XCTAssertEqual(overlay.pendingRows(db: db).map(\.requestId), ["session:msg_sub"])
-    }
-
-    // MARK: - request_id 命名空间（防双算的支点）
-
-    func testRequestIdNamespaces() {
-        // Anthropic msg id 与 cc-switch / SessionOverlay 同命名空间 → 同一条只算一次
-        XCTAssertEqual(OmpOverlay.requestId(responseId: "msg_abc", path: "/x/a.jsonl", byteOffset: 0),
-                       "session:msg_abc")
-        // 其它 id 走私有命名空间，不会与库内行误撞
-        XCTAssertEqual(OmpOverlay.requestId(responseId: "uuid-1", path: "/x/a.jsonl", byteOffset: 0),
-                       "omp:uuid-1")
-        // 无 id → 文件+偏移合成，重复扫描恒定
-        XCTAssertEqual(OmpOverlay.requestId(responseId: nil, path: "/x/a.jsonl", byteOffset: 42),
-                       "omp:a.jsonl@42")
-        XCTAssertEqual(OmpOverlay.requestId(responseId: "", path: "/x/a.jsonl", byteOffset: 42),
-                       "omp:a.jsonl@42")
-    }
-
-    func testPrunesRowsAlreadyInDB() throws {
-        try write([msgLine(rid: "msg_d1", provider: "anthropic", model: "claude-opus-5", output: 10)])
-        XCTAssertEqual(overlay.pendingRows(db: db).count, 1)
-
-        // cc-switch（或 SessionOverlay 那条路径）已收录同一条 → 本层必须让位，绝不双算
-        try Fixture.insertLog(dbPath, id: "session:msg_d1", output: 10, createdAt: 1)
-
-        XCTAssertTrue(overlay.pendingRows(db: db).isEmpty)
-    }
-
-    func testIncrementalAppend() throws {
-        let path = try write([msgLine(rid: "msg_i1", provider: "anthropic", model: "claude-opus-5", output: 10)])
-        XCTAssertEqual(overlay.pendingRows(db: db).count, 1)
-
-        let fh = try XCTUnwrap(FileHandle(forWritingAtPath: path))
-        fh.seekToEndOfFile()
-        fh.write((msgLine(rid: "msg_i2", provider: "anthropic", model: "claude-opus-5", output: 20) + "\n")
-            .data(using: .utf8)!)
+    private func append(_ text: String, to name: String = "sess.jsonl") throws {
+        let fh = try XCTUnwrap(FileHandle(forWritingAtPath: path(name)))
+        try fh.seekToEnd()
+        try fh.write(contentsOf: Data(text.utf8))
         try fh.close()
-
-
-        XCTAssertEqual(Set(overlay.pendingRows(db: db).map(\.requestId)),
-                       ["session:msg_i1", "session:msg_i2"])
     }
 
-    func testVanishedFileDropsItsRows() throws {
-        let path = try write([msgLine(rid: "msg_v1", provider: "anthropic", model: "claude-opus-5", output: 10)])
-        XCTAssertEqual(overlay.pendingRows(db: db).count, 1)
-        try FileManager.default.removeItem(atPath: path)
-
-        XCTAssertTrue(overlay.pendingRows(db: db).isEmpty)
+    /// assistant 条目。cost = nil 表示不带自报成本（交给查价）。
+    private func assistant(_ id: String, provider: String = "anthropic", model: String = "claude-opus-5-5",
+                           input: Int = 10, output: Int = 100, cost: Double? = 0.5,
+                           stop: String = "stop", error: String? = nil,
+                           ts: String = "2026-10-29T13:17:42.984Z", duration: Double? = nil) -> String {
+        let costJSON = cost.map { #","cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":\#($0)}"# } ?? ""
+        let errorJSON = error.map { #","errorMessage":"\#($0)""# } ?? ""
+        let durationJSON = duration.map { #","duration":\#($0)"# } ?? ""
+        return #"{"type":"message","id":"\#(id)","parentId":null,"timestamp":"\#(ts)","message":{"role":"assistant","content":[],"provider":"\#(provider)","model":"\#(model)"\#(durationJSON),"usage":{"input":\#(input),"output":\#(output),"cacheRead":0,"cacheWrite":0\#(costJSON)},"stopReason":"\#(stop)"\#(errorJSON)}}"#
     }
 
-    // MARK: - 与 UsageStore 的合流
+    private func rows() -> [OverlayRow] { overlay.pendingRows(db: db) }
 
-    func testStoreSplitsOmpUsageAcrossAppBuckets() throws {
+    private func requestId(_ line: String) throws -> String {
+        let entry = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(line.utf8)) as? NSDictionary)
+        return try XCTUnwrap(OmpUsage.record(from: entry, sessionId: "s1", sessionTimestamp: nil,
+                                             fileTimestamp: 0)).requestId
+    }
+
+    // MARK: - 上游 imports_own_store_carriers_and_placeholders
+
+    /// assistant、model_usage、0 用量的中断请求、compaction 占位——4 行，app_type 恒 omp。
+    /// 负责杀的变异体：漏掉 model_usage / compaction；中断请求按 0 用量跳过；归属又按模型家族拆。
+    func testImportsOwnStoreCarriersAndPlaceholders() throws {
         try write([
-            msgLine(rid: "msg_s1", provider: "anthropic", model: "claude-opus-5",
-                    output: 100, input: 10, cost: 1.0),
-            msgLine(rid: "gw-s2", provider: "custom-gateway", model: "grok-4.5",
-                    output: 200, input: 20, cost: 0),
+            #"{"type":"message","id":"call-1","parentId":null,"timestamp":"2026-10-29T13:17:42.984Z","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"api":"openai-completions","provider":"workbuddy","model":"deepseek-v4.1-flash","responseId":"chatcmpl-1","duration":6744.172099999996,"ttft":6192.651100000003,"usage":{"input":282,"output":194,"cacheRead":12800,"cacheWrite":0,"totalTokens":13276,"reasoningTokens":41,"cost":{"input":0.0000846,"output":0.0002328,"cacheRead":0.0000768,"cacheWrite":0,"total":0.0003942}},"stopReason":"toolUse"}}"#,
+            #"{"type":"model_usage","id":"judge-1","parentId":"call-1","timestamp":"2026-10-29T13:26:53.160Z","purpose":"job-widget","api":"openai-completions","provider":"workbuddy","model":"deepseek-v4.1-flash","usage":{"input":312,"output":110,"cacheRead":2432,"cacheWrite":0,"totalTokens":2854,"cost":{"input":0.0000936,"output":0.000132,"cacheRead":0.000014592,"cacheWrite":0,"total":0.000240192}},"stopReason":"toolUse"}"#,
+            #"{"type":"message","id":"call-2","parentId":"call-1","timestamp":"2026-10-29T13:28:00.000Z","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"workbuddy","model":"deepseek-v4.1-flash","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"aborted","errorMessage":"Request was aborted"}}"#,
+            #"{"type":"compaction","id":"compact-1","parentId":"call-2","timestamp":"2026-10-29T13:29:00.000Z","summary":"summary","usage":{"input":11,"output":12,"cacheRead":2,"cacheWrite":3,"totalTokens":28,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}}}"#,
         ])
-        let store = UsageStore(path: dbPath,
-                               overlay: try Fixture.emptyOverlay(),
-                               ompOverlay: overlay)
-        let ts = 1_785_072_483
-        let byApp = try store.summaryByApp(
-            UsageFilter(start: Int64(ts - 3600), end: Int64(ts + 3600)))
-
-        let claude = try XCTUnwrap(byApp.first { $0.appType == "claude" })
-        let grok = try XCTUnwrap(byApp.first { $0.appType == "grokbuild" })
-        XCTAssertEqual(claude.summary.output, 100)
-        XCTAssertEqual(claude.summary.cost, 1.0, accuracy: 1e-12)
-        XCTAssertEqual(grok.summary.output, 200)
-        XCTAssertEqual(grok.summary.cost, 0, accuracy: 1e-12)
+        let r = rows().sorted { $0.createdAt < $1.createdAt }
+        XCTAssertEqual(r.count, 4)
+        XCTAssertTrue(r.allSatisfy { $0.appType == "omp" && $0.dataSource == "omp_session" })
+        XCTAssertEqual(r.map(\.input), [282, 312, 0, 11])
+        XCTAssertEqual(r[0].latencyMs, 6744)
+        XCTAssertNil(r[0].firstTokenMs, "上游 OMP 行没有首字")
+        XCTAssertEqual(r.map(\.totalCost).reduce(0, +), 0.000634392, accuracy: 1e-12)
+        XCTAssertEqual(r[2].statusCode, 499)
+        XCTAssertEqual(r[2].errorMessage, "Request was aborted")
+        XCTAssertEqual(r[3].providerId, "_omp_session")
+        XCTAssertEqual(r[3].providerName, "Oh My Pi (Session)")
+        XCTAssertEqual(r[3].model, "unknown")
     }
 
-    func testStoreProviderStatsKeepProvidersSeparate() throws {
+    /// 上游 subagent_sessions_older_than_the_first_sync_still_count：子会话文件里的用量照算；父会话 task 结果里
+    /// 的 details.usage 不是 message.usage，不算。
+    func testNestedSubagentSessionsCountAndTaskDetailsDoNot() throws {
         try write([
-            msgLine(rid: "msg_p1", provider: "anthropic", model: "claude-opus-5", output: 100, cost: 1.0),
-            msgLine(rid: "gw-p2", provider: "custom-gateway", model: "grok-4.5", output: 200, cost: 0),
-        ])
-        let store = UsageStore(path: dbPath,
-                               overlay: try Fixture.emptyOverlay(),
-                               ompOverlay: overlay)
-        let ts = Int64(1_785_072_483)
-        let stats = try store.providerStats(LogQueryFilter(start: ts - 3600, end: ts + 3600))
-        let names = Set(stats.map(\.providerName))
-        XCTAssertTrue(names.contains("OMP (anthropic)"))
-        XCTAssertTrue(names.contains("OMP (custom-gateway)"))
-        let anthropic = try XCTUnwrap(stats.first { $0.providerName == "OMP (anthropic)" })
-        XCTAssertEqual(anthropic.requestCount, 1)
-        XCTAssertEqual(anthropic.totalCost, 1.0, accuracy: 1e-12)
+            assistant("a1", input: 100),
+            #"{"type":"message","id":"task-1","parentId":"a1","timestamp":"2026-08-22T02:20:00.000Z","message":{"role":"toolResult","toolCallId":"call","toolName":"task","content":[],"details":{"usage":{"input":500,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":501,"cost":{"total":0}}}}}"#,
+        ], to: "2026-08-22T02-12-51-066Z_parent.jsonl")
+        try write([assistant("c1", input: 500)], to: "2026-08-22T02-12-51-066Z_parent/PageScout.jsonl")
+        XCTAssertEqual(rows().map(\.input).reduce(0, +), 600)
     }
 
-    /// 跨 overlay 防双算。这是 OmpOverlay 复用 "session:<msg_id>" 命名空间的全部意义，
-    /// 也是 UsageStore.overlayRows 里那条「两层都非空 → 按 requestId 去重」分支唯一的
-    /// 守卫：其余用例都把 SessionOverlay 置空（rows.isEmpty 恒真），该分支从不执行，
-    /// 把它写成无条件 append 也照样全绿。
-    func testSameMessageIdSeenByBothOverlaysCountsOnce() throws {
-        let msgId = "msg_shared1"
-
-        // OMP 侧记了这条 anthropic 响应
-        try write([msgLine(rid: msgId, provider: "anthropic", model: "claude-opus-5",
-                           output: 100, input: 10, cost: 1.0)])
-
-        // Claude Code 侧也记了同一个 message.id
-        let projects = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("ccusage-omp-proj-\(UUID().uuidString)")
-        let projDir = (projects as NSString).appendingPathComponent("p1")
-        try FileManager.default.createDirectory(atPath: projDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(atPath: projects) }
-        let ccLine = #"""
-        {"type":"assistant","sessionId":"s1","timestamp":"2026-07-26T13:28:12Z","message":{"id":"\#(msgId)","stop_reason":"end_turn","model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":100}}}
-        """#
-        try (ccLine + "\n").write(
-            toFile: (projDir as NSString).appendingPathComponent("s.jsonl"),
-            atomically: true, encoding: .utf8)
-
-        let store = UsageStore(
-            path: dbPath,
-            overlay: SessionOverlay(projectsDir: projects, minRefreshInterval: 0),
-            ompOverlay: overlay)
-        let ts = Int64(1_785_072_483)
-        let s = try store.rangeSummary(UsageFilter(start: ts - 3600, end: ts + 3600))
-
-        XCTAssertEqual(s.requests, 1, "同一 msg_id 被两层各看见一次，合流后必须只算一次")
-        XCTAssertEqual(s.output, 100)
-    }
-
-    // MARK: - 成本字段边界 / 来源桶一致性
-
-    /// OMP 偶有 `"cost":{…,"total":null}`：JSON null 桥成 NSNull，`!= nil` 为真却取不出数——
-    /// 旧实现把成本静默记 0。负责杀的变异体：total 判空回退到 `!= nil`。
-    func testNullTotalCostFallsBackToSumOfParts() throws {
-        let line = #"""
-        {"type":"message","id":"e1","timestamp":"2026-07-26T13:28:12.890Z","message":{"role":"assistant","provider":"anthropic","model":"claude-opus-5","responseId":"r-null","timestamp":1785072483377,"usage":{"input":10,"output":100,"cacheRead":0,"cacheWrite":0,"totalTokens":110,"cost":{"input":0.1,"output":0.2,"cacheRead":0.15,"cacheWrite":0.05,"total":null}}}}
-        """#
-        try write([line])
-        let r = try XCTUnwrap(overlay.pendingRows(db: db).first)
-        XCTAssertEqual(r.totalCost, 0.5, accuracy: 1e-12, "total 为 null 必须回落四维求和")
-    }
-
-    /// Request Logs 行的 dataSource 与「按来源」分组用的是同一个字段：两条路径必须落同一桶。
-    /// （不变式测试：早前 requestLogs 按 providerId 反推来源，与 dataSourceBreakdown 是两份真值。）
-    func testRequestLogRowDataSourceMatchesBreakdownBucket() throws {
-        try write([msgLine(rid: "r1", provider: "anthropic", model: "claude-opus-5")])
-        let store = UsageStore(path: dbPath, overlay: try Fixture.emptyOverlay(), ompOverlay: overlay)
-        let row = try XCTUnwrap(store.requestLogs(LogQueryFilter(), page: 0, pageSize: 10).rows.first)
-        let buckets = try store.dataSourceBreakdown().map(\.dataSource)
-        XCTAssertEqual(row.dataSource, "omp_session")
-        XCTAssertEqual(buckets, ["omp_session"])
-    }
-
-    // MARK: - 计时（OMP 自己记了 duration / ttft）
-
-    /// OMP 在每条回复上记了客户端实测的 duration（请求开始到回复结束）和 ttft，单位毫秒、带小数：
-    /// 四舍五入后直接当耗时和首字。早先恒为 0 / nil，界面显示「—」。
-    /// 杀变异体：不读 duration / ttft（→ 0 / nil）；截断代替四舍五入（首字 9452）。
-    func testTimingComesFromOwnDurationAndTtft() throws {
-        try write([msgLine(rid: "msg_t1", provider: "anthropic", model: "claude-opus-5",
-                           duration: "24760.084791", ttft: "9452.701875")])
-        let r = try XCTUnwrap(overlay.pendingRows(db: db).first)
-        XCTAssertEqual(r.latencyMs, 24_760)
-        XCTAssertEqual(r.firstTokenMs, 9_453)
-
-        // 走到 Request Logs 那一行上
-        let store = UsageStore(path: dbPath, overlay: try Fixture.emptyOverlay(), ompOverlay: overlay)
-        let row = try XCTUnwrap(store.requestLogs(LogQueryFilter(), page: 0, pageSize: 10).rows.first)
-        XCTAssertEqual(row.latencyMs, 24_760)
-        XCTAssertEqual(row.firstTokenMs, 9_453)
-    }
-
-    /// 合理范围和会话日志估算同一套：耗时 100ms–1h，首字落在 (0, 耗时]。缺字段、类型不对都当没有计时；
-    /// 没有耗时就不给首字（上游的首字也只在估出了耗时时才有）。
-    /// 杀变异体：去掉耗时上下限（a、d）；下限改成严格大于（b）；首字不要求 ≤ 耗时（c）或 > 0（e）；
-    /// 没有耗时仍给首字（f）；布尔、字符串当数字读（g、h）。
-    func testTimingOutsidePlausibleRangeIsDropped() throws {
-        let cases: [(id: String, duration: String?, ttft: String?, latency: Int64, firstToken: Int64?)] = [
-            ("msg_a", "99", "50", 0, nil),                 // 耗时不到 100ms
-            ("msg_b", "100", "100", 100, 100),             // 两个边界都算
-            ("msg_c", "3600000", "3600001", 3_600_000, nil), // 1 小时整还算；首字比耗时长不要
-            ("msg_d", "3600001", "1000", 0, nil),          // 超过 1 小时
-            ("msg_e", "5000", "0", 5_000, nil),            // 首字 0 不要
-            ("msg_f", nil, "1000", 0, nil),                // 没有 duration
-            ("msg_g", "true", "1000", 0, nil),             // 布尔不是数字
-            ("msg_h", "\"5000\"", "1000", 0, nil),         // 字符串不是数字
-        ]
-        try write(cases.map {
-            msgLine(rid: $0.id, provider: "anthropic", model: "claude-opus-5", duration: $0.duration, ttft: $0.ttft)
-        })
-        let rows = Dictionary(uniqueKeysWithValues: overlay.pendingRows(db: db).map { ($0.requestId, $0) })
-        XCTAssertEqual(rows.count, cases.count)
-        for c in cases {
-            let r = try XCTUnwrap(rows["session:\(c.id)"], c.id)
-            XCTAssertEqual(r.latencyMs, c.latency, c.id)
-            XCTAssertEqual(r.firstTokenMs, c.firstToken, c.id)
+    /// pi-subagents 投影：带 usage 的 toolResult 指向的子会话都在本轮文件里 → 跳过；指向不存在的文件 → 照算。
+    /// 负责杀的变异体：投影一律计入 / 一律跳过。
+    func testToolResultProjectionSkippedOnlyWhenLinkedSessionsArePresent() throws {
+        let child = try write([assistant("c1", input: 7)], to: "parent/child.jsonl")
+        func projection(_ id: String, link: String) -> String {
+            #"{"type":"message","id":"\#(id)","timestamp":"2026-10-30T02:00:00Z","message":{"role":"toolResult","toolCallId":"x","toolName":"task","content":[],"usage":{"input":7,"output":0,"cost":{"total":0}},"details":{"results":[{"sessionFile":"\#(link)"}]}}}"#
         }
+        try write([projection("p-dup", link: child), projection("p-missing", link: path("gone.jsonl"))],
+                  to: "parent.jsonl")
+        XCTAssertEqual(Set(rows().map(\.requestId)),
+                       Set([try requestId(assistant("c1", input: 7)),
+                            try requestId(projection("p-missing", link: path("gone.jsonl")))]))
+    }
+
+    // MARK: - 整文件规则
+
+    /// 负责杀的变异体：没有 header 也计入 / header 前的坏行让整个文件报错 / header id 不校验。
+    func testFilesWithoutValidHeaderContributeNothing() throws {
+        try write([assistant("x1")], to: "no-header.jsonl", header: false)
+        try write([#"{"type":"session","id":"-bad id-"}"#, assistant("x2")], to: "bad-id.jsonl", header: false)
+        try write(["not json at all", Self.title, Self.header("ok-1"), assistant("x3")], to: "garbage-first.jsonl",
+                  header: false)
+        XCTAssertEqual(rows().map(\.requestId), [try requestId(assistant("x3"))])
+    }
+
+    /// 超过 128 MiB 的文件整个不计入（用稀疏文件造，不占磁盘）。
+    func testOversizedFileIsSkipped() throws {
+        let p = try write([assistant("big")])
+        let fh = try XCTUnwrap(FileHandle(forWritingAtPath: p))
+        try fh.truncate(atOffset: UInt64(OmpSessionFiles.maxSessionBytes) + 1)
+        try fh.close()
+        XCTAssertTrue(rows().isEmpty)
+    }
+
+    /// 末行没有换行：不是合法 JSON → 等下一轮；已经是合法 JSON → 照上游计入，补上换行后不重复。
+    func testUnterminatedTailCountsOnlyWhenItIsValidJSON() throws {
+        try write([assistant("a1")])
+        try append(String(assistant("a2").prefix(40)))
+        XCTAssertEqual(rows().count, 1)
+        try write([assistant("a1"), assistant("a2")], trailingNewline: false)
+        XCTAssertEqual(rows().count, 2)
+        try append("\n")
+        XCTAssertEqual(rows().count, 2)
+    }
+
+    // MARK: - 续读
+
+    func testIncrementalAppendRewriteAndVanish() throws {
+        try write([assistant("a1")])
+        XCTAssertEqual(rows().count, 1)
+        try append(assistant("a2") + "\n")
+        XCTAssertEqual(rows().count, 2)
+        // 改写：内容整体换掉（长度还变长了）→ 从头重读，旧行不残留
+        try write([assistant("b1"), assistant("b2"), assistant("b3")])
+        XCTAssertEqual(Set(rows().map(\.requestId)),
+                       Set(try ["b1", "b2", "b3"].map { try requestId(assistant($0)) }))
+        try FileManager.default.removeItem(atPath: path("sess.jsonl"))
+        XCTAssertTrue(rows().isEmpty)
+    }
+
+    // MARK: - 去重与入库剔除
+
+    /// 同一条 entry 被复制进两个文件（fork）只算一次。负责杀的变异体：跨文件不去重。
+    func testSameEntryInTwoFilesCountsOnce() throws {
+        try write([assistant("dup")], to: "a.jsonl")
+        try write([assistant("dup")], to: "b.jsonl")
+        XCTAssertEqual(rows().count, 1)
+    }
+
+    /// cc-switch 已入库（明细在 / 只剩账本）→ 剔除。负责杀的变异体：只查明细不查账本；查账本不限 data_source。
+    func testRowsAlreadyImportedByCcSwitchArePruned() throws {
+        try write([assistant("in-logs"), assistant("in-ledger"), assistant("other-source"), assistant("pending")])
+        try Fixture.insertLog(dbPath, id: try requestId(assistant("in-logs")), app: "omp", model: "m",
+                              input: 1, output: 1, cost: 0, createdAt: 1, dataSource: "omp_session",
+                              providerId: "anthropic")
+        try Fixture.exec(dbPath, """
+            INSERT INTO session_usage_dedup VALUES ('omp_session', '\(try requestId(assistant("in-ledger")))', 'x', 1);
+            INSERT INTO session_usage_dedup VALUES ('pi_session', '\(try requestId(assistant("other-source")))', 'y', 1);
+            """)
+        XCTAssertEqual(Set(rows().map(\.requestId)),
+                       Set([try requestId(assistant("other-source")), try requestId(assistant("pending"))]))
+    }
+
+    /// semantic 规则：有 entry id 的记录只认账本里没有 entry id 的同内容行。
+    /// 负责杀的变异体：有 entry id 的记录也认 has_entry_id = 1 的 semantic 命中。
+    func testSemanticLedgerMatchFollowsEntryIdRule() throws {
+        let line = assistant("sem")
+        try write([line])
+        let entry = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(line.utf8)) as? NSDictionary)
+        let semantic = try XCTUnwrap(OmpUsage.record(from: entry, sessionId: "s1", sessionTimestamp: nil,
+                                                     fileTimestamp: 0)).semanticId
+        try Fixture.exec(dbPath, "INSERT INTO session_usage_dedup VALUES ('omp_session', 'other', '\(semantic)', 1);")
+        XCTAssertEqual(rows().count, 1, "has_entry_id = 1 的行不算重复")
+        try Fixture.exec(dbPath, "INSERT INTO session_usage_dedup VALUES ('omp_session', 'legacy', '\(semantic)', 0);")
+        XCTAssertTrue(rows().isEmpty, "没有 entry id 的旧行同内容 → 已入库")
+    }
+
+    /// 旧库（cc-switch < v17）没有账本表：只查明细，不报错。
+    func testMissingLedgerTableIsTolerated() throws {
+        try Fixture.exec(dbPath, "DROP TABLE session_usage_dedup;")
+        try write([assistant("a1")])
+        XCTAssertEqual(rows().count, 1)
+    }
+
+    /// 库里后来才入库的行，下一轮被剔除（库水位变了要重查）。
+    func testRowImportedLaterIsPrunedOnNextRefresh() throws {
+        try write([assistant("late")])
+        XCTAssertEqual(rows().count, 1)
+        try Fixture.insertLog(dbPath, id: try requestId(assistant("late")), app: "omp", model: "m",
+                              input: 1, output: 1, cost: 0, createdAt: 2, dataSource: "omp_session",
+                              providerId: "anthropic")
+        XCTAssertTrue(rows().isEmpty)
+    }
+
+    // MARK: - 成本与展示名
+
+    /// 自报成本 > 0 用自报；自报为 0 → 按库价；库里没有 → 内置表。负责杀的变异体：自报为 0 时不查价。
+    func testZeroReportedCostFallsBackToPricing() throws {
+        try Fixture.exec(dbPath, """
+            INSERT INTO model_pricing VALUES ('grok-4.5', '2', '6', '0.30', '0');
+            """)
+        try write([
+            assistant("own", model: "grok-4.5", input: 1_000_000, output: 0, cost: 0.75),
+            assistant("db", model: "grok-4.5", input: 1_000_000, output: 1_000_000, cost: 0),
+            assistant("builtin", model: "claude-opus-5-5", input: 1_000_000, output: 0, cost: nil),
+            assistant("none", model: "totally-unknown-model", input: 5, output: 5, cost: nil),
+        ])
+        let byId = Dictionary(uniqueKeysWithValues: rows().map { ($0.requestId, $0) })
+        XCTAssertEqual(byId[try requestId(assistant("own", model: "grok-4.5", input: 1_000_000, output: 0, cost: 0.75))]?.totalCost ?? -1, 0.75, accuracy: 1e-12)
+        XCTAssertEqual(byId[try requestId(assistant("db", model: "grok-4.5", input: 1_000_000, output: 1_000_000, cost: 0))]?.totalCost ?? -1, 8, accuracy: 1e-9)
+        let builtin = try XCTUnwrap(ModelPricing.lookup("claude-opus-5-5")).input
+        XCTAssertEqual(byId[try requestId(assistant("builtin", model: "claude-opus-5-5", input: 1_000_000, output: 0, cost: nil))]?.totalCost ?? -1, builtin, accuracy: 1e-9)
+        XCTAssertEqual(byId[try requestId(assistant("none", model: "totally-unknown-model", input: 5, output: 5, cost: nil))]?.totalCost ?? -1, 0)
+    }
+
+    /// 展示名照 provider_name_coalesce：providers 表 (id, omp) → 占位名 → 原文。别的应用同名供应商不算。
+    func testProviderNameFollowsProvidersTable() throws {
+        try Fixture.exec(dbPath, """
+            INSERT INTO providers VALUES ('anthropic', 'Anthropic API', 'omp');
+            INSERT INTO providers VALUES ('gw', 'Claude Gateway', 'claude');
+            """)
+        try write([assistant("a", provider: "anthropic"), assistant("g", provider: "gw")])
+        let names = Dictionary(uniqueKeysWithValues: rows().map { ($0.providerId, $0.providerName) })
+        XCTAssertEqual(names["anthropic"], "Anthropic API")
+        XCTAssertEqual(names["gw"], "gw")
+    }
+
+    // MARK: - 进 UsageStore 之后
+
+    /// OMP 叠加行进 omp 分组；中断 / 报错的请求计入请求数、不计入成功；状态码筛选能筛出来。
+    func testStoreGroupsOmpRowsAndCountsFailures() throws {
+        try write([
+            assistant("ok-1", ts: "2026-10-29T13:17:42.984Z"),
+            assistant("ok-2", ts: "2026-10-29T13:18:42.984Z"),
+            assistant("err-1", output: 0, cost: 0, stop: "error", error: "upstream 529",
+                      ts: "2026-10-29T13:19:42.984Z"),
+        ])
+        let store = UsageStore(path: dbPath, overlay: try Fixture.emptyOverlay(), ompOverlay: overlay)
+        let all = try store.rangeSummary(UsageFilter(), calendar: Fixture.cal)
+        XCTAssertEqual(all.requests, 3)
+        XCTAssertEqual(all.successes, 2)
+        let omp = try store.rangeSummary(UsageFilter(appType: "omp"), calendar: Fixture.cal)
+        XCTAssertEqual(omp.requests, 3)
+        let claude = try store.rangeSummary(UsageFilter(appType: "claude"), calendar: Fixture.cal)
+        XCTAssertEqual(claude.requests, 0, "OMP 的 Claude 请求不再记到 Claude 分组")
+        let failed = try store.requestLogs(LogQueryFilter(statusCode: 500), page: 0, pageSize: 20)
+        XCTAssertEqual(failed.rows.map(\.errorMessage), ["upstream 529"])
+        let stats = try store.providerStats(LogQueryFilter())
+        XCTAssertEqual(stats.first?.successRate ?? 0, 200.0 / 3, accuracy: 1e-9)
     }
 }

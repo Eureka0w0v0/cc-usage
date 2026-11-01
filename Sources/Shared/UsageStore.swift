@@ -64,16 +64,13 @@ public final class UsageStore: @unchecked Sendable {
 
     // MARK: - 增量叠加（SessionOverlay + OmpOverlay）
     //
-    // 两个来源性质不同：
-    //   * SessionOverlay —— cc-switch 迟早会入库的 Claude Code 增量。它不在运行时新用量
-    //     只存在于 ~/.claude/projects 的 JSONL 里，补录后 overlay 自动清空、数字无缝交接；
-    //   * OmpOverlay —— cc-switch 压根不扫 ~/.omp/agent/sessions，永远不会收录，所以这
-    //     一层是 OMP 用量在本应用里的唯一来源，不存在「等它补录」。
+    // 两层都只叠加「cc-switch 迟早会入库、但现在还没入库」的增量，入库后自动收敛、数字无缝交接：
+    //   * SessionOverlay —— Claude Code（~/.claude/projects），按 session_log_sync 游标续读；
+    //   * OmpOverlay —— Oh My Pi（cc-switch v4.0.22 起自己导入，app_type omp）。产出上游全量导入会得到的
+    //     行，按 request_id 剔除已在库里或账本里的；cc-switch 低于 4.0.22 时它就是 OMP 用量的唯一来源。
     //
-    // 两者产出同一种 OverlayRow，各自带 appType/providerName，这里按行过滤后合并：于是
-    // OMP 走 anthropic 的 Claude 请求落进 claude 分组（与 5H/Week 徽标同一笔账），走
-    // custom-gateway 的 grok 落进 grokbuild 分组，不会被笼统算成一坨。
-    // 两层共用 "session:<msg_id>" 命名空间，同一条响应即便都看见也只算一次。
+    // 两者产出同一种 OverlayRow，各自带 appType / providerName / 状态码，这里按行过滤后合并。两层的
+    // request_id 命名空间不同（"session:<msg_id>" 与 "omp_session:<sha256>"），合并时仍按 id 去重兜底。
 
     /// 取符合过滤条件的增量行。overlay 行 pricing_model 为空 → 有效计价模型回落 model,
     /// 与库内 session 行口径一致。
