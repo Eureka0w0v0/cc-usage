@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // cc-usage-widget 官方订阅额度层：照搬 cc-switch `src-tauri/src/services/subscription.rs`
 // 的 Claude 分支，读取 Claude Code 的 OAuth 凭据 → 调 Anthropic 官方用量端点
@@ -118,15 +119,16 @@ enum QuotaService {
     /// 真实查询：读凭据 → 调官方 /api/oauth/usage → 给每个 tier 附上套餐标签。
     /// 失败/无凭据返回 nil（由 QuotaCache 保留上次成功值）。
     private static func fetchFromAPI() async -> [QuotaTier]? {
-        // 读凭据属阻塞操作（spawn security / 读文件），放后台线程
-        let credResult = await Task.detached(priority: .utility) {
-            ClaudeCredentialReader.read()
+        // 读凭据、读 Claude Code 配置都是阻塞操作（spawn security / 读文件），放后台线程
+        let (credResult, displayName) = await Task.detached(priority: .utility) {
+            (ClaudeCredentialReader.read(), ClaudeConfigReader.planDisplayName())
         }.value
         guard case .success(let cred) = credResult else { return nil }
 
         switch await ClaudeUsageAPI.query(token: cred.accessToken) {
         case .success(var tiers):
-            let plan = ClaudePlan.label(subscriptionType: cred.subscriptionType, rateLimitTier: cred.rateLimitTier)
+            let plan = ClaudePlan.label(displayName: displayName, subscriptionType: cred.subscriptionType,
+                                        rateLimitTier: cred.rateLimitTier)
             for i in tiers.indices { tiers[i].planLabel = plan }
             return tiers
         case .failure:
@@ -192,6 +194,42 @@ enum ClaudeCredentialReader {
         let data = out.fileHandleForReading.readDataToEndOfFile()
         proc.waitUntilExit()
         return SecurityLookupOutput(status: proc.terminationStatus, stdout: data)
+    }
+}
+
+// MARK: - Claude Code 全局配置里的套餐显示名
+
+/// 读 Claude Code 缓存的套餐显示名（`oauthAccount.planDisplayName`，来自 `/api/oauth/profile`），见 ClaudePlan。
+/// 文件位置同 Claude Code 2.1.316：旧版 `~/.claude/.config.json` 非空就用它，否则 `~/.claude.json`。
+/// CLAUDE_CONFIG_DIR 只对终端里起的 Claude Code 生效；本应用从访达启动，和钥匙串只查默认条目一样只看默认位置。
+/// 读不到（没装 Claude Code、API key 登录）返回 nil，套餐名回落到按凭据推断。
+enum ClaudeConfigReader {
+    private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "quota")
+
+    static func planDisplayName() -> String? {
+        let home = NSHomeDirectory() as NSString
+        let legacy = home.appendingPathComponent(".claude/.config.json")
+        let path = fileSize(legacy) > 0 ? legacy : home.appendingPathComponent(".claude.json")
+        guard FileManager.default.fileExists(atPath: path) else {
+            log.debug("没有 Claude Code 全局配置，套餐名按凭据推断")
+            return nil
+        }
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            let name = ClaudePlan.displayName(fromClaudeConfig: data)
+            if name == nil { log.debug("Claude Code 配置里没有 planDisplayName，套餐名按凭据推断") }
+            return name
+        } catch {
+            log.error("读取 Claude Code 全局配置失败：\(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// 文件大小；不存在或读不到属性都按 0（旧版配置文件绝大多数人没有，属正常情况，不记日志）。
+    private static func fileSize(_ path: String) -> Int {
+        guard FileManager.default.fileExists(atPath: path),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: path) else { return 0 }
+        return (attributes[.size] as? NSNumber)?.intValue ?? 0
     }
 }
 
