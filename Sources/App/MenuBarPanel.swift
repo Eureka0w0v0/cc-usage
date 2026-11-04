@@ -5,6 +5,9 @@ struct MenuBarPanel: View {
     @ObservedObject var model: PanelModel
     @Environment(\.openWindow) private var openWindow
     @State private var showSettings = false
+    // 趋势图跟随主窗口的两项选择（主窗口一改，这里经 UserDefaults 立即跟上）
+    @AppStorage(EmbedKey.trendMetric) private var trendMetricRaw = ""
+    @AppStorage(EmbedKey.usageDisplay) private var usageDisplayJSON = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -24,8 +27,7 @@ struct MenuBarPanel: View {
                 }
             }
             if let snap = model.snap {
-                TrendChart(buckets: snap.trend, showAxes: false, interactive: false)
-                    .frame(height: 80)
+                trend(snap.trend)
             }
             // 数据层出错时给出可见降级（比如 cc-switch.db 不存在）——否则面板一片空、无从排查
             if let err = model.error {
@@ -79,6 +81,20 @@ struct MenuBarPanel: View {
         .frame(width: 340)
         .background(Theme.bg)
         .onAppear { model.start() }
+    }
+
+    /// 今日每小时的趋势：标题同主窗口（「Tokens · hourly」），图表是主窗口 v4 趋势图的迷你版。
+    private func trend(_ buckets: [TrendBucket]) -> some View {
+        let metric = TrendMetric.resolve(trendMetricRaw)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("\(metric.title) · hourly")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.textDim)
+            TrendChart(buckets: buckets, metric: metric,
+                       style: TrendChartStyle.resolve(usageDisplayJSON: usageDisplayJSON),
+                       interactive: true)
+                .frame(height: 104)
+        }
     }
 
     private func stat(_ label: String, _ value: String, _ color: Color) -> some View {

@@ -12,13 +12,9 @@ public enum Fmt {
         }
     }
 
-    /// Y 轴刻度用（对齐 recharts (value/1000).toFixed(0)+"k"，四舍五入，0→"0k"）
-    public static func tokensAxis(_ n: Int64) -> String {
-        String(format: "%.0fk", Double(n) / 1000)
-    }
-
-    /// 走势图 $ 轴刻度，对齐主窗口 Recharts 的 `$${value}`：整数不带小数点、小数按需显示、
-    /// 不加千分位。最多 10 位小数只为吃掉 1.9500000000000002 这类浮点尾巴。
+    /// 走势图 $ 轴刻度，对齐主窗口 v4 的 formatMoneyTick（"$" + 千分位(String(num))）：整数不带小数点、
+    /// 小数按需显示。最多 10 位小数只为吃掉 1.9500000000000002 这类浮点尾巴——刻度值来自 NiceScale 的十进制
+    /// 步长，本来就没有尾巴；只有小于 1e-6 时与 JS 不同（JS 写成 5e-7，这里写成 0.0000005）。
     /// 早前是 `Int(rounded)`：刻度 1.25 / 2.5 被标成 $1 / $3，花费不足 $1 时整排 $0。
     public static func costAxis(_ v: Double) -> String {
         "$" + (costAxisFormatter.string(from: NSNumber(value: v)) ?? "\(v)")
@@ -27,12 +23,29 @@ public enum Fmt {
         let f = NumberFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.numberStyle = .decimal
-        f.usesGroupingSeparator = false
+        f.usesGroupingSeparator = true
+        f.groupingSeparator = ","
+        f.groupingSize = 3
         f.maximumFractionDigits = 10
         return f
     }()
 
-    /// 千分位分隔，还原「153,980,903」。formatter 静态复用（tooltip 每悬停帧调 4 次）。
+    /// 走势图悬停里的金额，对齐上游 money(v, 4)：固定四位小数 + 千分位（"$1,234.5679"）。
+    public static func cost4(_ v: Double) -> String {
+        let fixed = String(format: "%.4f", v)
+        let parts = fixed.split(separator: ".", maxSplits: 1)
+        let whole = String(parts[0])
+        let sign = whole.hasPrefix("-") ? "-" : ""
+        let digits = sign.isEmpty ? whole : String(whole.dropFirst())
+        var grouped = ""
+        for (i, ch) in digits.enumerated() {
+            if i > 0 && (digits.count - i) % 3 == 0 { grouped.append(",") }
+            grouped.append(ch)
+        }
+        return "$" + sign + grouped + (parts.count > 1 ? "." + parts[1] : "")
+    }
+
+    /// 千分位分隔，还原「153,980,903」。formatter 静态复用（走势图悬停时每帧都调）。
     public static func grouped(_ n: Int64) -> String {
         groupedFormatter.string(from: NSNumber(value: n)) ?? "\(n)"
     }
@@ -66,11 +79,6 @@ public enum Fmt {
         case 1_000...:         return String(format: "%.1fK", d / 1_000)
         default:               return "\(n)"
         }
-    }
-
-    // tooltip 用，对齐 cc-switch fmtUsd(value, 6)
-    public static func cost6(_ v: Double) -> String {
-        String(format: "$%.6f", v)
     }
 
     public static func percent(_ ratio: Double) -> String {

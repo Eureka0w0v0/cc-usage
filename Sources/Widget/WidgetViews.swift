@@ -102,10 +102,9 @@ struct LargeView: View {
 
             MetricStrip(today: snap.today)
 
+            Text("\(TrendMetric.tokens.title) · hourly").font(.system(size: 10)).foregroundStyle(Theme.textDim)
             TrendChart(buckets: snap.trend, showAxes: true)
                 .frame(maxHeight: .infinity)
-
-            ChartLegend()
         }
         .padding(16)
     }

@@ -39,14 +39,8 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(Fmt.grouped(1_234_567), "1,234,567")
     }
 
-    func testTokensAxis() {
-        XCTAssertEqual(Fmt.tokensAxis(0), "0k")
-        XCTAssertEqual(Fmt.tokensAxis(1_000), "1k")
-        XCTAssertEqual(Fmt.tokensAxis(1_500), "2k")
-    }
-
-    // 对齐主窗口 Recharts 的 `$${value}`。
-    // 负责杀的变异体：退回 Int(rounded)（1.25→$1、0.3→$0）/ 带千分位 / 浮点尾巴外露。
+    // 对齐主窗口 v4 的 formatMoneyTick（"$" + 千分位(String(num))）。
+    // 负责杀的变异体：退回 Int(rounded)（1.25→$1、0.3→$0）/ 不加千分位 / 浮点尾巴外露。
     func testCostAxis() {
         XCTAssertEqual(Fmt.costAxis(0), "$0")
         XCTAssertEqual(Fmt.costAxis(8), "$8")
@@ -54,7 +48,8 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(Fmt.costAxis(0.1 + 0.2), "$0.3")
         XCTAssertEqual(Fmt.costAxis(2.6 * 3 / 4), "$1.95")
         XCTAssertEqual(Fmt.costAxis(0.0000025), "$0.0000025")
-        XCTAssertEqual(Fmt.costAxis(1200), "$1200")
+        XCTAssertEqual(Fmt.costAxis(1200), "$1,200")
+        XCTAssertEqual(Fmt.costAxis(1_234_567.5), "$1,234,567.5")
     }
 
     func testRelative() {
