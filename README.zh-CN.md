@@ -75,9 +75,9 @@ bash scripts/build.sh   # 生成工程 → Release 构建 → 安装到 /Applica
 
 - **菜单栏显示项**:点菜单栏里的 CC Usage → 展开「Menu Bar Display」→ 展开某个 AI 分组(All / Claude / Codex / …)勾选想要的码片(Tokens/Cost 各含 Day/Week/Month,Quota 含 5H/Week;Antigravity 的 Quota 是 Gemini / Claude × 5H / 7D)。菜单栏显示格式如 `D:154.9M 5H:8% 7D:45%`,前面是对应 AI 的图标;
 - **刷新间隔**:主窗口页头的 ⟳ 下拉选择,菜单栏与面板同步生效并持久化;
-- **图表样式和列**:旁边的图表下拉切换趋势图的柱形 / 面积;请求日志显示哪些列在「请求日志」页签栏右端的列菜单里选。都会记住;
+- **图表样式和列**:旁边的图表下拉切换趋势图的柱形 / 面积;请求日志显示哪些列在「请求日志」页签栏右端的列菜单里选。都会记住。菜单栏弹窗里的今日小时图跟着同一个样式,画的是主窗口指标条选中的指标,鼠标停在上面能看到那一小时的数值;
 - **额度的更新节奏**:5H/Week 的百分比**最快 5 分钟变一次**——官方接口按 cc-switch 同款设计做了 5 分钟节流,防止账号被限流。本地库的 tokens/花费才是真·5 秒一变;
-- **Claude 套餐**:套餐名(如 `Max 20x`,与 cc-switch 官方卡片上显示的一致)显示在主窗口额度徽标左边和菜单栏 Claude 组 Quota 行末尾。它随额度一起读取,拉过额度后才出现;
+- **Claude 套餐**:套餐名(如 `Ultra`)显示在主窗口额度徽标左边和菜单栏 Claude 组 Quota 行末尾。和 Claude Code 一样优先用 Anthropic 服务器下发的套餐名(Claude Code 缓存在 `~/.claude.json` 里),官方改名不用等本应用更新;读不到时按凭据推断(2026-10-30 起 Max 20x 改名 Ultra、Max 5x 改名 Max)。它随额度一起读取,拉过额度后才出现;
 - **日期/供应商/模型筛选、三个统计页签**:与 cc-switch 原版完全一致;供应商/模型表把日汇总也算进去,各行加起来等于顶部总数。cc-switch 还没导入的请求,速度和首字按 cc-switch 同一套规则从会话日志估算(带 ≈),导入前后数值不变;OMP 的请求用 OMP 每条回复自己测的耗时,和 cc-switch 一样没有首字时间。和 cc-switch 一样,输出不到 200 token 的短回复不估速度,只有以思考块开头的回复推得出首字。
 
 ## 工作原理
@@ -153,7 +153,7 @@ bash scripts/test.sh    # 单元测试:定价匹配 / rollup 边界 / 两表合�
 
 ## 隐私
 
-- 所有用量数据**只在本机**:只读 cc-switch 的 SQLite 库、它 `settings.json` 里的应用显示设置与本地会话日志(`~/.claude/projects`、`~/.omp/agent/sessions`),不上传任何内容,也不写这些文件;
+- 所有用量数据**只在本机**:只读 cc-switch 的 SQLite 库、它 `settings.json` 里的应用显示设置、本地会话日志(`~/.claude/projects`、`~/.omp/agent/sessions`)以及 Claude Code 缓存在 `~/.claude.json` 里的套餐名(只取这一个字段),不上传任何内容,也不写这些文件;
 - 网络请求:Anthropic 官方额度接口 `api.anthropic.com/api/oauth/usage`(仅在勾了 Claude 额度码片、或开着主窗口(页头有额度徽标)时,5 分钟最多一次);Antigravity 额度用到的 Google `oauth2.googleapis.com` / `cloudcode-pa.googleapis.com`(仅在勾了 Antigravity 额度码片或展开它的设置分组时,30 秒最多一次);匿名检查本仓库在 GitHub 的最新版本(6 小时最多一次);
 - OAuth 凭据仅在本机读取使用,不落盘,只发给各自的官方接口。
 
