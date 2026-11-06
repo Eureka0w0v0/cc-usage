@@ -18,6 +18,7 @@
 		0DB32A66B84D5E260ECB71C5 /* brand-grok.png in Resources */ = {isa = PBXBuildFile; fileRef = 3B12A88A474853068E9E3317 /* brand-grok.png */; };
 		1007263746872BD9A3AC7D49 /* UsageWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		10845118D926008DCC2A0A3E /* TrendLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75BAF875CACF63F0FC09F52 /* TrendLayout.swift */; };
+		1329182C2D0640CD5AC9AA06 /* ClaudeUsageParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B25718FAFE68A3DB8F0457CA /* ClaudeUsageParsing.swift */; };
 		133BC0DB52299D099831BBB9 /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8F4FC41DE201B88BBBE364 /* UsageStore+Summary.swift */; };
 		158ED47EFD3E8A960B58B8F9 /* UsageSQL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4462E2D0CD755D67113F48A0 /* UsageSQL.swift */; };
 		1635BCDD5D777AB253C584AC /* UsageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA8DAFF3CCEE62A47CCC0700 /* UsageStoreTests.swift */; };
@@ -51,6 +52,7 @@
 		3BE1356CDE5282BD10627922 /* ClaudePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAB5CF8868DC08111CC916BF /* ClaudePlan.swift */; };
 		417D94777D2B75B45D979FB0 /* ClaudeCacheWriteBillingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C680FCBEA94CAC502E56E10 /* ClaudeCacheWriteBillingTests.swift */; };
 		41D213BC716BF76C9945BE04 /* CodexRateLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = D251B8061DDAC1139500D598 /* CodexRateLimits.swift */; };
+		4770A1E35288A450B57B2FBF /* ClaudeUsageParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11229265D35EF6B37D58294B /* ClaudeUsageParsingTests.swift */; };
 		487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */; };
 		4AAD9D95134DC5AD995D8511 /* UsageWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575EC9EA5B5664CB541642A8 /* UsageWindow.swift */; };
 		4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */ = {isa = PBXBuildFile; fileRef = E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */; };
@@ -89,6 +91,7 @@
 		74B0E5093888AA23C3FD5C89 /* MenuBarChipMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144A1EE4C00CF2D9BAD7C510 /* MenuBarChipMigration.swift */; };
 		7626FCD6F6023F1CEEB624BF /* UsageStore+Tabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18D25151CC9C1F740A40CD0A /* UsageStore+Tabs.swift */; };
 		76E88BC6058DB37F63DB203B /* SessionTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64E641B0127A816441802E29 /* SessionTiming.swift */; };
+		77720F160EBA126E00CF30D5 /* ClaudeUsageParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B25718FAFE68A3DB8F0457CA /* ClaudeUsageParsing.swift */; };
 		77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D584EE6E87C0844CE987F0 /* QuotaService.swift */; };
 		791E3496D6FC87AAB229FB0C /* WindowDrag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316F79F14E6A53F1CA747517 /* WindowDrag.swift */; };
 		79724C7ABA05FF539DCF13F9 /* OmpSessionFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = D729258F5AA886E079A0E1E5 /* OmpSessionFiles.swift */; };
@@ -135,6 +138,7 @@
 		ADA726ABDA81F094AC7BCFEF /* OmpSessionFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = D729258F5AA886E079A0E1E5 /* OmpSessionFiles.swift */; };
 		ADD7F6D4EFE87280EBE9A9A5 /* OverlayRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0946763210CA0084E67C704 /* OverlayRow.swift */; };
 		AEBD6DDE51459F0C9B4CA3AA /* UsageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D85B962EBD6D1E0F549497 /* UsageModels.swift */; };
+		B165E66A0C1F9F089A0FD668 /* ClaudeUsageParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B25718FAFE68A3DB8F0457CA /* ClaudeUsageParsing.swift */; };
 		B207808382C8DC4248FC552C /* UsageWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575EC9EA5B5664CB541642A8 /* UsageWindow.swift */; };
 		B28062A49CE2142F21C68C90 /* OverlayRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0946763210CA0084E67C704 /* OverlayRow.swift */; };
 		B37D66ED135407352107CDAE /* brand-claude.png in Resources */ = {isa = PBXBuildFile; fileRef = CAA25E78D961070EDBD05FBD /* brand-claude.png */; };
@@ -238,6 +242,7 @@
 		0C0E4252490271CB6F39763E /* TrendMetric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendMetric.swift; sourceTree = "<group>"; };
 		0FA0E5873AE44221C5F8E764 /* index.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
 		1023FC76A66DAD31754F57CB /* MenuBarPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanel.swift; sourceTree = "<group>"; };
+		11229265D35EF6B37D58294B /* ClaudeUsageParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageParsingTests.swift; sourceTree = "<group>"; };
 		144A1EE4C00CF2D9BAD7C510 /* MenuBarChipMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarChipMigration.swift; sourceTree = "<group>"; };
 		14E50F14C41D531700D19262 /* TrendAxis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendAxis.swift; sourceTree = "<group>"; };
 		17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityQuota.swift; sourceTree = "<group>"; };
@@ -305,6 +310,7 @@
 		AEC9BFCBC6414480A918AF37 /* RFC3339Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFC3339Tests.swift; sourceTree = "<group>"; };
 		AEE9EE50B0C471159BCFDC9A /* NiceScale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NiceScale.swift; sourceTree = "<group>"; };
 		B0946763210CA0084E67C704 /* OverlayRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayRow.swift; sourceTree = "<group>"; };
+		B25718FAFE68A3DB8F0457CA /* ClaudeUsageParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageParsing.swift; sourceTree = "<group>"; };
 		B630AB07F7C1A6EB7B7A1D56 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B788D2D872F106E2F2EC0A22 /* CCUsageApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCUsageApp.swift; sourceTree = "<group>"; };
@@ -430,6 +436,7 @@
 				E86FC3B0DB3A30035ECD5A4D /* ClaudePlanTests.swift */,
 				F6A6BC20DF49E1A6989FCF94 /* ClaudeQuotaParsingTests.swift */,
 				61F2B64BB7A70AC0166B046D /* ClaudeSessionFilesTests.swift */,
+				11229265D35EF6B37D58294B /* ClaudeUsageParsingTests.swift */,
 				40CDBEA70D4CF12353B80A47 /* CodexRateLimitsTests.swift */,
 				02EC91B3D0364F51E74D43D4 /* CrossSourceDedupTests.swift */,
 				450359DFC5AEC0C170B78D45 /* DataSourceBreakdownTests.swift */,
@@ -567,6 +574,7 @@
 			isa = PBXGroup;
 			children = (
 				A65DAB1054A665B194CE67AE /* ClaudeSessionFiles.swift */,
+				B25718FAFE68A3DB8F0457CA /* ClaudeUsageParsing.swift */,
 				8BC51416C9BC4ED6869BC931 /* DirListCache.swift */,
 				371F4942735540069DA54CBF /* JSONLScan.swift */,
 				3268B8122C5885753CECF856 /* OmpOverlay.swift */,
@@ -752,6 +760,7 @@
 				E73264967292A2593561CBCA /* ClaudePlan.swift in Sources */,
 				715EF426039D9928601B8152 /* ClaudeQuotaParsing.swift in Sources */,
 				EF2B54D0DC66015C659C5E70 /* ClaudeSessionFiles.swift in Sources */,
+				1329182C2D0640CD5AC9AA06 /* ClaudeUsageParsing.swift in Sources */,
 				0D56DE130F92E81DAC397904 /* CodexRateLimits.swift in Sources */,
 				E8C8E173E18F9ABA68C01839 /* DirListCache.swift in Sources */,
 				A544C29B51D80C37C8543012 /* EmbedSettings.swift in Sources */,
@@ -802,6 +811,7 @@
 				28E474C6A763719184D6C090 /* ClaudePlan.swift in Sources */,
 				9F2A4E878B48EC111C58B147 /* ClaudeQuotaParsing.swift in Sources */,
 				2ED2612CF369DF1C9E3DECF5 /* ClaudeSessionFiles.swift in Sources */,
+				B165E66A0C1F9F089A0FD668 /* ClaudeUsageParsing.swift in Sources */,
 				2FB870100920324A6F8DB6F1 /* CodexQuota.swift in Sources */,
 				41D213BC716BF76C9945BE04 /* CodexRateLimits.swift in Sources */,
 				0B19B9974606BC0D5196F279 /* DirListCache.swift in Sources */,
@@ -867,6 +877,8 @@
 				59F114289D85767B4A7100CC /* ClaudeQuotaParsingTests.swift in Sources */,
 				96EE6CC460B3E28963637471 /* ClaudeSessionFiles.swift in Sources */,
 				D2D7F256D8652481D7CE2BC6 /* ClaudeSessionFilesTests.swift in Sources */,
+				77720F160EBA126E00CF30D5 /* ClaudeUsageParsing.swift in Sources */,
+				4770A1E35288A450B57B2FBF /* ClaudeUsageParsingTests.swift in Sources */,
 				7B1C2D89B4F0CD3D309C0979 /* CodexRateLimits.swift in Sources */,
 				EF35541C241CCFC24EC49BBE /* CodexRateLimitsTests.swift in Sources */,
 				1AB9D7324DF34BF91A2E4087 /* CrossSourceDedupTests.swift in Sources */,
