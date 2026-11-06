@@ -104,7 +104,7 @@ extension UsageStore {
         sqlite3_finalize(lStmt)
 
         // --- rollups：按 r.date 分组，叠加到对应日（add，同一天不双算见边界对齐）---
-        let (rConds, rBinds) = rollupConds(f, rollupDateBounds(startTs, endTs, cal))
+        let (rConds, rBinds) = rollupConds(f, Self.rollupDateBounds(startTs, endTs, cal))
         let rWhere = rConds.isEmpty ? "" : "WHERE " + rConds.joined(separator: " AND ")
         let rSQL = """
         SELECT r.date,

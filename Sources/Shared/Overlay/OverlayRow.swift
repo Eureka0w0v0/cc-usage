@@ -43,6 +43,8 @@ public struct OverlayRow: Sendable {
     /// 状态码，与库里 status_code 同一约定。SessionOverlay 的行恒为 200（JSONL 里只有拿到 usage 的
     /// 回复才成行）；OmpOverlay 照上游把中断 / 报错的请求记成 499 / 500，用量可以是 0。
     public var statusCode: Int64 = 200
+    /// 成功 = 2xx，与 SQL 里 `status_code >= 200 AND status_code < 300` 同口径。
+    public var isSuccess: Bool { (200..<300).contains(statusCode) }
     /// 失败请求的错误信息（上游截到 4096 字符），成功的行为 nil。
     public var errorMessage: String? = nil
     /// 请求时指定的模型（库里的 request_model）。nil = 与 model 相同。

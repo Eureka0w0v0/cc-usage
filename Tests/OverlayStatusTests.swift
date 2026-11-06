@@ -21,9 +21,9 @@ final class OverlayStatusTests: XCTestCase {
         XCTAssertEqual(s.successes, 1)
     }
 
-    /// 负责杀的变异体：OverlayStatsGroup 不分状态码累计成功数（供应商 / 模型统计的成功率）。
+    /// 负责杀的变异体：OverlayStats.Group 不分状态码累计成功数（供应商 / 模型统计的成功率）。
     func testStatsGroupCountsSuccessesByStatus() {
-        let groups = UsageStore.groupOverlay([row("a"), row("b", status: 499), row("c", status: 204)]) {
+        let groups = OverlayStats.group([row("a"), row("b", status: 499), row("c", status: 204)]) {
             $0.providerId
         }
         XCTAssertEqual(groups["p"]?.requests, 3)

@@ -34,7 +34,7 @@ extension UsageStore {
 
     /// rollups 部分：仅 usage_daily_rollups（fresh_input + 整日边界对齐）。
     func summaryRollupsOnly(_ db: OpaquePointer, _ f: UsageFilter, _ cal: Calendar) throws -> UsageSummary {
-        let (conds, binds) = rollupConds(f, rollupDateBounds(f.start, f.end, cal))
+        let (conds, binds) = rollupConds(f, Self.rollupDateBounds(f.start, f.end, cal))
         let whereClause = conds.isEmpty ? "" : "WHERE " + conds.joined(separator: " AND ")
         let sql = """
         SELECT COALESCE(SUM(r.request_count),0),
@@ -82,7 +82,7 @@ extension UsageStore {
         // 绑定参数顺序 = 明细侧在前、rollup 侧在后（与 SQL 里两个子查询的先后一致）。
         var noApp = filter; noApp.appType = nil
         let (dConds, dBinds) = logConds(db, noApp)
-        let (rConds, rBinds) = rollupConds(noApp, rollupDateBounds(filter.start, filter.end, cal))
+        let (rConds, rBinds) = rollupConds(noApp, Self.rollupDateBounds(filter.start, filter.end, cal))
         let binds = dBinds + rBinds
 
         let rWhere = rConds.isEmpty ? "" : "WHERE " + rConds.joined(separator: " AND ")

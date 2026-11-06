@@ -22,7 +22,8 @@ import SQLite3
 //   UsageStore.swift          连接 / overlay 合并 / rollup 边界 / schema 探测 / 公开入口
 //   UsageStore+Summary.swift  区间汇总（logs + rollups 两表合并、按 app 分组）
 //   UsageStore+Trend.swift    小时桶 / 天桶走势、最后活动时间
-//   UsageStore+Tabs.swift     Request Logs / Provider Stats / Model Stats / 按来源
+//   UsageStore+RequestLogs.swift  Request Logs 分页与详情（归并在 RequestLogMerge.swift，纯函数）
+//   UsageStore+Stats.swift    Provider Stats / Model Stats / 按来源（聚合在 OverlayStats.swift，纯函数）
 //   UsageSQL.swift            与 usage_stats.rs 逐字对齐的 SQL 片段
 //   UsageModels.swift         对外数据模型；SQLiteSupport.swift  sqlite3 小工具
 
@@ -98,15 +99,12 @@ public final class UsageStore: @unchecked Sendable {
         return rows.filter { $0.statusCode == Int64(sc) }
     }
 
-    /// 成功 = 2xx，与 SQL 里 `status_code >= 200 AND status_code < 300` 同口径。
-    static func isSuccess(_ r: OverlayRow) -> Bool { (200..<300).contains(r.statusCode) }
-
     /// 把增量行累加进汇总(claude 的 fresh_input = input,无 cache 扣减)。
     func addOverlay(_ s: inout UsageSummary, _ rows: [OverlayRow]) {
         guard !rows.isEmpty else { return }
         s.requests += rows.count
         // 请求数照算全部行；成功只认 2xx——OMP 的中断 / 报错请求（499 / 500）不算成功。
-        s.successes += rows.lazy.filter(Self.isSuccess).count
+        s.successes += rows.lazy.filter(\.isSuccess).count
         for r in rows {
             s.input += r.input
             s.output += r.output
@@ -123,8 +121,8 @@ public final class UsageStore: @unchecked Sendable {
     // 避免与 rollups 双算。isEmpty=true 时（start>end）用 "1=0" 让 rollups 部分为空。
     struct RollupBounds { var start: String?; var end: String?; var isEmpty: Bool }
 
-    // internal（而非 private）：整日边界对齐是防双算的关键逻辑，单测直接驱动。
-    func rollupDateBounds(_ startTs: Int64?, _ endTs: Int64?, _ cal: Calendar) -> RollupBounds {
+    // internal（而非 private）：整日边界对齐是防双算的关键逻辑，单测直接驱动；不碰库，不用造实例。
+    static func rollupDateBounds(_ startTs: Int64?, _ endTs: Int64?, _ cal: Calendar) -> RollupBounds {
         let fmt = DateFormatter()
         fmt.calendar = cal
         fmt.timeZone = cal.timeZone
