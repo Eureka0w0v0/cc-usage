@@ -59,6 +59,26 @@ public final class UsageStore: @unchecked Sendable {
         return handle
     }
 
+    /// prepare + 绑定；失败抛 .prepare(sql)。调用方负责 sqlite3_finalize（通常 defer）。
+    func prepare(_ db: OpaquePointer, _ sql: String, _ binds: [SQLBind] = []) throws -> OpaquePointer? {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw UsageStoreError.prepare(sql)
+        }
+        SQLite.bindAll(stmt, binds)
+        return stmt
+    }
+
+    /// 走一步：有行 true，走完 false，其余返回码抛 .step。查询半路出错（库损坏、被占用、SUM 溢出）不能当成
+    /// 「没有更多行」，否则部分聚合会被当真值显示。
+    func stepRow(_ stmt: OpaquePointer?, _ sql: String) throws -> Bool {
+        switch sqlite3_step(stmt) {
+        case SQLITE_ROW: return true
+        case SQLITE_DONE: return false
+        case let rc: throw UsageStoreError.step(rc, sql)
+        }
+    }
+
     // MARK: - 增量叠加（SessionOverlay + OmpOverlay）
     //
     // 两层都只叠加「cc-switch 迟早会入库、但现在还没入库」的增量，入库后自动收敛、数字无缝交接：
