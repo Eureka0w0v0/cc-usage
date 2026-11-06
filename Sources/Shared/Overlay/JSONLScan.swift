@@ -1,4 +1,51 @@
 import Foundation
+import SQLite3
+
+/// 两个 overlay 共用的逐行扫描原语。
+enum JSONLScan {
+    /// 计费行的必要标记。会话日志里 tool_call / thinking / custom 之类的行占七成以上，
+    /// 它们不可能含 "usage"——先做一次字节子串命中再决定要不要 JSONSerialization。
+    static let usageMarker = Data(#""usage""#.utf8)
+    /// 对话链节点的必要标记：只有带顶层 uuid 的行才进对话链（估请求起点用，见 ClaudeTimingTracker）。
+    /// api-request-blob 之类不带它的大行（本机实测约占日志两成字节）就不必解析。
+    static let uuidMarker = Data(#""uuid""#.utf8)
+
+    static func hasUsageMarker(_ p: UnsafeRawPointer, _ len: Int) -> Bool {
+        contains(usageMarker, p, len)
+    }
+
+    static func hasUUIDMarker(_ p: UnsafeRawPointer, _ len: Int) -> Bool {
+        contains(uuidMarker, p, len)
+    }
+
+    private static func contains(_ marker: Data, _ p: UnsafeRawPointer, _ len: Int) -> Bool {
+        marker.withUnsafeBytes { m in
+            memmem(p, len, m.baseAddress!, m.count) != nil
+        }
+    }
+
+    /// 一行 JSON → 顶层对象。用 bytesNoCopy 包给 JSONSerialization，省掉每行一次的缓冲区拷贝（调用方保证
+    /// p 在调用期间有效）。解析不了或不是对象的行返回 nil：半行、坏行跳过即可，与上游 `Err(_) => continue` 相同。
+    static func object(_ p: UnsafeRawPointer, _ len: Int) -> NSDictionary? {
+        let line = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: p), count: len, deallocator: .none)
+        return (try? JSONSerialization.jsonObject(with: line)) as? NSDictionary
+    }
+
+    /// proxy_request_logs 的入库水位：行数 + 最新时间戳。两个 overlay 的预检共用。
+    /// 补录会让两者都涨、清理旧日志会让行数掉——只要这对数不变，就说明库里没有
+    /// 新行，pruneRowsAlreadyInDB 不可能产生新命中，那趟全量 IN 查询可以整个省掉。
+    /// 本机实测 0.21ms（换掉的是 100ms 级的一整趟扫描）。
+    static func dbWatermark(_ db: OpaquePointer) -> Watermark? {
+        var stmt: OpaquePointer?
+        let sql = "SELECT COUNT(*), COALESCE(MAX(created_at), 0) FROM proxy_request_logs"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return Watermark(rows: sqlite3_column_int64(stmt, 0), maxTs: sqlite3_column_int64(stmt, 1))
+    }
+
+    struct Watermark: Equatable { var rows: Int64; var maxTs: Int64 }
+}
 
 // 对话链行的快扫。估请求起点要把每一行（用户消息、工具结果、attachment）记进对话链，但只用得到顶层的
 // uuid / parentUuid / timestamp / type 四个字段。这些行里工具结果、带图片的消息占了日志七成字节，为四个
