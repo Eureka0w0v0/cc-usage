@@ -67,7 +67,7 @@ upstream_names = dict(re.findall(r"WHEN '(_[a-z_]*session)' THEN '([^']+)'", rs)
 if not upstream_names:
     sys.exit("❌ 解析不到上游 provider_name_coalesce 的占位名映射")
 
-sql = (root / "Sources/Shared/UsageSQL.swift").read_text(encoding="utf-8")
+sql = (root / "Sources/Shared/Usage/UsageSQL.swift").read_text(encoding="utf-8")
 local_names = dict(re.findall(r"WHEN '(_[a-z_]*session)' THEN '([^']+)'", sql))
 
 miss = {k: v for k, v in upstream_names.items() if k not in local_names}

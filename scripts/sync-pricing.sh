@@ -1,5 +1,5 @@
 #!/bin/bash
-# 从 cc-switch 源码同步内置模型定价表 → Sources/Shared/ModelPricing.swift。
+# 从 cc-switch 源码同步内置模型定价表 → Sources/Shared/Pricing/ModelPricing.swift。
 # Sync the built-in model pricing table from cc-switch's seed_model_pricing.
 #
 # 为什么要有这份内置表：cc-switch 的定价来自它自己的内置 seed，新模型发布到上游
@@ -14,7 +14,7 @@ ROOT=$(pwd)
 
 CC_SWITCH_DIR="${CC_SWITCH_DIR:-$ROOT/../cc-switch}"
 SCHEMA="$CC_SWITCH_DIR/src-tauri/src/database/schema.rs"
-OUT="Sources/Shared/ModelPricing.swift"
+OUT="Sources/Shared/Pricing/ModelPricing.swift"
 
 if [ ! -f "$SCHEMA" ]; then
   echo "❌ 未找到 cc-switch 源码（${SCHEMA}）。先 clone / clone it first:"

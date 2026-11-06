@@ -38,7 +38,7 @@ enum CodexQuota {
     }
 
     /// 按修改时间新→旧翻最多 3 个会话文件（最新会话可能尚未产生 token_count 事件），
-    /// 每个只尾读 256KB；选哪条快照由 Shared/CodexRateLimits.select 决定（可测）。
+    /// 每个只尾读 256KB；选哪条快照由 Shared/Quota/CodexRateLimits.select 决定（可测）。
     /// tails 是惰性序列：选到结果就不再读后面的文件。
     private static func scan() -> [Raw] {
         let fm = FileManager.default

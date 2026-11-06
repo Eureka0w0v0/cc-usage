@@ -9,7 +9,7 @@ import SQLite3
 ///   3. loadCodeAssist（metadata.ideType=ANTIGRAVITY）→ cloudaicompanionProject
 ///   4. retrieveUserQuotaSummary（project + User-Agent）→ 两组（Gemini；Claude 和 GPT 共用）× 两个窗口
 ///      （5 小时、每周）的剩余比例与重置时间。和 agy 的 `/usage`、cc-switch v4.0.18 起的官方卡是同一个接口，
-///      解析规则在 `Sources/Shared/AntigravityQuotaParsing.swift`。
+///      解析规则在 `Sources/Shared/Quota/AntigravityQuotaParsing.swift`。
 ///
 /// 第 4 步必须带 project：10-26 实测 IDE 的令牌发 `{}` 会 403「没有有效许可」，带上 project 才 200
 /// （cc-switch 用的是 agy CLI 的令牌，`{}` 就够）。早先查的是 fetchAvailableModels 的逐模型剩余比例、

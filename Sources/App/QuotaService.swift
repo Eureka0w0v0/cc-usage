@@ -22,12 +22,12 @@ import os
 //   其中 5 小时窗口 = "five_hour"，每周窗口 = "seven_day"（utilization 为 0–100）；
 //   模型专属周限额（Fable/Opus/Sonnet）在新版里改走顶层 `limits[]`，用 `percent`。
 //
-// 响应体的解析规则全部在 `Sources/Shared/ClaudeQuotaParsing.swift`（纯函数，可测）；
+// 响应体的解析规则全部在 `Sources/Shared/Quota/ClaudeQuotaParsing.swift`（纯函数，可测）；
 // 本文件只负责凭据、网络与缓存。
 
 // MARK: - 数据模型
 
-// QuotaTier 定义见 Sources/Shared/ClaudeQuotaParsing.swift。
+// QuotaTier 定义见 Sources/Shared/Quota/ClaudeQuotaParsing.swift。
 
 /// 凭据/查询状态，驱动徽标降级显示（作为 Result 的 Failure，需符合 Error）
 enum QuotaStatus: Error, Equatable, Sendable {
@@ -150,7 +150,7 @@ enum QuotaService {
 // MARK: - 凭据读取（照搬 subscription.rs 的 read_claude_credentials）
 
 /// 纯 Foundation、可在后台线程执行的凭据读取器。取舍规则（先当前用户账户、再旧查法、
-/// 最后凭据文件）和 JSON 解析都在 `Sources/Shared/ClaudeCredentialSource.swift`，这里只起进程、读文件。
+/// 最后凭据文件）和 JSON 解析都在 `Sources/Shared/Quota/ClaudeCredentialSource.swift`，这里只起进程、读文件。
 enum ClaudeCredentialReader {
     /// 按优先级读取：Keychain → 文件。返回凭据或降级状态。
     static func read() -> Result<ClaudeCredential, QuotaStatus> {
