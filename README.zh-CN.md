@@ -151,6 +151,14 @@ bash scripts/test.sh    # 单元测试:定价匹配 / rollup 边界 / 两表合�
 
 推送与 PR 会触发 GitHub Actions 的 smoke build + 测试(`.github/workflows/build.yml`)。
 
+`Sources/App` 是应用外壳:视图、WebView 桥接、网络和钥匙串。`Sources/Shared` 编进 App、Widget 和测试,按领域分目录:`Usage/`(只读查询层)、`Overlay/`(会话日志里的未入库增量)、`Pricing/`、`Quota/`(解析与展示类型)、`Chart/`、`MenuBar/`(宽度状态机、码片键、取数)、`Bridge/`(和前端的 JSON 契约)。依赖单向:`App → Usage → Overlay → Pricing → SQLite 小工具`。
+
+单元测试看不到的回归靠三个工具,都不碰已安装的 App,真实数据只读、只用拷贝:
+
+- `Tools/dump`:用冻结的数据副本跑全部查询,新旧代码逐字节对拍;按小块回放会话日志,含 cc-switch 中途入库;
+- `Tools/smoke`:无头 Chrome 跑真前端 + 真桥接,逐个页签点开;
+- `Tools/render`:菜单栏合成图和设置面板的离屏对拍。
+
 ## 隐私
 
 - 所有用量数据**只在本机**:只读 cc-switch 的 SQLite 库、它 `settings.json` 里的应用显示设置、本地会话日志(`~/.claude/projects`、`~/.omp/agent/sessions`)以及 Claude Code 缓存在 `~/.claude.json` 里的套餐名(只取这一个字段),不上传任何内容,也不写这些文件;

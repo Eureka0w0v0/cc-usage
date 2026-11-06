@@ -152,6 +152,14 @@ bash scripts/test.sh    # unit tests: pricing candidates / rollup bounds / two-t
 
 Pushes and PRs trigger a GitHub Actions smoke build + tests (`.github/workflows/build.yml`).
 
+`Sources/App` is the app shell: views, the WebView bridge, network and keychain access. `Sources/Shared` is compiled into the app, the widget and the tests, split by domain: `Usage/` (read-only query layer), `Overlay/` (pending rows from session logs), `Pricing/`, `Quota/` (parsing and the display type), `Chart/`, `MenuBar/` (width state machine, chip keys, data loading) and `Bridge/` (the JSON contract with the frontend). Dependencies run one way: `App → Usage → Overlay → Pricing → SQLite helpers`.
+
+Three tools catch what unit tests can't, none of them touch the installed app or real data beyond read-only copies:
+
+- `Tools/dump`: run every query against a frozen copy of your data and diff old vs new code byte by byte; replays session logs tick by tick, including cc-switch importing midway;
+- `Tools/smoke`: real frontend + real bridge in headless Chrome, clicking through each tab;
+- `Tools/render`: offscreen diff of the menu bar image and the settings panel.
+
 ## Privacy
 
 - All usage data stays **on your machine**: the app reads cc-switch's SQLite database, the app visibility in its `settings.json`, local session logs (`~/.claude/projects`, `~/.omp/agent/sessions`) and the plan name Claude Code caches in `~/.claude.json` (that field only) read-only, writes to none of them, and uploads nothing;
