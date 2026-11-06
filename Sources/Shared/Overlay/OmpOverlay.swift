@@ -22,7 +22,7 @@ import SQLite3
 //     「Oh My Pi (Session)」→ provider_id 原文；首字恒为空（上游 OMP 行的 first_token_ms 是 NULL）。
 //
 // 全程只读。
-public final class OmpOverlay {
+public final class OmpOverlay: PendingUsageSource {
     public static let shared = OmpOverlay()
 
     /// 上游 `pi::MAX_TREE_ENTRIES`：行数超过它 + 1 时整个文件报错。

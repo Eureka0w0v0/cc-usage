@@ -15,7 +15,7 @@ struct DumpContext {
         // minRefreshInterval 0：每次查询都走一遍预检和续读，和面板每个 tick 的路径相同。
         session = SessionOverlay(projectsDir: projects, minRefreshInterval: 0, ccSwitchVersion: { version })
         omp = OmpOverlay(sessionsDir: ompDir, minRefreshInterval: 0)
-        store = UsageStore(path: db, overlay: session, ompOverlay: omp)
+        store = UsageStore(path: db, sources: [session, omp])
     }
 
     func dumpOverlays() {

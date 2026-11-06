@@ -94,6 +94,7 @@
 		76E88BC6058DB37F63DB203B /* SessionTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64E641B0127A816441802E29 /* SessionTiming.swift */; };
 		77720F160EBA126E00CF30D5 /* ClaudeUsageParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B25718FAFE68A3DB8F0457CA /* ClaudeUsageParsing.swift */; };
 		77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D584EE6E87C0844CE987F0 /* QuotaService.swift */; };
+		7850014F189F3162FB974FD2 /* PendingUsageSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E1E0FFADE4854E3B15683E /* PendingUsageSourceTests.swift */; };
 		791E3496D6FC87AAB229FB0C /* WindowDrag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316F79F14E6A53F1CA747517 /* WindowDrag.swift */; };
 		79724C7ABA05FF539DCF13F9 /* OmpSessionFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = D729258F5AA886E079A0E1E5 /* OmpSessionFiles.swift */; };
 		79DF1F59109D2C6A54E0C8D7 /* MenuBarLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBFCAC535AAB804E7BDC1E1 /* MenuBarLabel.swift */; };
@@ -314,6 +315,7 @@
 		A12ACCE40C9007DC7CB66822 /* brand-deepseek.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-deepseek.png"; sourceTree = "<group>"; };
 		A501873EFB84588DAFDFBB6A /* PanelModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelModel.swift; sourceTree = "<group>"; };
 		A65DAB1054A665B194CE67AE /* ClaudeSessionFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeSessionFiles.swift; sourceTree = "<group>"; };
+		A6E1E0FFADE4854E3B15683E /* PendingUsageSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingUsageSourceTests.swift; sourceTree = "<group>"; };
 		A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPricingFallbackTests.swift; sourceTree = "<group>"; };
 		AB7BF81703006F6E8E06425B /* brand-antigravity.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-antigravity.png"; sourceTree = "<group>"; };
 		AEC9BFCBC6414480A918AF37 /* RFC3339Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFC3339Tests.swift; sourceTree = "<group>"; };
@@ -463,6 +465,7 @@
 				CBD08CFCAAB420E1803400E4 /* OmpUsageParsingTests.swift */,
 				8436DCC2F5C5FC6AEF6256B2 /* OverlayStatusTests.swift */,
 				462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */,
+				A6E1E0FFADE4854E3B15683E /* PendingUsageSourceTests.swift */,
 				4A79728DAD95A349D54CBC66 /* PricingCandidatesTests.swift */,
 				661BD2166B5D419FC83C3138 /* PricingCostTests.swift */,
 				93814BF68F4EABE02C4D6FB7 /* ProviderFilterTests.swift */,
@@ -928,6 +931,7 @@
 				ADD7F6D4EFE87280EBE9A9A5 /* OverlayRow.swift in Sources */,
 				B577BCB5242D1078D673C3E4 /* OverlayStatusTests.swift in Sources */,
 				487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */,
+				7850014F189F3162FB974FD2 /* PendingUsageSourceTests.swift in Sources */,
 				CCBC5F29DF2F3BE14EF8DAE4 /* PricingCandidatesTests.swift in Sources */,
 				A05600C8DCF485943C5D11A9 /* PricingCostTests.swift in Sources */,
 				CC095E182D843601C39C0914 /* PricingTable.swift in Sources */,

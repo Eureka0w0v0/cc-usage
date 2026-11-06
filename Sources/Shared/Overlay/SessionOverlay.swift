@@ -34,7 +34,7 @@ import os
 // (should_skip_session_insert)。本机没有 proxy 行,该规则恒为空操作,叠加层
 // 不复刻;若用户开启代理模式,增量在 cc-switch 补录前可能与 proxy 行短暂并存。
 
-public final class SessionOverlay {
+public final class SessionOverlay: PendingUsageSource {
     public static let shared = SessionOverlay()
 
     private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "overlay")

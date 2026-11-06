@@ -26,23 +26,19 @@ import SQLite3
 //   UsageSQL.swift            与 usage_stats.rs 逐字对齐的 SQL 片段
 //   UsageModels.swift         对外数据模型；SQLiteSupport.swift  sqlite3 小工具
 
-/// 线程安全：自身状态只有三个不可变引用（path / overlay / ompOverlay），每次查询独立开
-/// 只读连接，两个 overlay 内部各自有锁——可安全从任意线程调用（后台 reload / 桥接队列
-/// 都依赖这点）。
+/// 线程安全：自身状态只有不可变的 path 和 sources，每次查询独立开只读连接，
+/// 各叠加层内部有自己的锁——可安全从任意线程调用（后台 reload / 桥接队列都依赖这点）。
 public final class UsageStore: @unchecked Sendable {
     public static let defaultPath =
         (NSHomeDirectory() as NSString).appendingPathComponent(".cc-switch/cc-switch.db")
 
     private let path: String
-    private let overlay: SessionOverlay
-    private let ompOverlay: OmpOverlay
-    /// 两个 overlay 均可注入：测试用独立实例（空目录）隔离真实会话日志，生产默认共享单例。
+    private let sources: [PendingUsageSource]
+    /// 叠加层可注入：测试用独立实例（空目录）隔离真实会话日志，生产默认共享单例。
     public init(path: String = UsageStore.defaultPath,
-                overlay: SessionOverlay = .shared,
-                ompOverlay: OmpOverlay = .shared) {
+                sources: [PendingUsageSource] = [SessionOverlay.shared, OmpOverlay.shared]) {
         self.path = path
-        self.overlay = overlay
-        self.ompOverlay = ompOverlay
+        self.sources = sources
     }
 
     // 只读打开（mode=ro，尊重 WAL，绝不写库）
@@ -69,20 +65,20 @@ public final class UsageStore: @unchecked Sendable {
     //   * OmpOverlay —— Oh My Pi（cc-switch v4.0.22 起自己导入，app_type omp）。产出上游全量导入会得到的
     //     行，按 request_id 剔除已在库里或账本里的；cc-switch 低于 4.0.22 时它就是 OMP 用量的唯一来源。
     //
-    // 两者产出同一种 OverlayRow，各自带 appType / providerName / 状态码，这里按行过滤后合并。两层的
-    // request_id 命名空间不同（"session:<msg_id>" 与 "omp_session:<sha256>"），合并时仍按 id 去重兜底。
+    // 两者经 PendingUsageSource 产出同一种 OverlayRow，各自带 appType / providerName / 状态码，这里按行过滤后
+    // 合并。两层的 request_id 命名空间不同（"session:<msg_id>" 与 "omp_session:<sha256>"），合并时仍按 id 去重兜底。
 
     /// 取符合过滤条件的增量行。overlay 行 pricing_model 为空 → 有效计价模型回落 model,
     /// 与库内 session 行口径一致。
     func overlayRows(_ db: OpaquePointer, _ f: UsageFilter) -> [OverlayRow] {
-        var rows = overlay.pendingRows(db: db)
-        let ompRows = ompOverlay.pendingRows(db: db)
-        if !ompRows.isEmpty {
+        var rows: [OverlayRow] = []
+        for source in sources {
+            let next = source.pendingRows(db: db)
             if rows.isEmpty {
-                rows = ompRows                      // 常态：cc-switch 已消化完 Claude Code 日志
-            } else {
+                rows = next                         // 常态：cc-switch 已消化完 Claude Code 日志
+            } else if !next.isEmpty {
                 let seen = Set(rows.map(\.requestId))
-                rows.append(contentsOf: ompRows.filter { !seen.contains($0.requestId) })
+                rows.append(contentsOf: next.filter { !seen.contains($0.requestId) })
             }
         }
         if let at = f.appType { rows = rows.filter { $0.appType == at } }

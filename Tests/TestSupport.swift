@@ -211,6 +211,13 @@ enum Fixture {
     }
 }
 
+extension UsageStore {
+    /// 用例都是「一个 Claude 叠加层 + 一个 OMP 叠加层」，具名参数比数组清楚。
+    convenience init(path: String, overlay: SessionOverlay, ompOverlay: OmpOverlay) {
+        self.init(path: path, sources: [overlay, ompOverlay])
+    }
+}
+
 /// Claude Code 会话日志行，与 cc-switch session_usage.rs 测试里的 chain_line / assistant_block_with /
 /// thinking_block 同形，供计时相关的用例拼日志。uuid 用编号生成，parent 填编号即可。
 enum ClaudeLog {

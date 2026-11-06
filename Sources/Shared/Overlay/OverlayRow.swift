@@ -1,6 +1,12 @@
 import Foundation
 
-/// 两个叠加层产出的同一种行：一条「cc-switch 还没入库」的用量，字段约定与 proxy_request_logs 相同。
+/// 「cc-switch 还没入库」的用量来源：UsageStore 的全部查询都把它们产出的行并进结果，加一种来源不用改 UsageStore。
+public protocol PendingUsageSource: AnyObject {
+    /// 当前全部待入库行。db 是调用方已打开的只读连接，用于查游标、定价和已入库的行。
+    func pendingRows(db: OpaquePointer) -> [OverlayRow]
+}
+
+/// 待入库的一条用量，字段约定与 proxy_request_logs 相同。
 public struct OverlayRow: Sendable {
     public var requestId: String
     public var model: String
