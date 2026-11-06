@@ -60,4 +60,14 @@ extension UsageStore {
         SQLite.bindAll(stmt, binds)
         return stmt
     }
+
+    /// 走一步：有行 true，走完 false，其余返回码抛 .step。查询半路出错（库损坏、被占用、SUM 溢出）不能当成
+    /// 「没有更多行」，否则部分聚合会被当真值显示。
+    func stepRow(_ stmt: OpaquePointer?, _ sql: String) throws -> Bool {
+        switch sqlite3_step(stmt) {
+        case SQLITE_ROW: return true
+        case SQLITE_DONE: return false
+        case let rc: throw UsageStoreError.step(rc, sql)
+        }
+    }
 }

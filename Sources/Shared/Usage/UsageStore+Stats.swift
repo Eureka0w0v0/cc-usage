@@ -83,7 +83,7 @@ extension UsageStore {
         let stmt = try prepare(db, sql, detailBinds + rollupBinds)
         defer { sqlite3_finalize(stmt) }
         var out: [ProviderStatRow] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while try stepRow(stmt, sql) {
             let providerId = SQLite.text(stmt, 0)
             let appType = SQLite.text(stmt, 1)
             let key = "\(providerId)\u{1F}\(appType)"
@@ -168,7 +168,7 @@ extension UsageStore {
         let stmt = try prepare(db, sql, detailBinds + rollupBinds)
         defer { sqlite3_finalize(stmt) }
         var out: [ModelStatRow] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while try stepRow(stmt, sql) {
             let model = SQLite.text(stmt, 0)
             let ov = overlay.removeValue(forKey: model) ?? OverlayStats.Group()
             let requests = sqlite3_column_int64(stmt, 1) + ov.requests
@@ -220,7 +220,7 @@ extension UsageStore {
         let stmt = try prepare(db, sql, binds)
         defer { sqlite3_finalize(stmt) }
         var grouped: [String: [Int64]] = [:]
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while try stepRow(stmt, sql) {
             grouped[SQLite.text(stmt, 0), default: []].append(max(0, sqlite3_column_int64(stmt, 1)))
         }
         return grouped
@@ -271,7 +271,7 @@ extension UsageStore {
         defer { sqlite3_finalize(stmt) }
 
         var acc: [String: (req: Int64, cost: Double)] = [:]
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while try stepRow(stmt, sql) {
             guard let c = sqlite3_column_text(stmt, 0) else { continue }
             acc[String(cString: c)] = (sqlite3_column_int64(stmt, 1),
                                        sqlite3_column_double(stmt, 2))

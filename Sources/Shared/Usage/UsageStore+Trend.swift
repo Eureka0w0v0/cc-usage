@@ -40,7 +40,7 @@ extension UsageStore {
         }
         // 累加而非赋值：GROUP BY 保证桶号唯一，但 created_at 恰等于 end 且区间为整桶宽时
         // 会产生一个越界桶号、被钳到末桶——若用赋值，末小时的真实聚合会被这条边界行覆盖。
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while try stepRow(stmt, sql) {
             var idx = Int(sqlite3_column_int64(stmt, 0))
             if idx < 0 { continue }
             if idx >= count { idx = count - 1 }
@@ -92,7 +92,8 @@ extension UsageStore {
         GROUP BY d
         """
         let lStmt = try prepare(db, lSQL, lBinds)
-        while sqlite3_step(lStmt) == SQLITE_ROW {
+        defer { sqlite3_finalize(lStmt) }
+        while try stepRow(lStmt, lSQL) {
             let d = SQLite.text(lStmt, 0)
             map[d] = Acc(req: Int(sqlite3_column_int64(lStmt, 1)),
                         input: sqlite3_column_int64(lStmt, 2),
@@ -101,7 +102,6 @@ extension UsageStore {
                         hit: sqlite3_column_int64(lStmt, 5),
                         cost: sqlite3_column_double(lStmt, 6))
         }
-        sqlite3_finalize(lStmt)
 
         // --- rollups：按 r.date 分组，叠加到对应日（add，同一天不双算见边界对齐）---
         let (rConds, rBinds) = rollupConds(f, Self.rollupDateBounds(startTs, endTs, cal))
@@ -119,7 +119,8 @@ extension UsageStore {
         GROUP BY r.date
         """
         let rStmt = try prepare(db, rSQL, rBinds)
-        while sqlite3_step(rStmt) == SQLITE_ROW {
+        defer { sqlite3_finalize(rStmt) }
+        while try stepRow(rStmt, rSQL) {
             let d = SQLite.text(rStmt, 0)
             var a = map[d] ?? Acc()
             a.req      += Int(sqlite3_column_int64(rStmt, 1))
@@ -130,7 +131,6 @@ extension UsageStore {
             a.cost     += sqlite3_column_double(rStmt, 6)
             map[d] = a
         }
-        sqlite3_finalize(rStmt)
 
         // --- 按本地日从 start_day 到 end_day 逐日铺开，空桶补 0 ---
         let fmt = DateFormatter()

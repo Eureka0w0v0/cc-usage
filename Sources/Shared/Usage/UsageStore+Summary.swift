@@ -26,7 +26,7 @@ extension UsageStore {
         defer { sqlite3_finalize(stmt) }
 
         var s = UsageSummary()
-        if sqlite3_step(stmt) == SQLITE_ROW { s = readSummary(stmt) }
+        if try stepRow(stmt, sql) { s = readSummary(stmt) }
         // 未入库增量:所有汇总路径(Hero/菜单栏/累计/数据源)都经此函数,一处叠加全局生效
         addOverlay(&s, overlayRows(db, f))
         return s
@@ -51,7 +51,7 @@ extension UsageStore {
         defer { sqlite3_finalize(stmt) }
 
         var s = UsageSummary()
-        if sqlite3_step(stmt) == SQLITE_ROW { s = readSummary(stmt) }
+        if try stepRow(stmt, sql) { s = readSummary(stmt) }
         return s
     }
 
@@ -120,7 +120,7 @@ extension UsageStore {
         defer { sqlite3_finalize(stmt) }
 
         var out: [(appType: String, summary: UsageSummary)] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while try stepRow(stmt, sql) {
             let app = SQLite.text(stmt, 0)
             let s = readSummary(stmt, from: 1)
             if s.requests == 0 && s.tokensProcessed == 0 { continue }

@@ -19,20 +19,20 @@ extension UsageStore {
             + Self.providersJoinIf(scope.providerName, log: "l", provider: "p")
             + (lc.isEmpty ? "" : " WHERE " + lc.joined(separator: " AND "))
         let ls = try prepare(db, detailSQL, lb)
-        if sqlite3_step(ls) == SQLITE_ROW, sqlite3_column_type(ls, 0) != SQLITE_NULL {
+        defer { sqlite3_finalize(ls) }
+        if try stepRow(ls, detailSQL), sqlite3_column_type(ls, 0) != SQLITE_NULL {
             days.append(Self.localDay(sqlite3_column_int64(ls, 0), calendar))
         }
-        sqlite3_finalize(ls)
 
         let (rc, rb) = scopeCondsR(scope)
         let rollupSQL = "SELECT MIN(r.date) FROM usage_daily_rollups r"
             + Self.providersJoinIf(scope.providerName, log: "r", provider: "p2")
             + (rc.isEmpty ? "" : " WHERE " + rc.joined(separator: " AND "))
         let rs = try prepare(db, rollupSQL, rb)
-        if sqlite3_step(rs) == SQLITE_ROW, sqlite3_column_type(rs, 0) != SQLITE_NULL {
+        defer { sqlite3_finalize(rs) }
+        if try stepRow(rs, rollupSQL), sqlite3_column_type(rs, 0) != SQLITE_NULL {
             days.append(SQLite.text(rs, 0))
         }
-        sqlite3_finalize(rs)
 
         if let earliest = overlayRows(db, scope).map(\.createdAt).min() {
             days.append(Self.localDay(earliest, calendar))

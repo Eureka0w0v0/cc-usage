@@ -44,8 +44,8 @@ extension UsageStore {
         let countSQL = "SELECT COUNT(*) FROM proxy_request_logs l \(Self.providersJoinL) \(whereClause)"
         var total = 0
         let cstmt = try prepare(db, countSQL, binds)
-        if sqlite3_step(cstmt) == SQLITE_ROW { total = Int(sqlite3_column_int64(cstmt, 0)) }
-        sqlite3_finalize(cstmt)
+        defer { sqlite3_finalize(cstmt) }
+        if try stepRow(cstmt, countSQL) { total = Int(sqlite3_column_int64(cstmt, 0)) }
 
         // 分页数据。pageSize 直接来自 WebView 桥接，必须消毒后再绑给 LIMIT：
         // 0 → LIMIT 0 返回空页；负数 → SQLite 语义下 LIMIT -1 = 无上限，会把整张
@@ -68,7 +68,7 @@ extension UsageStore {
         let stmt = try prepare(db, sql, pageBinds)
         defer { sqlite3_finalize(stmt) }
         var rows: [RequestLogRow] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while try stepRow(stmt, sql) {
             rows.append(readRequestLogRow(stmt))
         }
         // 增量行:计入总数,并与库内行二路归并后再切页。
