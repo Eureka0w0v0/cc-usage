@@ -1,5 +1,4 @@
 import Foundation
-import SQLite3
 
 /// 两个 overlay 共用的逐行扫描原语。
 enum JSONLScan {
@@ -30,21 +29,6 @@ enum JSONLScan {
         let line = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: p), count: len, deallocator: .none)
         return (try? JSONSerialization.jsonObject(with: line)) as? NSDictionary
     }
-
-    /// proxy_request_logs 的入库水位：行数 + 最新时间戳。两个 overlay 的预检共用。
-    /// 补录会让两者都涨、清理旧日志会让行数掉——只要这对数不变，就说明库里没有
-    /// 新行，pruneRowsAlreadyInDB 不可能产生新命中，那趟全量 IN 查询可以整个省掉。
-    /// 本机实测 0.21ms（换掉的是 100ms 级的一整趟扫描）。
-    static func dbWatermark(_ db: OpaquePointer) -> Watermark? {
-        var stmt: OpaquePointer?
-        let sql = "SELECT COUNT(*), COALESCE(MAX(created_at), 0) FROM proxy_request_logs"
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-        defer { sqlite3_finalize(stmt) }
-        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
-        return Watermark(rows: sqlite3_column_int64(stmt, 0), maxTs: sqlite3_column_int64(stmt, 1))
-    }
-
-    struct Watermark: Equatable { var rows: Int64; var maxTs: Int64 }
 }
 
 // 对话链行的快扫。估请求起点要把每一行（用户消息、工具结果、attachment）记进对话链，但只用得到顶层的

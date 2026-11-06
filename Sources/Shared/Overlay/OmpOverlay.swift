@@ -76,7 +76,7 @@ public final class OmpOverlay {
     /// 判断「库变没变」用的水位：明细表的水位 + 本来源账本的行数。只看明细不够——上游先写账本、明细
     /// `INSERT OR IGNORE` 撞上已有的 request_id 时只有账本变。
     private struct DBState: Equatable {
-        var logs: JSONLScan.Watermark?
+        var logs: OverlayDB.Watermark?
         var ledger: Int64?
     }
     private var lastWatermark: DBState?
@@ -135,7 +135,7 @@ public final class OmpOverlay {
             primed = false
         }
         let discovered = dirCache.files { OmpSessionFiles.discover(roots) }
-        let watermark = DBState(logs: JSONLScan.dbWatermark(db), ledger: Self.ledgerCount(db))
+        let watermark = DBState(logs: OverlayDB.watermark(db), ledger: Self.ledgerCount(db))
         let pricingStale = pricingLoadedAt.map { Date().timeIntervalSince($0) >= pricingTTL } ?? true
         if primed, !pricingStale, watermark == lastWatermark,
            discovered == order, filesUnchangedLocked() { return }
@@ -164,14 +164,14 @@ public final class OmpOverlay {
 
     private func filesUnchangedLocked() -> Bool {
         for path in order {
-            guard let s = files[path], let st = statFile(path),
+            guard let s = files[path], let st = OverlayFileIO.fileStat(path),
                   s.mtimeNs == st.mtimeNs, s.size == st.size else { return false }
         }
         return true
     }
 
     private func scanLocked(_ path: String) {
-        guard let st = statFile(path) else {
+        guard let st = OverlayFileIO.fileStat(path) else {
             files[path] = nil
             return
         }
@@ -335,25 +335,25 @@ public final class OmpOverlay {
         let pending = records.filter { !hits.contains($0.requestId) && !notImported.contains($0.requestId) }
         guard !pending.isEmpty else { return hits }
         let ids = pending.map(\.requestId)
-        hits.formUnion(Self.matching(db, "SELECT request_id FROM proxy_request_logs WHERE request_id IN", ids))
+        hits.formUnion(OverlayDB.matching(db, "SELECT request_id FROM proxy_request_logs WHERE request_id IN", ids))
         let hasLedger = Self.tableExists(db, "session_usage_dedup")
         if hasLedger {
-            hits.formUnion(Self.matching(db, """
+            hits.formUnion(OverlayDB.matching(db, """
                 SELECT request_id FROM session_usage_dedup
                 WHERE data_source = '\(OmpUsage.dataSource)' AND request_id IN
                 """, ids))
             // semantic 只在两种情况下起作用：本轮有没有 entry id 的记录，或账本里有没有 entry id 的旧行。
-            let needsSemantic = pending.contains { !$0.hasEntryId } || Self.exists(db, """
+            let needsSemantic = pending.contains { !$0.hasEntryId } || SQLite.exists(db, """
                 SELECT 1 FROM session_usage_dedup
                 WHERE data_source = '\(OmpUsage.dataSource)' AND has_entry_id = 0 LIMIT 1
                 """)
             if needsSemantic {
                 let rest = pending.filter { !hits.contains($0.requestId) }
-                let any = Self.matching(db, """
+                let any = OverlayDB.matching(db, """
                     SELECT semantic_id FROM session_usage_dedup
                     WHERE data_source = '\(OmpUsage.dataSource)' AND semantic_id IN
                     """, rest.map(\.semanticId))
-                let legacy = Self.matching(db, """
+                let legacy = OverlayDB.matching(db, """
                     SELECT semantic_id FROM session_usage_dedup
                     WHERE data_source = '\(OmpUsage.dataSource)' AND has_entry_id = 0 AND semantic_id IN
                     """, rest.map(\.semanticId))
@@ -365,27 +365,6 @@ public final class OmpOverlay {
         imported.formUnion(hits)
         notImported.formUnion(pending.lazy.map(\.requestId).filter { !hits.contains($0) })
         return hits
-    }
-
-    /// `<sql> (?, ?, …)` 分批查（每批 400 个绑定），返回第一列命中的值。prepare 失败（缺表）的批次跳过。
-    private static func matching(_ db: OpaquePointer, _ sql: String, _ values: [String]) -> Set<String> {
-        var out = Set<String>()
-        var start = 0
-        while start < values.count {
-            let chunk = values[start..<min(start + 400, values.count)]
-            start += 400
-            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
-            var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, "\(sql) (\(placeholders))", -1, &stmt, nil) == SQLITE_OK else { continue }
-            defer { sqlite3_finalize(stmt) }
-            for (i, v) in chunk.enumerated() {
-                sqlite3_bind_text(stmt, Int32(i + 1), v, -1, SQLITE_TRANSIENT_DEST)
-            }
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                if let c = sqlite3_column_text(stmt, 0) { out.insert(String(cString: c)) }
-            }
-        }
-        return out
     }
 
     /// 库是否变小（换库、恢复备份、汇总删明细）：变小时已确认的结论要重查。
@@ -404,15 +383,8 @@ public final class OmpOverlay {
         return sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int64(stmt, 0) : nil
     }
 
-    private static func exists(_ db: OpaquePointer, _ sql: String) -> Bool {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(stmt) }
-        return sqlite3_step(stmt) == SQLITE_ROW
-    }
-
     private static func tableExists(_ db: OpaquePointer, _ name: String) -> Bool {
-        exists(db, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '\(name)'")
+        SQLite.exists(db, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '\(name)'")
     }
 
     /// providers 表里 Oh My Pi 的供应商名（provider_name_coalesce 的 `p.name`）。缺表或缺列时为空。
@@ -475,12 +447,5 @@ public final class OmpOverlay {
         out.append(contentsOf: old.suffix(fromOld))
         out.append(contentsOf: appended[appended.startIndex + count - fromNew ..< appended.startIndex + count])
         return out
-    }
-
-    private func statFile(_ path: String) -> (mtimeNs: Int64, size: Int64)? {
-        var st = stat()
-        guard stat(path, &st) == 0 else { return nil }
-        let ns = Int64(st.st_mtimespec.tv_sec) &* 1_000_000_000 &+ Int64(st.st_mtimespec.tv_nsec)
-        return (mtimeNs: ns, size: Int64(st.st_size))
     }
 }

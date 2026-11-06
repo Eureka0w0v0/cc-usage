@@ -95,7 +95,7 @@ public final class SessionOverlay {
     private var oneHourRate: Bool?
 
     /// 上一次真正扫完时的库水位，供预检短路比对（见 nothingChangedLocked）。
-    private var lastWatermark: JSONLScan.Watermark?
+    private var lastWatermark: OverlayDB.Watermark?
 
     /// 文件列表缓存（只在目录树形状变了才重新枚举）。始终在 lock 内使用。
     private let dirCache = DirListCache()
@@ -159,7 +159,7 @@ public final class SessionOverlay {
             rows = rows.filter { !vanished.contains($0.value.sourceFile) }
         }
         pruneRowsAlreadyInDB(db)
-        lastWatermark = JSONLScan.dbWatermark(db)
+        lastWatermark = OverlayDB.watermark(db)
     }
 
     /// 本轮扫描会不会产生任何变化？代价只有一次全量 stat(本机 1095 文件 ~1.7ms)
@@ -179,7 +179,7 @@ public final class SessionOverlay {
         guard let wm = lastWatermark else { return false }   // 首轮必须真扫
         var live = 0
         for path in files {
-            guard let st = statNanos(path) else { return false }
+            guard let st = OverlayFileIO.fileStat(path) else { return false }
             let dbState = sync[path] ?? .empty
             if let m = marks[path] {
                 live += 1
@@ -192,7 +192,7 @@ public final class SessionOverlay {
             }
         }
         guard live == marks.count else { return false }
-        return JSONLScan.dbWatermark(db) == wm
+        return OverlayDB.watermark(db) == wm
     }
 
     /// 按 db 游标的形态决定本文件的读取起点(见 SyncCursor 的三态说明)。
@@ -210,7 +210,7 @@ public final class SessionOverlay {
 
     /// 扫描单个文件的新增部分(对齐 sync_single_file)。
     private func scanFileLocked(_ path: String, dbState: SyncCursor) {
-        guard let st = statNanos(path) else { return }
+        guard let st = OverlayFileIO.fileStat(path) else { return }
 
         // cc-switch 已消化整个文件 → 丢掉本文件全部待入库行
         if st.mtimeNs <= dbState.lastModified {
@@ -434,23 +434,8 @@ public final class SessionOverlay {
 
     /// 已被 cc-switch 入库的行从叠加层剔除(request_id 精确去重的兜底)。
     private func pruneRowsAlreadyInDB(_ db: OpaquePointer) {
-        let ids = Array(rows.keys)
-        guard !ids.isEmpty else { return }
-        for chunk in stride(from: 0, to: ids.count, by: 400).map({ Array(ids[$0..<min($0 + 400, ids.count)]) }) {
-            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
-            let sql = "SELECT request_id FROM proxy_request_logs WHERE request_id IN (\(placeholders))"
-            var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { continue }
-            defer { sqlite3_finalize(stmt) }
-            for (i, id) in chunk.enumerated() {
-                sqlite3_bind_text(stmt, Int32(i + 1), id, -1, SQLITE_TRANSIENT_DEST)
-            }
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                if let c = sqlite3_column_text(stmt, 0) {
-                    rows.removeValue(forKey: String(cString: c))
-                }
-            }
-        }
+        OverlayDB.forEachMatch(db, "SELECT request_id FROM proxy_request_logs WHERE request_id IN",
+                               Array(rows.keys)) { rows.removeValue(forKey: $0) }
     }
 
     // MARK: - 文件收集
@@ -459,31 +444,14 @@ public final class SessionOverlay {
         dirCache.files { ClaudeSessionFiles.discover(projectsDir) }
     }
 
-    /// mtime 纳秒 + 文件大小(与上游 metadata_modified_nanos 同精度,用 stat 拿真 ns)。
-    private func statNanos(_ path: String) -> (mtimeNs: Int64, size: Int64)? {
-        var st = stat()
-        guard stat(path, &st) == 0 else { return nil }
-        let ns = Int64(st.st_mtimespec.tv_sec) &* 1_000_000_000 &+ Int64(st.st_mtimespec.tv_nsec)
-        return (mtimeNs: ns, size: Int64(st.st_size))
-    }
-
     // MARK: - session_log_sync / model_pricing
-
-    /// 某表是否有某列。老库(schema<18)没有字节游标列，SQL 必须整支换掉——
-    /// 直接 SELECT 不存在的列会让 prepare 失败，整张表读不出来。
-    private func hasColumn(_ db: OpaquePointer, _ table: String, _ col: String) -> Bool {
-        var stmt: OpaquePointer?
-        let sql = "SELECT 1 FROM pragma_table_info('\(table)') WHERE name='\(col)'"
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(stmt) }
-        return sqlite3_step(stmt) == SQLITE_ROW
-    }
 
     private func loadSyncTable(_ db: OpaquePointer) -> [String: SyncCursor] {
         var out: [String: SyncCursor] = [:]
         var stmt: OpaquePointer?
-        // schema v18 起才有 last_byte_offset；老库整支摘掉该列(见 SyncCursor 的三态说明)。
-        let hasByteCol = hasColumn(db, "session_log_sync", "last_byte_offset")
+        // schema v18 起才有 last_byte_offset；老库整支摘掉该列(见 SyncCursor 的三态说明)。直接
+        // SELECT 不存在的列会让 prepare 失败，整张表读不出来。
+        let hasByteCol = SQLite.hasColumn(db, "session_log_sync", "last_byte_offset")
         let sql = hasByteCol
             ? "SELECT file_path, last_modified, last_line_offset, last_byte_offset FROM session_log_sync"
             : "SELECT file_path, last_modified, last_line_offset FROM session_log_sync"

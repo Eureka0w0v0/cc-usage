@@ -24,18 +24,12 @@ final class DirListCache {
     /// 据其内容决定过分支的目录都要记进去。
     func files(_ enumerate: () -> (files: [String], dirs: [String])) -> [String] {
         // 不存在的目录记的是 0，比对时同样按 0 算（nil 直接和 0 比永远不等，缓存会每轮失效）。
-        if primed, dirMtimes.allSatisfy({ (Self.mtimeNs($0.path) ?? 0) == $0.mtime }) { return cached }
+        if primed, dirMtimes.allSatisfy({ (OverlayFileIO.fileStat($0.path)?.mtimeNs ?? 0) == $0.mtime }) { return cached }
         let r = enumerate()
         cached = r.files
         // 目录不存在 → 记 0；将来被创建时 mtime 变为真值，缓存自然失效。
-        dirMtimes = r.dirs.map { (path: $0, mtime: Self.mtimeNs($0) ?? 0) }
+        dirMtimes = r.dirs.map { (path: $0, mtime: OverlayFileIO.fileStat($0)?.mtimeNs ?? 0) }
         primed = true
         return cached
-    }
-
-    private static func mtimeNs(_ path: String) -> Int64? {
-        var st = stat()
-        guard stat(path, &st) == 0 else { return nil }
-        return Int64(st.st_mtimespec.tv_sec) &* 1_000_000_000 &+ Int64(st.st_mtimespec.tv_nsec)
     }
 }
