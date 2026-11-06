@@ -216,6 +216,13 @@ extension UsageStore {
     convenience init(path: String, overlay: SessionOverlay, ompOverlay: OmpOverlay) {
         self.init(path: path, sources: [overlay, ompOverlay])
     }
+
+    /// 只看明细部分的区间汇总（不含 rollups）。生产代码只走两表合并，用例要单独验证明细口径。
+    func rangeSummaryLogsOnly(_ filter: UsageFilter) throws -> UsageSummary {
+        let db = try openRO()
+        defer { sqlite3_close(db) }
+        return try summaryLogsOnly(db, filter)
+    }
 }
 
 /// Claude Code 会话日志行，与 cc-switch session_usage.rs 测试里的 chain_line / assistant_block_with /

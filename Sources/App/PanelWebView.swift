@@ -25,9 +25,6 @@ struct PanelWebView: NSViewRepresentable {
         // 没有这个 handler，面板白屏 / JS 异常就在 WKWebView 里静默吞掉，无从排查。
         config.userContentController.add(context.coordinator, contentWorld: .page, name: "embedError")
 
-        // 顶部留白改由 embed 最外层 wrapper 的 paddingTop 负责（usage-embed.tsx，可靠避开交通灯）。
-        // 不再注入 `#root{padding-top}`：实测被 index.css / 时序覆盖不生效，且会与 embed padding 叠加。
-
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.setValue(false, forKey: "drawsBackground")
         wv.underPageBackgroundColor = .clear
@@ -118,7 +115,7 @@ struct PanelWebView: NSViewRepresentable {
             case "get_usage_trends":
                 // 走 trendBuckets 而非 snapshot——后者顺带算的「区间 + 累计」4 次聚合在这条路径全是白算。
                 return BridgePayload.trends(try store.trendBuckets(filter: args.usageFilter))
-            // 热力图（embed/usage-heatmap.tsx）：最早有记录的本地日，决定铺几段 53 周。对齐 v4.0.5。
+            // 热力图（上游 UsageHeatmap）：最早有记录的本地日，决定铺几段 53 周。对齐 v4.0.5。
             case "get_usage_first_date":
                 if let day = try store.firstUsageDate(args.scopeFilter) {
                     return day

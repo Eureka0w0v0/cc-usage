@@ -29,7 +29,7 @@ enum MBLabelCache {
     private static var image: NSImage?
     private static var natural: CGFloat = 0
 
-    /// 当前内容未截断的自然宽度，供 PanelModel 的宽度 governor 判断。
+    /// 当前内容未截断的自然宽度，巡检时传给 WidthGovernor。
     static var currentNatural: CGFloat { natural }
 
     static func hit(_ k: String) -> (image: NSImage, natural: CGFloat)? {
@@ -70,8 +70,7 @@ struct MenuBarLabel: View {
         return segs
     }
 
-    /// 默认全宽；只有 PanelModel 的宽度 governor（MenuBarWidthGovernor.swift）判定状态项
-    /// 真被 macOS 挤出菜单栏时才给出 mbWidthCap，由 composite 尾部截断。
+    /// 默认全宽；只有 WidthGovernor 判定状态项真被 macOS 挤出菜单栏时才给出 mbWidthCap，由 composite 尾部截断。
     var body: some View {
         // 整条 label 合成为单张模板 NSImage（其自身宽度即上限，收缩由 composite 内截断实现）。
         // MenuBarExtra label 实测只有「单 Image」可靠——多段 Text 会被截断、SF Symbol 塞 Text

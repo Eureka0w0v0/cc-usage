@@ -5,8 +5,7 @@ extension UsageStore {
     // MARK: - 区间汇总（两表合并）
     //
     // cc-switch get_usage_summary 是把 (logs 子查询 d) × (rollups 子查询 r) 交叉连接后逐列 d+r。
-    // 这里等价地分别求 logs-only 与 rollups-only 再相加（数学完全一致），顺带让
-    // get_usage_data_sources 复用 logs-only（rollups 无 data_source，不该算进「来源」）。
+    // 这里等价地分别求 logs-only 与 rollups-only 再相加（数学完全一致）。
 
     /// logs 部分：仅 proxy_request_logs（fresh_input + 跨源去重过滤）。
     func summaryLogsOnly(_ db: OpaquePointer, _ f: UsageFilter) throws -> UsageSummary {
@@ -73,10 +72,10 @@ extension UsageStore {
     /// 按 app_type 拆分的区间汇总（Hero 用）。对齐 get_usage_summary_by_app：
     /// logs GROUP BY app + rollups GROUP BY app 做 UNION ALL 后外层再 GROUP BY，
     /// 折叠 claude-desktop→claude。空 app 丢弃，按 tokensProcessed 降序（= real_total_tokens）。
-    public func summaryByApp(_ filter: UsageFilter) throws -> [(appType: String, summary: UsageSummary)] {
+    public func summaryByApp(_ filter: UsageFilter,
+                             calendar cal: Calendar = .current) throws -> [(appType: String, summary: UsageSummary)] {
         let db = try openRO()
         defer { sqlite3_close(db) }
-        let cal = Calendar.current
 
         // 不按 app 过滤、按 app 分组：两侧条件都用 appType = nil 的过滤器生成；
         // 绑定参数顺序 = 明细侧在前、rollup 侧在后（与 SQL 里两个子查询的先后一致）。

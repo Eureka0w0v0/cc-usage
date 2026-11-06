@@ -137,9 +137,13 @@ struct DumpMatrix {
         let f = UsageFilter(start: w.start, end: w.end, appType: s.app, providerName: s.provider, model: s.model)
         let lf = LogQueryFilter(start: w.start, end: w.end, appType: s.app, providerName: s.provider, model: s.model)
         attempt("rangeSummary \(tag)") { [DumpFormat.summary(try ctx.store.rangeSummary(f, calendar: cal))] }
-        attempt("rangeSummaryLogsOnly \(tag)") { [DumpFormat.summary(try ctx.store.rangeSummaryLogsOnly(f))] }
+        attempt("rangeSummaryLogsOnly \(tag)") {
+            let db = try ctx.store.openRO()
+            defer { sqlite3_close(db) }
+            return [DumpFormat.summary(try ctx.store.summaryLogsOnly(db, f))]
+        }
         attempt("summaryByApp \(tag)") {
-            try ctx.store.summaryByApp(f).map { "\($0.appType): \(DumpFormat.summary($0.summary))" }
+            try ctx.store.summaryByApp(f, calendar: cal).map { "\($0.appType): \(DumpFormat.summary($0.summary))" }
         }
         attempt("trendBuckets \(tag)") {
             try ctx.store.trendBuckets(filter: f, now: now, calendar: cal).map(DumpFormat.bucket)

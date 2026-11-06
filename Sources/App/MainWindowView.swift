@@ -21,7 +21,7 @@ struct MainWindowView: View {
                 .padding(.trailing, 14).padding(.top, 12)
         }
         .onAppear {
-            model.start()            // 仍驱动菜单栏 / MenuBarPanel（额度前端自查，无需原生 QuotaService）
+            model.start()            // 仍驱动菜单栏 / MenuBarPanel（面板的额度徽标走桥接 get_quota，同一份 QuotaCache）
         }
     }
 }

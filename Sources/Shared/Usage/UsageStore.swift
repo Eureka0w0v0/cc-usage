@@ -258,12 +258,4 @@ public final class UsageStore: @unchecked Sendable {
         defer { sqlite3_close(db) }
         return try summary(db, filter, calendar)
     }
-
-    /// 仅 logs 部分的区间汇总（不含 rollups）。用于 get_usage_data_sources——
-    /// rollups 无 data_source 列，不该被算进「按来源」的 session_log 计数。
-    public func rangeSummaryLogsOnly(_ filter: UsageFilter) throws -> UsageSummary {
-        let db = try openRO()
-        defer { sqlite3_close(db) }
-        return try summaryLogsOnly(db, filter)
-    }
 }
