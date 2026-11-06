@@ -9,4 +9,14 @@ enum OverlayFileIO {
         let ns = Int64(st.st_mtimespec.tv_sec) &* 1_000_000_000 &+ Int64(st.st_mtimespec.tv_nsec)
         return (mtimeNs: ns, size: Int64(st.st_size))
     }
+
+    /// 从 offset 读 count 字节（nil = 读到文件尾）。打开、定位、读取任一步失败都抛错：调用方留着进度下轮重试。
+    /// 定位失败绝不能接着从文件头读，那会把已消化的行再算一遍。
+    static func read(_ path: String, from offset: Int64, count: Int? = nil) throws -> Data {
+        guard let fh = FileHandle(forReadingAtPath: path) else { throw CocoaError(.fileReadUnknown) }
+        defer { try? fh.close() }
+        try fh.seek(toOffset: UInt64(offset))
+        if let count { return try fh.read(upToCount: count) ?? Data() }
+        return try fh.readToEnd() ?? Data()
+    }
 }

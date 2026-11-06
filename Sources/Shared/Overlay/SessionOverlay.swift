@@ -274,10 +274,7 @@ public final class SessionOverlay: PendingUsageSource {
     /// 绝不能接着从文件头读,那会把已消化的行再算一遍。日志每个文件只记一次。
     private func readTailLocked(_ path: String, from offset: Int64) -> Data? {
         do {
-            guard let fh = FileHandle(forReadingAtPath: path) else { throw CocoaError(.fileReadUnknown) }
-            defer { try? fh.close() }
-            try fh.seek(toOffset: UInt64(offset))
-            let data = try fh.readToEnd() ?? Data()
+            let data = try OverlayFileIO.read(path, from: offset)
             unreadable.remove(path)
             return data
         } catch {

@@ -77,6 +77,35 @@ final class OmpOverlayTests: XCTestCase {
                                              fileTimestamp: 0)).requestId
     }
 
+    // MARK: - 读失败：进度不动，下一轮重试（同 SessionOverlay.readTailLocked）
+
+    private func chmod(_ mode: Int, _ file: String) throws {
+        try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: file)
+    }
+
+    /// 负责杀的变异体：打开失败时把新 mtime / size 记下来，之后判定文件没变、再也不读，用量静默变少。
+    /// chmod 不改 mtime，所以恢复权限后只有「读失败时什么都没记」才读得到。
+    func testUnreadableFileIsRetriedUntilItCanBeRead() throws {
+        let p = try write([assistant("a1")])
+        try chmod(0o000, p)
+        defer { try? chmod(0o644, p) }
+        XCTAssertEqual(rows().count, 0, "读不了：这一轮没有行")
+        try chmod(0o644, p)
+        XCTAssertEqual(rows().count, 1, "权限恢复后要读到")
+    }
+
+    /// 负责杀的变异体：续读前比对尾部时打不开就当文件被改写，进度和已解析的行全丢。
+    func testReadFailureKeepsProgressAndRowsAlreadyRead() throws {
+        let p = try write([assistant("a1")])
+        XCTAssertEqual(rows().count, 1)
+        try append(assistant("a2") + "\n")
+        try chmod(0o000, p)
+        defer { try? chmod(0o644, p) }
+        XCTAssertEqual(rows().count, 1, "读不了新增的部分，之前读到的行还在")
+        try chmod(0o644, p)
+        XCTAssertEqual(rows().count, 2, "恢复后从原来的进度接着读")
+    }
+
     // MARK: - 上游 imports_own_store_carriers_and_placeholders
 
     /// assistant、model_usage、0 用量的中断请求、compaction 占位——4 行，app_type 恒 omp。

@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import os
 
 // Oh My Pi（omp.sh）会话用量叠加层。
 //
@@ -24,6 +25,8 @@ import SQLite3
 // 全程只读。
 public final class OmpOverlay: PendingUsageSource {
     public static let shared = OmpOverlay()
+
+    private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "overlay")
 
     /// 上游 `pi::MAX_TREE_ENTRIES`：行数超过它 + 1 时整个文件报错。
     static let maxTreeEntries: Int64 = 500_000
@@ -90,6 +93,8 @@ public final class OmpOverlay: PendingUsageSource {
     /// 在 notImportedWatermark 这个库水位下查过、确认还没入库的 request_id：库没变就不再重查，只查新出现的行。
     private var notImported: Set<String> = []
     private var notImportedWatermark: DBState?
+    /// 读失败、已经记过日志的文件：读失败时进度不动、每轮都重试，日志每个文件只记一次，读成功一次就移出。
+    private var unreadable: Set<String> = []
 
     /// 生产用：根目录每轮按 cc-switch 的 settings.json 重新解析（`ompConfigDir` 改了能跟上）。
     init(roots: @escaping () -> OmpSessionFiles.Roots = { OmpSessionFiles.roots() },
@@ -181,8 +186,21 @@ public final class OmpOverlay: PendingUsageSource {
             files[path] = FileState(mtimeNs: st.mtimeNs, size: st.size, failed: true)
             return
         }
-        if state.failed || st.size < state.bytesRead || !tailMatches(path, state) {
-            state = FileState()
+        // 读失败时什么都不记（新 mtime 也不记）：进度和读到的行留着，下一轮 filesUnchangedLocked 不成立、接着重试。
+        // 记下新 mtime 的话这个文件就再也不读了，用量静默变少。
+        let data: Data
+        do {
+            if try state.failed || st.size < state.bytesRead || !tailMatches(path, state) {
+                state = FileState()
+            }
+            let want = Int(st.size - state.bytesRead)
+            data = want > 0 ? try OverlayFileIO.read(path, from: state.bytesRead, count: want) : Data()
+            unreadable.remove(path)
+        } catch {
+            if unreadable.insert(path).inserted {
+                Self.log.error("OMP 会话日志读取失败，下一轮重试: \(path, privacy: .private) \(error.localizedDescription, privacy: .public)")
+            }
+            return
         }
         state.mtimeNs = st.mtimeNs
         state.size = st.size
@@ -190,15 +208,6 @@ public final class OmpOverlay: PendingUsageSource {
         state.unterminatedFails = false
 
         let fileTimestamp = st.mtimeNs / 1_000_000_000
-        guard let fh = FileHandle(forReadingAtPath: path) else {
-            files[path] = state
-            return
-        }
-        defer { try? fh.close() }
-        let want = Int(st.size - state.bytesRead)
-        if state.bytesRead > 0 { try? fh.seek(toOffset: UInt64(state.bytesRead)) }
-        let data = (want > 0 ? (try? fh.read(upToCount: want)) : nil) ?? Data()
-
         var consumed = 0
         data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             guard let base = raw.baseAddress else { return }
@@ -430,14 +439,10 @@ public final class OmpOverlay: PendingUsageSource {
     }
 
     /// 续读前确认上次读到的位置前面的内容没被改写（同上游比对旧 EOF 处的尾部）。
-    private func tailMatches(_ path: String, _ state: FileState) -> Bool {
+    private func tailMatches(_ path: String, _ state: FileState) throws -> Bool {
         guard state.bytesRead > 0, !state.tail.isEmpty else { return true }
-        guard let fh = FileHandle(forReadingAtPath: path) else { return false }
-        defer { try? fh.close() }
         let start = state.bytesRead - Int64(state.tail.count)
-        guard (try? fh.seek(toOffset: UInt64(start))) != nil,
-              let now = try? fh.read(upToCount: state.tail.count) else { return false }
-        return now == state.tail
+        return try OverlayFileIO.read(path, from: start, count: state.tail.count) == state.tail
     }
 
     /// 新的尾部：旧尾部接上本次消费的字节，取最后 tailBytes 个，拷成独立的 Data（切片会把整段读入的缓冲留在内存里）。
