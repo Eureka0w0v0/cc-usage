@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import os
 
 /// Antigravity（Google Antigravity IDE）的官方**实时**额度。
 ///
@@ -22,6 +23,18 @@ actor AntigravityQuota {
     /// 一次 HTTP 往返。
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
+    private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "quota")
+
+    /// 这一轮查不到的原因。界面上还是上次的额度（首次是「—」），原因只进日志。
+    enum Failure: Equatable, Sendable {
+        case noCredential            // 没装 Antigravity 或没登录
+        case network(String)         // 断网、超时
+        case unauthorized            // 401：access_token 失效
+        case http(Int)
+        case badResponse             // 200 但不是 JSON 对象
+        case unrecognizedSummary     // 额度响应里一个认识的桶都没有
+    }
+
     // Antigravity 桌面应用公开内置的 Google OAuth 客户端凭据（每个安装包都含，社区工具通用，
     // 非用户私密）。用户真正的私密凭据是 refresh_token，只从本机读取、绝不入库。
     // 分片拼接：避免密钥扫描器把这对公开常量误判为泄露的私密而拦下提交。
@@ -41,6 +54,7 @@ actor AntigravityQuota {
     private let storedRefreshToken: @Sendable () -> String?
     private let localAgyVersion: @Sendable () -> String?
     private let minInterval: TimeInterval
+    private let onFailure: @Sendable (Failure) -> Void
 
     private var accessToken: String?
     private var accessExpiry = Date.distantPast
@@ -48,16 +62,19 @@ actor AntigravityQuota {
     private var agyVersion: String?
     private var cache: [AntigravityTier] = []
     private var cacheAt = Date.distantPast
+    private var lastFailure: Failure?
 
     /// 网络、本机凭据和 agy 版本都从这里注入，测试不碰真实环境。
     init(transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
          refreshToken: @escaping @Sendable () -> String? = { AntigravityQuota.readRefreshToken() },
          agyVersion: @escaping @Sendable () -> String? = { AntigravityQuota.probeAgyVersion() },
-         minInterval: TimeInterval = 30) {
+         minInterval: TimeInterval = 30,
+         onFailure: @escaping @Sendable (Failure) -> Void = { AntigravityQuota.logFailure($0) }) {
         self.transport = transport
         self.storedRefreshToken = refreshToken
         self.localAgyVersion = agyVersion
         self.minInterval = minInterval
+        self.onFailure = onFailure
     }
 
     /// 各档实时额度；未装 Antigravity / 未登录 / 网络失败返回上次结果（首次为空）。30s 节流。
@@ -72,23 +89,48 @@ actor AntigravityQuota {
         guard let token = await validAccessToken() else { return cache }
         guard let proj = await ensureProject(token: token) else { return cache }
         guard let tiers = await fetchSummary(token: token, project: proj) else { return cache }
+        lastFailure = nil
         cache = tiers
         return tiers
+    }
+
+    /// 同一个原因只报一次：这里 30 秒一轮，断网一整天不能写几千条一样的日志。成功一次就清掉。
+    private func report(_ failure: Failure) {
+        guard failure != lastFailure else { return }
+        lastFailure = failure
+        onFailure(failure)
+    }
+
+    private nonisolated static func logFailure(_ failure: Failure) {
+        switch failure {
+        case .noCredential: log.debug("Antigravity 没有可用的登录，额度不可用")
+        case .network(let reason): log.error("Antigravity 额度查询失败：\(reason, privacy: .public)")
+        case .unauthorized: log.error("Antigravity 额度查询失败：401，令牌已作废，下一轮重新换")
+        case .http(let status): log.error("Antigravity 额度查询失败：HTTP \(status)")
+        case .badResponse: log.error("Antigravity 额度查询失败：响应不是预期的 JSON")
+        case .unrecognizedSummary: log.error("Antigravity 额度响应里没有认识的桶，接口可能变了")
+        }
     }
 
     // MARK: - OAuth
 
     private func validAccessToken() async -> String? {
         if let t = accessToken, Date() < accessExpiry.addingTimeInterval(-60) { return t }
-        guard let rt = storedRefreshToken() else { return nil }
+        guard let rt = storedRefreshToken() else {
+            report(.noCredential)
+            return nil
+        }
         guard var req = post(Self.tokenEndpoint) else { return nil }
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let form = ["client_id": Self.clientID, "client_secret": Self.clientSecret,
                     "refresh_token": rt, "grant_type": "refresh_token"]
         req.httpBody = form.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? $0.value)" }
             .joined(separator: "&").data(using: .utf8)
-        guard let obj = await json(req),
-              let t = obj["access_token"] as? String else { return nil }
+        guard let obj = await json(req) else { return nil }
+        guard let t = obj["access_token"] as? String else {
+            report(.badResponse)
+            return nil
+        }
         accessToken = t
         let ttl = (obj["expires_in"] as? Double) ?? 3600
         accessExpiry = Date().addingTimeInterval(ttl)
@@ -182,7 +224,11 @@ actor AntigravityQuota {
         let body: [String: Any] = project.isEmpty ? [:] : ["project": project]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         guard let obj = await json(req) else { return nil }
-        return AntigravityQuotaParsing.parseSummary(obj)
+        guard let tiers = AntigravityQuotaParsing.parseSummary(obj) else {
+            report(.unrecognizedSummary)
+            return nil
+        }
+        return tiers
     }
 
     // MARK: - 本机 agy 版本（写进 User-Agent）
@@ -229,10 +275,31 @@ actor AntigravityQuota {
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         r.setValue(userAgent, forHTTPHeaderField: "User-Agent")
     }
+    /// 发一次请求拿 JSON 对象。失败返回 nil，原因经 report 记下。
     private func json(_ req: URLRequest) async -> [String: Any]? {
-        guard let (data, resp) = try? await transport(req),
-              (resp as? HTTPURLResponse)?.statusCode == 200,
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let data: Data
+        let resp: URLResponse
+        do {
+            (data, resp) = try await transport(req)
+        } catch {
+            report(.network(error.localizedDescription))
+            return nil
+        }
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        if status == 401 {
+            // 令牌在服务端失效了（改密码、撤销授权）：作废，下一轮用 refresh_token 重新换，不要到过期前一直拿它去撞
+            accessToken = nil
+            report(.unauthorized)
+            return nil
+        }
+        guard status == 200 else {
+            report(.http(status))
+            return nil
+        }
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            report(.badResponse)
+            return nil
+        }
         return obj
     }
 }

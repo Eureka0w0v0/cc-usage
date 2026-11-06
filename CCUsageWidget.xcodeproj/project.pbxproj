@@ -65,6 +65,7 @@
 		4AAD9D95134DC5AD995D8511 /* UsageWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575EC9EA5B5664CB541642A8 /* UsageWindow.swift */; };
 		4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */ = {isa = PBXBuildFile; fileRef = E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */; };
 		4B5053F22AC3D38BBE7C55D6 /* UsageStore+Trend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D108F47E63C782C8ADA61DF /* UsageStore+Trend.swift */; };
+		4C1A3330E984C9E4532591F7 /* AntigravityQuotaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F084CEB7A49D8A12DE2CB001 /* AntigravityQuotaTests.swift */; };
 		4D72635B24472E37E7C7D604 /* OmpUsageParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBD08CFCAAB420E1803400E4 /* OmpUsageParsingTests.swift */; };
 		4ED4ED8BB487DE9354BDE086 /* ClaudePlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E86FC3B0DB3A30035ECD5A4D /* ClaudePlanTests.swift */; };
 		4F5E85AEBD5CA5DFCDB6E6BD /* QuotaReading.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D7D866AB8549A3B01A9743A /* QuotaReading.swift */; };
@@ -424,6 +425,7 @@
 		E50FA82869360DF5BE4941CF /* brand-minimax.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-minimax.png"; sourceTree = "<group>"; };
 		E86FC3B0DB3A30035ECD5A4D /* ClaudePlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudePlanTests.swift; sourceTree = "<group>"; };
 		EC15FF5634AE6F95FFF14DD8 /* Sample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sample.swift; sourceTree = "<group>"; };
+		F084CEB7A49D8A12DE2CB001 /* AntigravityQuotaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityQuotaTests.swift; sourceTree = "<group>"; };
 		F0F2F0653160D2C8B1A27D1E /* RequestDetailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestDetailTests.swift; sourceTree = "<group>"; };
 		F50273603149EF8E51283D5C /* JSONLChainScanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONLChainScanTests.swift; sourceTree = "<group>"; };
 		F6A6BC20DF49E1A6989FCF94 /* ClaudeQuotaParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeQuotaParsingTests.swift; sourceTree = "<group>"; };
@@ -514,6 +516,7 @@
 			isa = PBXGroup;
 			children = (
 				498E02D62D74B3AB1FCD1C83 /* AntigravityQuotaParsingTests.swift */,
+				F084CEB7A49D8A12DE2CB001 /* AntigravityQuotaTests.swift */,
 				BDC776D356C04AA0843A738B /* BridgeArgsTests.swift */,
 				0DDD80AA4D8CF0ECE41B3B7E /* BridgePayloadTests.swift */,
 				79BF70807E5EF23308F00D3D /* ChipKeyTests.swift */,
@@ -1010,6 +1013,7 @@
 				91F5123605E04A05CC99D400 /* AntigravityQuota.swift in Sources */,
 				25CDE9BD2D814F2000B35C0B /* AntigravityQuotaParsing.swift in Sources */,
 				9227F582CA4E76EC46D82231 /* AntigravityQuotaParsingTests.swift in Sources */,
+				4C1A3330E984C9E4532591F7 /* AntigravityQuotaTests.swift in Sources */,
 				DA1661CBA41012B0BF7F9E04 /* BridgeArgs.swift in Sources */,
 				F304FBF627AA3021EA293BA9 /* BridgeArgsTests.swift in Sources */,
 				7ABA3A33D010F27F8BEE9F7E /* BridgePayload.swift in Sources */,
