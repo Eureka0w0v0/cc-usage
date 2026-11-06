@@ -79,7 +79,8 @@ final class UpdateChecker: ObservableObject {
         // 强持有 self：更新流程的生命周期不会超过 app；@MainActor 类隐式 Sendable，跨闭包安全。
         Task.detached(priority: .userInitiated) {
             do {
-                let zipFile = try await Self.download(zip) { pct in
+                let zipFile = try await HTTPDownload.toTemporaryFile(zip, idleTimeout: Self.downloadIdleTimeout,
+                                                                     totalTimeout: Self.downloadTotalTimeout) { pct in
                     Task { @MainActor in
                         if case .downloading = self.updateState { self.updateState = .downloading(pct) }
                     }
@@ -168,36 +169,10 @@ final class UpdateChecker: ObservableObject {
         var errorDescription: String? { msg }
     }
 
-    /// 流式下载到临时文件，按 128KB 块写盘并回报百分比。
-    private nonisolated static func download(
-        _ url: URL, progress: @escaping @Sendable (Int) -> Void
-    ) async throws -> URL {
-        let (bytes, resp) = try await URLSession.shared.bytes(from: url)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw Err("download HTTP \((resp as? HTTPURLResponse)?.statusCode ?? -1)")
-        }
-        let total = resp.expectedContentLength
-        let file = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ccusage-update-\(UUID().uuidString).zip")
-        FileManager.default.createFile(atPath: file.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: file)
-        defer { try? handle.close() }
-        var buf = Data(); buf.reserveCapacity(1 << 17)
-        var written: Int64 = 0
-        var lastPct = -2
-        for try await b in bytes {
-            buf.append(b)
-            if buf.count >= 1 << 17 {
-                try handle.write(contentsOf: buf)
-                written += Int64(buf.count)
-                buf.removeAll(keepingCapacity: true)
-                let pct = total > 0 ? Int(written * 100 / total) : -1
-                if pct != lastPct { lastPct = pct; progress(pct) }
-            }
-        }
-        if !buf.isEmpty { try handle.write(contentsOf: buf) }
-        return file
-    }
+    /// 下载多久没有新字节算卡住。
+    private nonisolated static let downloadIdleTimeout: TimeInterval = 30
+    /// 整个下载的上限。包只有几 MB，慢网也够了；卡住时要回到「更新失败」，不能一直转圈。
+    private nonisolated static let downloadTotalTimeout: TimeInterval = 600
 
     /// 解压的上限。包只有几 MB，正常一两秒；卡住时要回到「更新失败」，不能一直显示 Installing。
     private nonisolated static let unzipTimeout: TimeInterval = 120
