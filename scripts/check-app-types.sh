@@ -52,8 +52,8 @@ LOCAL_ONLY: set = set()
 missing = upstream_apps - local_apps
 if missing:
     fail.append(f"MBApp 缺少上游用量 app：{sorted(missing)}\n"
-                f"   → 在 Sources/Shared/MenuBar/MenuBarKeys.swift 的 MBApp 末尾追加，并在\n"
-                f"     MenuBarSettingsView.swift 加对应分组 + MBKey 的 group 键")
+                f"   → 在 Sources/Shared/MenuBar/MenuBarKeys.swift 的 MBApp 末尾追加，\n"
+                f"     补 settingsOrder / expansionKey / quotaNote 和 MBKey 的 group 键")
 extra = local_apps - upstream_apps - LOCAL_ONLY
 if extra:
     fail.append(f"MBApp 有上游已不存在的 app：{sorted(extra)}\n"

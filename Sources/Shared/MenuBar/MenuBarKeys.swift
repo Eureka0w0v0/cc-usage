@@ -88,6 +88,44 @@ enum MBApp: String, CaseIterable {
         case .pi: return nil
         }
     }
+
+    /// 设置面板里各分组的顺序。和 allCases（菜单栏段的顺序）不一样：Antigravity 在设置面板排 MiniMax Code 后面，
+    /// 用户已经习惯这个位置。
+    static let settingsOrder: [MBApp] = [.claude, .codex, .gemini, .opencode, .grokbuild, .pi, .mcode, .agy,
+                                         .kimi, .omp, .dsh]
+
+    /// 设置面板这个分组展开状态的持久化键（agy、grokbuild 的键是历史名，不能改）。
+    var expansionKey: String {
+        switch self {
+        case .claude: return MBKey.groupClaude
+        case .codex: return MBKey.groupCodex
+        case .gemini: return MBKey.groupGemini
+        case .opencode: return MBKey.groupOpencode
+        case .agy: return MBKey.groupAntigravity
+        case .grokbuild: return MBKey.groupGrok
+        case .pi: return MBKey.groupPi
+        case .mcode: return MBKey.groupMcode
+        case .kimi: return MBKey.groupKimi
+        case .omp: return MBKey.groupOmp
+        case .dsh: return MBKey.groupDsh
+        }
+    }
+
+    /// 没有额度可显示时 Quota 行的说明；nil = 这家有额度数据，设置面板列勾选项。
+    var quotaNote: String? {
+        switch self {
+        case .claude, .codex, .agy:
+            return nil
+        // Gemini 按天限请求数且不落盘、OpenCode 配额归背后 provider、Grok/xAI 无公开 remaining/utilization 查询接口；
+        // Pi / MiniMax Code 的用量经各自的会话导入器进 cc-switch 的库（无代理通道），额度归背后 provider，本应用无从查起。
+        case .gemini, .opencode, .grokbuild, .pi, .mcode:
+            return "No quota API"
+        // Kimi Code：上游的官方账号额度走它的授权中心（OAuth），本应用没做。Oh My Pi：按各家 API key 计费，没有统一的
+        // 额度可查。DeepSeek Harness：上游在授权中心查 DeepSeek 账号余额，本应用没做。
+        case .kimi, .omp, .dsh:
+            return "Not supported"
+        }
+    }
 }
 
 /// 按 AI 分组的码片键。`mb.appChips` 里存的就是 rawValue，格式变了用户的勾选就丢了：

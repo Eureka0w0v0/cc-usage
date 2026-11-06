@@ -35,6 +35,7 @@
 		1FD019317590E783B40F3167 /* PricingTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3928824FF8DF8CCD5ADB5CA3 /* PricingTable.swift */; };
 		208EDC3795B22F43EC6909E8 /* UsageStore+Stats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01F1FDC6BBE159EDE1874262 /* UsageStore+Stats.swift */; };
 		23AB5972DC8324C02F07CB3B /* MenuBarDataLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6406D7B906589CBE28357688 /* MenuBarDataLoaderTests.swift */; };
+		2502962B7560D96B21CCA1FE /* MBAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1204682563F4D4F55197E096 /* MBAppTests.swift */; };
 		25B06981AB4B1EC3698F7C30 /* MenuBarStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591111A5D789097F22B5B89D /* MenuBarStrip.swift */; };
 		25C121ACC119939C1C1AC7F7 /* RequestLogMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B44155DFCABB3AE6D7ACCDCD /* RequestLogMerge.swift */; };
 		25CDE9BD2D814F2000B35C0B /* AntigravityQuotaParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 278087BE7F069843E288EEB0 /* AntigravityQuotaParsing.swift */; };
@@ -282,6 +283,7 @@
 		0FA0E5873AE44221C5F8E764 /* index.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
 		1023FC76A66DAD31754F57CB /* MenuBarPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanel.swift; sourceTree = "<group>"; };
 		11229265D35EF6B37D58294B /* ClaudeUsageParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageParsingTests.swift; sourceTree = "<group>"; };
+		1204682563F4D4F55197E096 /* MBAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBAppTests.swift; sourceTree = "<group>"; };
 		144A1EE4C00CF2D9BAD7C510 /* MenuBarChipMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarChipMigration.swift; sourceTree = "<group>"; };
 		14E50F14C41D531700D19262 /* TrendAxis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendAxis.swift; sourceTree = "<group>"; };
 		17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityQuota.swift; sourceTree = "<group>"; };
@@ -504,6 +506,7 @@
 				581B74090E8AD015CE9C4DBE /* FallbackTableSeedTests.swift */,
 				E1AB14D881996E7BEEB26551 /* FormattingTests.swift */,
 				F50273603149EF8E51283D5C /* JSONLChainScanTests.swift */,
+				1204682563F4D4F55197E096 /* MBAppTests.swift */,
 				6406D7B906589CBE28357688 /* MenuBarDataLoaderTests.swift */,
 				D1B329187C6B1B870A6A8E90 /* MenuBarStripTests.swift */,
 				A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */,
@@ -998,6 +1001,7 @@
 				68B805CE1560AC2AF4047FC6 /* FormattingTests.swift in Sources */,
 				DEF0BEDBCB4ABC9D21BB2357 /* JSONLChainScanTests.swift in Sources */,
 				DF8815CBF74320ECBF8DA905 /* JSONLScan.swift in Sources */,
+				2502962B7560D96B21CCA1FE /* MBAppTests.swift in Sources */,
 				74B0E5093888AA23C3FD5C89 /* MenuBarChipMigration.swift in Sources */,
 				DC95846C7A9493ECAF728A71 /* MenuBarDataLoader.swift in Sources */,
 				23AB5972DC8324C02F07CB3B /* MenuBarDataLoaderTests.swift in Sources */,
