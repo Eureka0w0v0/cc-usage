@@ -10,8 +10,9 @@ enum ProcessRunner {
 
     /// 发 SIGTERM 之后多久还不退就 SIGKILL。
     private static let terminateGrace: TimeInterval = 1
-    /// 子进程退出后最多再等多久读完管道：它留下的后台进程可能还拿着写端，等不到 EOF。
-    private static let drainGrace: TimeInterval = 0.5
+    /// 子进程退出后最多再等多久读完管道：它留下的后台进程可能还拿着写端，等不到 EOF。留宽一点：读线程排不上队时
+    /// 拿到半截输出（凭据 JSON 解析失败）比多等一会儿糟。
+    private static let drainGrace: TimeInterval = 2
 
     /// 跑到退出，返回退出码和标准输出；起不来或超时（进程已杀掉）返回 nil。stdin 是空设备，stderr 丢弃。
     static func run(_ executable: URL, _ arguments: [String], timeout: TimeInterval) -> Output? {
@@ -50,7 +51,8 @@ enum ProcessRunner {
         private let finished = DispatchSemaphore(value: 0)
 
         init(_ handle: FileHandle) {
-            DispatchQueue.global(qos: .utility).async { [self] in
+            // 调用方阻塞等它，优先级不能比调用方低：系统繁忙时 utility 的线程排不上队，读 300KB 能拖几秒
+            DispatchQueue.global(qos: .userInitiated).async { [self] in
                 withExtendedLifetime(handle) { drain(handle.fileDescriptor) }
                 finished.signal()
             }

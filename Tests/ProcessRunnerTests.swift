@@ -1,8 +1,10 @@
 import XCTest
 
 /// 子进程的统一入口：起不来、超时都返回 nil，超时的进程要杀掉，调用方绝不无限等。
+/// 时限留足余量：机器忙时这些用例也不能飘。被测进程睡 30 秒，只要明显早于它返回就算过。
 final class ProcessRunnerTests: XCTestCase {
     private let shell = URL(fileURLWithPath: "/bin/sh")
+    private let limit: TimeInterval = 15
 
     private func sh(_ script: String, timeout: TimeInterval = 10) -> ProcessRunner.Output? {
         ProcessRunner.run(shell, ["-c", script], timeout: timeout)
@@ -34,26 +36,31 @@ final class ProcessRunnerTests: XCTestCase {
         let pidFile = (NSTemporaryDirectory() as NSString).appendingPathComponent("ccusage-proc-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(atPath: pidFile) }
         let start = Date()
-        XCTAssertNil(sh("echo $$ > \(pidFile); sleep 4", timeout: 0.3))
-        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+        XCTAssertNil(sh("echo $$ > \(pidFile); exec sleep 30", timeout: 0.3))
+        XCTAssertLessThan(Date().timeIntervalSince(start), limit)
         let pid = try XCTUnwrap(Int32(String(contentsOfFile: pidFile, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)))
         XCTAssertEqual(kill(pid, 0), -1, "进程要真的没了")
     }
 
-    /// 不理 SIGTERM 的进程也不能把调用方拖住。
-    func testTimeoutEscalatesWhenTheProcessIgnoresTerminate() {
+    /// 负责杀的变异体：只发 SIGTERM。不理它的进程要 SIGKILL，也不能把调用方拖住。
+    func testTimeoutEscalatesWhenTheProcessIgnoresTerminate() throws {
+        let pidFile = (NSTemporaryDirectory() as NSString).appendingPathComponent("ccusage-proc-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(atPath: pidFile) }
         let start = Date()
-        XCTAssertNil(sh("trap '' TERM; sleep 4", timeout: 0.3))
-        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+        XCTAssertNil(sh("trap '' TERM; echo $$ > \(pidFile); exec sleep 30", timeout: 0.3))
+        XCTAssertLessThan(Date().timeIntervalSince(start), limit)
+        let pid = try XCTUnwrap(Int32(String(contentsOfFile: pidFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)))
+        XCTAssertEqual(kill(pid, 0), -1, "不理 SIGTERM 的进程也要没了")
     }
 
     /// 子进程退了但孙进程还拿着管道：不能因为读不到 EOF 就一直等。
     func testBackgroundGrandchildHoldingThePipeDoesNotBlock() throws {
         let start = Date()
-        let out = try XCTUnwrap(sh("sleep 4 & printf done", timeout: 10))
+        let out = try XCTUnwrap(sh("sleep 30 & printf done", timeout: 20))
         XCTAssertEqual(out.status, 0)
         XCTAssertEqual(String(decoding: out.stdout, as: UTF8.self), "done")
-        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+        XCTAssertLessThan(Date().timeIntervalSince(start), limit)
     }
 }

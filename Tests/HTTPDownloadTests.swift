@@ -62,7 +62,7 @@ final class HTTPDownloadTests: XCTestCase {
         try await HTTPDownload.toTemporaryFile(server.url, idleTimeout: idle, totalTimeout: total) { _ in }
     }
 
-    /// 等 limit 秒拿结果，超过就算它还卡着。
+    /// 等 limit 秒拿结果，超过就算它还卡着。limit 留足余量，机器忙时也不能飘；没超时控制时要等 60 秒以上。
     private func outcome(within limit: TimeInterval,
                          _ body: @escaping @Sendable () async throws -> URL) async -> Result<URL, Error>? {
         await withTaskGroup(of: Result<URL, Error>?.self) { group in
@@ -115,7 +115,7 @@ final class HTTPDownloadTests: XCTestCase {
             _ = write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\npartial")
         }
         defer { server.stop() }
-        let result = await outcome(within: 3) { [self] in try await download(server, idle: 5, total: 5) }
+        let result = await outcome(within: 15) { [self] in try await download(server, idle: 5, total: 5) }
         guard case .failure? = result else { return XCTFail("半截包不能算成功") }
         XCTAssertEqual(try leftovers(), before)
     }
@@ -126,7 +126,7 @@ final class HTTPDownloadTests: XCTestCase {
             _ = write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\npartial")
         }
         defer { server.stop() }
-        let result = await outcome(within: 3) { [self] in try await download(server, idle: 5, total: 5) }
+        let result = await outcome(within: 15) { [self] in try await download(server, idle: 5, total: 5) }
         guard case .failure? = result else { return XCTFail("半截包不能算成功：\(String(describing: result))") }
     }
 
@@ -137,8 +137,8 @@ final class HTTPDownloadTests: XCTestCase {
             while write("") { Thread.sleep(forTimeInterval: 0.05) }
         }
         defer { server.stop() }
-        let result = await outcome(within: 3) { [self] in try await download(server, idle: 0.5, total: 30) }
-        guard case .failure? = result else { return XCTFail("3 秒内应该超时失败：\(String(describing: result))") }
+        let result = await outcome(within: 15) { [self] in try await download(server, idle: 0.5, total: 60) }
+        guard case .failure? = result else { return XCTFail("应该很快超时失败：\(String(describing: result))") }
     }
 
     /// 负责杀的变异体：只有空闲超时。一直有字节进来但总也下不完时没有上限（默认总上限 7 天）。
@@ -148,7 +148,7 @@ final class HTTPDownloadTests: XCTestCase {
             while write("x") { Thread.sleep(forTimeInterval: 0.05) }
         }
         defer { server.stop() }
-        let result = await outcome(within: 3) { [self] in try await download(server, idle: 30, total: 1) }
-        guard case .failure? = result else { return XCTFail("3 秒内应该超时失败：\(String(describing: result))") }
+        let result = await outcome(within: 15) { [self] in try await download(server, idle: 60, total: 1) }
+        guard case .failure? = result else { return XCTFail("应该很快超时失败：\(String(describing: result))") }
     }
 }
