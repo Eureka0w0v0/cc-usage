@@ -60,8 +60,6 @@ struct PanelWebView: NSViewRepresentable {
         /// 主线程只收发消息——面板高频刷新不再与 UI 抢主线程。
         private static let workQueue = DispatchQueue(
             label: "cc-usage.bridge", qos: .userInitiated, attributes: .concurrent)
-        /// ISO8601DateFormatter 线程安全，静态复用（quotaJSON / trends 每 tick 都在调）。
-        private static let iso = ISO8601DateFormatter()
         /// 桥接层拒绝请求时回给前端的错误（catch 分支会把它字符串化进 replyHandler）。
         struct Err: LocalizedError {
             let msg: String
@@ -91,7 +89,7 @@ struct PanelWebView: NSViewRepresentable {
             if cmd == "get_quota" {
                 Task { @MainActor in
                     let tiers = await QuotaService.fetchTiersForBridge()
-                    replyHandler(Self.quotaJSON(tiers), nil)
+                    replyHandler(BridgePayload.quota(tiers), nil)
                 }
                 return
             }
@@ -107,100 +105,59 @@ struct PanelWebView: NSViewRepresentable {
             }
         }
 
-        /// [QuotaTier] → 前端可消费、WKWebView 可序列化的 JSON：
-        /// [{ name, utilization(0–100), resetsAt: ISO8601?, planLabel? }]。
-        private static func quotaJSON(_ tiers: [QuotaTier]) -> [[String: Any]] {
-            return tiers.map { t in
-                [
-                    "name": t.name,
-                    "utilization": t.utilization,
-                    "resetsAt": t.resetsAt.map { iso.string(from: $0) } ?? NSNull(),
-                    "planLabel": t.planLabel ?? NSNull(),
-                ]
-            }
-        }
-
-        private func int64(_ v: Any?) -> Int64? {
-            if let n = v as? NSNumber { return n.int64Value }
-            if let s = v as? String { return Int64(s) }
-            return nil
-        }
-        private func str(_ v: Any?) -> String? {
-            if let s = v as? String, !s.isEmpty, s != "all" { return s }
-            return nil
-        }
-
-        private func handle(_ cmd: String, _ args: [String: Any]) throws -> Any {
-            let start = int64(args["startDate"])
-            let end = int64(args["endDate"])
-            let appType = str(args["appType"])
-            let providerName = str(args["providerName"])
-            let model = str(args["model"])
+        private func handle(_ cmd: String, _ raw: [String: Any]) throws -> Any {
+            let args = BridgeArgs(raw)
 
             switch cmd {
             // 三条 Hero/走势路径都要吃 providerName：上游 get_usage_summary / _by_app / get_daily_trends
             // 均按 provider 过滤；早前这里丢了它，工具栏选 Source 后 Hero 不动、三个 Tab 却动，同屏打架。
             case "get_usage_summary_by_app":
-                return try summaryByApp(start: start, end: end, providerName: providerName, model: model)
+                return BridgePayload.summaryByApp(try store.summaryByApp(args.usageFilterAllApps))
             case "get_usage_trends":
-                return try trends(start: start, end: end, appType: appType, providerName: providerName, model: model)
+                // 走 trendBuckets 而非 snapshot——后者顺带算的「区间 + 累计」4 次聚合在这条路径全是白算。
+                return BridgePayload.trends(try store.trendBuckets(filter: args.usageFilter))
             // 热力图（embed/usage-heatmap.tsx）：最早有记录的本地日，决定铺几段 53 周。对齐 v4.0.5。
             case "get_usage_first_date":
-                if let day = try store.firstUsageDate(UsageFilter(appType: appType,
-                                                                  providerName: providerName, model: model)) {
+                if let day = try store.firstUsageDate(args.scopeFilter) {
                     return day
                 }
                 return NSNull()
             case "get_usage_summary":
-                let s = try store.rangeSummary(UsageFilter(start: start, end: end, appType: appType,
-                                                           providerName: providerName, model: model))
-                return summaryDict(s)
+                return BridgePayload.summary(try store.rangeSummary(args.usageFilter))
             case "get_usage_data_sources":
-                return try dataSources()
+                // 「按来源」只统计有 data_source 的明细行（rollups 无该列，不计入）。
+                // 真按 data_source 分组——库里除 session_log 外还有 codex_session，
+                // 升级 cc-switch 后还会出现 grok_session；旧实现把它们全贴成 session_log。
+                // 与上游一样不吃时间窗（get_data_source_breakdown 是全表口径）。
+                return BridgePayload.dataSources(try store.dataSourceBreakdown())
 
             // ── 下半部 Tabs：真查 proxy_request_logs（对齐 usage_stats.rs 字段/口径）──
             case "get_request_logs":
-                // 入参形状：invoke("get_request_logs", { filters, page, pageSize })，
-                // 时间窗被 useRequestLogs 合并进 filters（filters.startDate/endDate）。
-                let filters = args["filters"] as? [String: Any] ?? [:]
-                let page = Int(int64(args["page"]) ?? 0)
-                let pageSize = Int(int64(args["pageSize"]) ?? 20)
-                let f = LogQueryFilter(
-                    start: int64(filters["startDate"]),
-                    end: int64(filters["endDate"]),
-                    appType: str(filters["appType"]),
-                    providerName: str(filters["providerName"]),
-                    model: str(filters["model"]),
-                    statusCode: int64(filters["statusCode"]).map { Int($0) }
-                )
-                let pageResult = try store.requestLogs(f, page: page, pageSize: pageSize)
-                return requestLogsDict(pageResult, page: page, pageSize: pageSize)
+                let q = args.requestLogs
+                let pageResult = try store.requestLogs(q.filter, page: q.page, pageSize: q.pageSize)
+                return BridgePayload.requestLogs(pageResult, page: q.page, pageSize: q.pageSize)
             case "get_request_detail":
                 // 入参：invoke("get_request_detail", { requestId })，点请求日志的一行打开详情抽屉时发。
                 // 查不到回 null，前端显示「Request not found」；查询出错照常抛，前端显示可重试的错误。
-                guard let requestId = args["requestId"] as? String, !requestId.isEmpty else { return NSNull() }
+                guard let requestId = args.nonEmptyString("requestId") else { return NSNull() }
                 guard let row = try store.requestDetail(requestId) else { return NSNull() }
-                return requestLogDict(row)
+                return BridgePayload.requestLog(row)
             case "get_provider_stats":
-                let f = LogQueryFilter(start: start, end: end, appType: appType,
-                                       providerName: providerName, model: model)
-                return try store.providerStats(f).map { providerStatDict($0) }
+                return try store.providerStats(args.statsFilter).map { BridgePayload.providerStat($0) }
             case "get_model_stats":
-                let f = LogQueryFilter(start: start, end: end, appType: appType,
-                                       providerName: providerName, model: model)
-                return try store.modelStats(f).map { modelStatDict($0) }
+                return try store.modelStats(args.statsFilter).map { BridgePayload.modelStat($0) }
 
             // ── 面板设置持久化（embed 用）：UserDefaults，键加 "embed." 前缀。
             // refreshIntervalMs 额外写穿 PanelModel → 菜单栏与面板同一个刷新节奏，
             // 修复「面板选 5s 重开回 30s」与「菜单栏/面板更新时间不一致」。
-            // 键名不走 str()——它会把 "all" 归一成 nil(那是筛选参数的语义),
+            // 键名不走 BridgeArgs.filter——它会把 "all" 归一成 nil(那是筛选参数的语义),
             // 设置键/值必须原样透传。
             case "get_setting":
-                guard let key = args["key"] as? String, !key.isEmpty else { return NSNull() }
+                guard let key = args.nonEmptyString("key") else { return NSNull() }
                 return UserDefaults.standard.object(forKey: EmbedKey.setting(key)) ?? NSNull()
             case "set_setting":
-                guard let key = args["key"] as? String, !key.isEmpty else { return NSNull() }
-                let value = args["value"]
+                guard let key = args.nonEmptyString("key") else { return NSNull() }
+                let value = raw["value"]
                 let dkey = EmbedKey.setting(key)
                 if value == nil || value is NSNull {
                     UserDefaults.standard.removeObject(forKey: dkey)
@@ -238,151 +195,6 @@ struct PanelWebView: NSViewRepresentable {
                 return ["hasLimit": false]
             default:
                 return NSNull()
-            }
-        }
-
-        // MARK: - Tabs JSON 映射（camelCase，对齐 types/usage.ts）
-
-        // RequestLogPage → PaginatedLogs{ data, total, page, pageSize }
-        private func requestLogsDict(_ p: RequestLogPage, page: Int, pageSize: Int) -> [String: Any] {
-            return [
-                "data": p.rows.map { requestLogDict($0) },
-                "total": p.total,
-                "page": page,
-                "pageSize": pageSize,
-            ]
-        }
-
-        // RequestLogRow → RequestLog。可空字段仅在有值时写入（对齐 serde skip_serializing_if）。
-        private func requestLogDict(_ r: RequestLogRow) -> [String: Any] {
-            var d: [String: Any] = [
-                "requestId": r.requestId,
-                "providerId": r.providerId,
-                "providerName": r.providerName,
-                "appType": r.appType,
-                "model": r.model,
-                "costMultiplier": r.costMultiplier,
-                "inputTokens": r.inputTokens,
-                "outputTokens": r.outputTokens,
-                "cacheReadTokens": r.cacheReadTokens,
-                "cacheCreationTokens": r.cacheCreationTokens,
-                "inputCostUsd": r.inputCostUsd,
-                "outputCostUsd": r.outputCostUsd,
-                "cacheReadCostUsd": r.cacheReadCostUsd,
-                "cacheCreationCostUsd": r.cacheCreationCostUsd,
-                "totalCostUsd": r.totalCostUsd,
-                "isStreaming": r.isStreaming,
-                "latencyMs": r.latencyMs,
-                "statusCode": r.statusCode,
-                "createdAt": r.createdAt,
-            ]
-            if let v = r.requestModel, !v.isEmpty { d["requestModel"] = v }
-            if let v = r.pricingModel, !v.isEmpty { d["pricingModel"] = v }
-            if let v = r.firstTokenMs { d["firstTokenMs"] = v }
-            if let v = r.durationMs { d["durationMs"] = v }
-            if let v = r.errorMessage, !v.isEmpty { d["errorMessage"] = v }
-            if let v = r.dataSource, !v.isEmpty { d["dataSource"] = v }
-            return d
-        }
-
-        // ProviderStatRow → ProviderStats
-        private func providerStatDict(_ s: ProviderStatRow) -> [String: Any] {
-            return [
-                "providerId": s.providerId,
-                "appType": s.appType,
-                "providerName": s.providerName,
-                "requestCount": s.requestCount,
-                "totalTokens": s.totalTokens,
-                "totalCost": Fmt.usd6(s.totalCost),
-                "successRate": s.successRate,
-                "avgLatencyMs": s.avgLatencyMs,
-            ].merging(performanceDict(s.performance)) { current, _ in current }
-        }
-
-        // ModelStatRow → ModelStats（successRate 是 v4 前端的必填字段，缺了模型页签整页白屏）
-        private func modelStatDict(_ s: ModelStatRow) -> [String: Any] {
-            return [
-                "model": s.model,
-                "requestCount": s.requestCount,
-                "totalTokens": s.totalTokens,
-                "totalCost": Fmt.usd6(s.totalCost),
-                "avgCostPerRequest": Fmt.usd6(s.avgCostPerRequest),
-                "successRate": s.successRate,
-            ].merging(performanceDict(s.performance)) { current, _ in current }
-        }
-
-        // StatsPerformance → ProviderStats / ModelStats 的六个速度、首字字段（中位数缺失时为 null）
-        private func performanceDict(_ p: StatsPerformance) -> [String: Any] {
-            return [
-                "speedOutputTokens": p.speedOutputTokens,
-                "speedGenerationMs": p.speedGenerationMs,
-                "estSpeedOutputTokens": p.estSpeedOutputTokens,
-                "estSpeedDurationMs": p.estSpeedDurationMs,
-                "firstTokenMedianMs": p.firstTokenMedianMs.map { $0 as Any } ?? NSNull(),
-                "estFirstTokenMedianMs": p.estFirstTokenMedianMs.map { $0 as Any } ?? NSNull(),
-            ]
-        }
-
-        // 单个 summary → camelCase dict（对齐 types/usage.ts UsageSummary）
-        private func summaryDict(_ s: UsageSummary) -> [String: Any] {
-            return [
-                "totalRequests": s.requests,
-                "totalCost": Fmt.usd6(s.cost),
-                "totalInputTokens": s.input,
-                "totalOutputTokens": s.output,
-                "totalCacheCreationTokens": s.creation,
-                "totalCacheReadTokens": s.hit,
-                "successRate": s.successRate,
-                "realTotalTokens": s.tokensProcessed,
-                "cacheHitRate": s.cacheHitRate,
-            ]
-        }
-
-        // get_usage_summary_by_app → [{appType, summary}]（每个 app 一行）
-        // 底层为 proxy_request_logs + usage_daily_rollups 两表合并的 GROUP BY app_type，
-        // 故仅存在于历史聚合表的来源（如 codex）也会出现，且各 app 数字含历史。
-        private func summaryByApp(start: Int64?, end: Int64?, providerName: String?,
-                                  model: String?) throws -> [[String: Any]] {
-            let list = try store.summaryByApp(UsageFilter(start: start, end: end,
-                                                          providerName: providerName, model: model))
-            return list.map { item in
-                ["appType": item.appType, "summary": summaryDict(item.summary)]
-            }
-        }
-
-        // get_usage_trends → DailyStats[]（date rfc3339 + 各 token/cost 字段，camelCase）。
-        // 走 trendBuckets 而非 snapshot——后者顺带算的「区间 + 累计」4 次聚合在这条路径全是白算。
-        private func trends(start: Int64?, end: Int64?, appType: String?, providerName: String?,
-                            model: String?) throws -> [[String: Any]] {
-            let buckets = try store.trendBuckets(
-                filter: UsageFilter(start: start, end: end, appType: appType,
-                                    providerName: providerName, model: model))
-            let iso = Self.iso
-            return buckets.map { b in
-                return [
-                    "date": iso.string(from: Date(timeIntervalSince1970: TimeInterval(b.startTs))),
-                    "requestCount": b.requestCount,
-                    "totalCost": Fmt.usd6(b.cost),
-                    "totalTokens": b.input + b.output,
-                    "totalInputTokens": b.input,
-                    "totalOutputTokens": b.output,
-                    "totalCacheCreationTokens": b.creation,
-                    "totalCacheReadTokens": b.hit,
-                ]
-            }
-        }
-
-        private func dataSources() throws -> [[String: Any]] {
-            // 「按来源」只统计有 data_source 的明细行（rollups 无该列，不计入）。
-            // 真按 data_source 分组——库里除 session_log 外还有 codex_session，
-            // 升级 cc-switch 后还会出现 grok_session；旧实现把它们全贴成 session_log。
-            // 与上游一样不吃时间窗（get_data_source_breakdown 是全表口径）。
-            try store.dataSourceBreakdown().map {
-                [
-                    "dataSource": $0.dataSource,
-                    "requestCount": $0.requestCount,
-                    "totalCostUsd": Fmt.usd6($0.totalCost),
-                ]
             }
         }
     }
