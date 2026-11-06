@@ -44,8 +44,7 @@ final class PanelModel: ObservableObject {
     @Published var mbAppChips: Set<String> {
         didSet {
             UserDefaults.standard.set(Array(mbAppChips).sorted(), forKey: MBKey.appChips)
-            mbWidthCap = nil   // 勾选变化：解除上限，按新内容全宽重估
-            growCeiling = .greatestFiniteMagnitude
+            resetWidthCap()   // 勾选变化：解除上限，按新内容全宽重估
             if started { reload() }
         }
     }
@@ -62,16 +61,11 @@ final class PanelModel: ObservableObject {
     /// Antigravity 官方额度各档（勾了 agy.quota.* 或展开设置分组才联网查）。
     @Published var mbAntigravityQuota: [AntigravityTier] = []
 
-    /// 菜单栏宽度上限：nil = 全宽（默认）。原则：**有空间就绝不截断**——只在状态项此刻
-    /// 真被 macOS 挤掉时按溢出量精确收缩；内容变短到能放下就立刻解除上限。不做持久化、
-    /// 不做跨 app 记忆（那会用陈旧的窄上限截断新的短内容——正是之前的 bug）。
+    /// 菜单栏宽度上限：nil = 全宽（默认）。规则在 WidthGovernor；放在 @Published 里是因为 MenuBarExtra 的
+    /// label 只对本 model 的 @Published 变化可靠响应（见上面码片开关的注释）。
     @Published var mbWidthCap: CGFloat? = nil
-    // 宽度 governor 的状态：读写都在 MenuBarWidthGovernor.swift 的 extension 里，故不能 private。
-    var lastNatural: CGFloat = 0           // 上次巡检时的自然宽度，用于识别"内容结构变了"
-    var growCeiling: CGFloat = .greatestFiniteMagnitude  // 增长天花板 = 上次被挤的宽度，防边界震荡
-    var hiddenTicks = 0                     // 连续不可见计数：≥2 才算真被挤，滤面板开合毛刺
-    var pinnedTicks = 0                     // 天花板钉住后的计数：刘海屏每 30 拍无痛重量一次空位
-    var concealReasons: Set<String> = []    // 锁屏/屏保/息屏/睡眠：非空 = 遮蔽中，不可见不算被挤
+    // 读写都在 MenuBarWidthGovernor.swift 的 extension 里，故不能 private。
+    var widthGovernor = WidthGovernor()
     private var visTimer: AnyCancellable?
     weak var statusWindow: NSWindow?     // 状态项窗口（长命），找到一次就留着
     var panelWindowClass: AnyClass?      // 面板窗口的类对象，比对指针即可，免去每秒建串
@@ -170,20 +164,14 @@ final class PanelModel: ObservableObject {
             .sink { [weak self] _ in self?.checkStatusItemVisibility() }
         // 屏幕变化：可用空间真的变了，解除上限重新按全宽评估（有空间就别截断）。
         let clearCap: @Sendable () -> Void = { [weak self] in
-            Task { @MainActor in
-                self?.mbWidthCap = nil
-                self?.growCeiling = .greatestFiniteMagnitude
-            }
+            Task { @MainActor in self?.resetWidthCap() }
         }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main) { _ in clearCap() }
-        // 前台 app 变化：菜单栏可用空间可能被让出来了，值得重新争取——但只抬天花板，
-        // 不动 mbWidthCap。清掉 cap 会让 label 立刻回全宽、随即被挤掉，而恢复要等
-        // checkStatusItemVisibility 攒够 hiddenTicks（1Hz 巡检）→ 每切一次 app 就隐身
-        // 两秒多。夺回空间交给它的增长分支：刘海屏实测空位只涨到刚好，全程不失可见。
+        // 前台 app 变化：菜单栏可用空间可能被让出来了，值得重新争取（只抬天花板，理由见 raiseCeiling）。
         let raiseCeiling: @Sendable () -> Void = { [weak self] in
-            Task { @MainActor in self?.growCeiling = .greatestFiniteMagnitude }
+            Task { @MainActor in self?.widthGovernor.raiseCeiling() }
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
