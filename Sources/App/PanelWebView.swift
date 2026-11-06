@@ -6,11 +6,12 @@ import os
 /// 前端调用的 Tauri `invoke(cmd,args)` 通过 WKScriptMessageHandlerWithReply 桥接到这里，
 /// 由 Swift 读 ~/.cc-switch/cc-switch.db 返回数据。字段名对齐 cc-switch(camelCase)。
 struct PanelWebView: NSViewRepresentable {
+    let store: UsageStore
     /// embed 面板改了刷新间隔（set_setting refreshIntervalMs）时回调，宿主拿去同步菜单栏节奏。
     /// 回调注入，而不是让桥接层反向认识 PanelModel（早前靠 static weak var shared 这条全局暗线）。
     var onRefreshIntervalChanged: @MainActor (Int) -> Void = { _ in }
 
-    func makeCoordinator() -> Bridge { Bridge(onRefreshIntervalChanged: onRefreshIntervalChanged) }
+    func makeCoordinator() -> Bridge { Bridge(store: store, onRefreshIntervalChanged: onRefreshIntervalChanged) }
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -48,11 +49,12 @@ struct PanelWebView: NSViewRepresentable {
     // MARK: - invoke 桥接
 
     final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessageHandler {
-        private let store = UsageStore()
+        private let store: UsageStore
         private let onRefreshIntervalChanged: @MainActor (Int) -> Void
         private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "embed")
 
-        init(onRefreshIntervalChanged: @escaping @MainActor (Int) -> Void) {
+        init(store: UsageStore, onRefreshIntervalChanged: @escaping @MainActor (Int) -> Void) {
+            self.store = store
             self.onRefreshIntervalChanged = onRefreshIntervalChanged
             super.init()
         }

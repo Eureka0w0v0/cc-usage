@@ -82,7 +82,8 @@ final class PanelModel: ObservableObject {
         )
     }
 
-    init() {
+    init(store: UsageStore) {
+        self.store = store
         let d = UserDefaults.standard
         func load(_ k: String, _ def: Bool) -> Bool { d.object(forKey: k) == nil ? def : d.bool(forKey: k) }
         mbTokToday  = load(MBKey.tokToday,  true)   // 默认：今日 Tokens + 今日花费（与旧版一致）
@@ -139,7 +140,7 @@ final class PanelModel: ObservableObject {
     let updater = UpdateChecker()
 
     private var timer: AnyCancellable?
-    private let store = UsageStore()
+    private let store: UsageStore
     private var started = false
     private var isReloading = false
     private var pendingReload = false

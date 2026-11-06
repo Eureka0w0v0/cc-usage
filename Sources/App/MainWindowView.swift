@@ -5,11 +5,12 @@ import SwiftUI
 /// 原生不再叠加浮层 → 消除与工具栏的重叠、割裂，做到真正一体。
 struct MainWindowView: View {
     @ObservedObject var model: PanelModel
+    let store: UsageStore
     var body: some View {
         ZStack(alignment: .top) {
             Theme.bg.ignoresSafeArea()
             // 真面板边到边铺满整窗；面板改刷新间隔时经回调同步菜单栏节奏（不再走全局单例）
-            PanelWebView(onRefreshIntervalChanged: { model.applyEmbedRefreshInterval(ms: $0) })
+            PanelWebView(store: store, onRefreshIntervalChanged: { model.applyEmbedRefreshInterval(ms: $0) })
                 .ignoresSafeArea()
             WindowDragArea()                          // 顶部留白带原生拖拽区（隐藏标题栏后可拖窗口）
                 .frame(maxWidth: .infinity).frame(height: 46)
