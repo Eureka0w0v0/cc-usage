@@ -64,6 +64,7 @@ targets:
       - Tests
       - Sources/Shared
       - Sources/App/AntigravityQuota.swift
+      - Sources/App/QuotaService.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganxing.ccusage.tests
