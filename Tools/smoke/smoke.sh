@@ -11,7 +11,7 @@ python3 "$ROOT/Tools/smoke/extract_handle.py" "$ROOT/Sources/App/PanelWebView.sw
 SOURCES=()
 while IFS= read -r f; do SOURCES+=("$f"); done < <(find "$ROOT/Sources/Shared" -name '*.swift')
 swiftc -O -wmo -swift-version 5 -target arm64-apple-macos14.0 "${SOURCES[@]}" \
-  "$ROOT/Sources/App/MenuBarKeys.swift" "$OUT/SmokeBridge.swift" "$ROOT/Tools/smoke/serve/main.swift" \
+  "$OUT/SmokeBridge.swift" "$ROOT/Tools/smoke/serve/main.swift" \
   -lsqlite3 -o "$OUT/bridgeserve"
 
 TZ=Asia/Tokyo node "$ROOT/Tools/smoke/smoke.mjs" "$OUT/bridgeserve" "$FROZEN" \

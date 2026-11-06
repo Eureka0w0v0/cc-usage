@@ -50,12 +50,7 @@ final class PanelModel: ObservableObject {
     }
 
     /// 单个 AI 的 D/W/M 汇总（只算勾了码片的 app，reload 时装配）。
-    struct AppPeriods: Sendable {
-        var today: UsageSummary?
-        var week: UsageSummary?
-        var month: UsageSummary?
-    }
-    @Published var mbAppSummaries: [String: AppPeriods] = [:]
+    @Published var mbAppSummaries: [String: MenuBarDataLoader.AppPeriods] = [:]
     /// Codex 限额窗口快照（勾了 codex.quota 才扫描）。
     @Published var mbCodexQuota: [CodexQuota.Window] = []
     /// Antigravity 官方额度各档（勾了 agy.quota.* 或展开设置分组才联网查）。
@@ -212,11 +207,7 @@ final class PanelModel: ObservableObject {
 
     /// 一次后台 reload 的产出（值类型，跨线程安全）。
     private struct ReloadOutput: Sendable {
-        var snap: UsageSnapshot?
-        var today: UsageSummary?
-        var week: UsageSummary?
-        var month: UsageSummary?
-        var appSummaries: [String: AppPeriods] = [:]
+        var data: MenuBarDataLoader.Output?
         var codexWindows: [CodexQuota.Window] = []
         var errorText: String?
     }
@@ -227,7 +218,7 @@ final class PanelModel: ObservableObject {
         if isReloading { pendingReload = true; return }
         isReloading = true
 
-        let store = self.store
+        let loader = MenuBarDataLoader(store: store)
         let chips = mbAppChips   // 值拷贝进后台闭包，避免在途中被设置面板改动
         // Codex 窗口列表：勾了码片要用，设置面板展开 Codex 分组也要用（得先有列表才能给出勾选项）。
         // 扫描本身是主线程碰不得的活（~/.codex/sessions 递归枚举 + 尾读），一律在这条后台链上做。
@@ -238,34 +229,7 @@ final class PanelModel: ObservableObject {
             let out = await Task.detached(priority: .userInitiated) { () -> ReloadOutput in
                 var o = ReloadOutput()
                 do {
-                    // 缺省 filter = 本地今日零点 → now（resolvedFilter），全部来源/模型——
-                    // 与菜单栏「今日」完全同口径，snap.today 直接复用，不再单独多算一次。
-                    // 菜单栏只读 today/trend/lastEventAt，累计值拿了就扔 → 跳过那次全库聚合。
-                    o.snap = try store.snapshot(filter: UsageFilter(), includeCumulative: false)
-                    o.today = o.snap?.today
-                    // 菜单栏 W/M：近 7 天 / 近 30 天，全部来源。按自然日回溯（含今天、从当地零点起），
-                    // 和主窗口的 7d / 30d 预设同一口径；不用日历「本周/本月」——月初时「本周」会跨回上月、
-                    // 反比「本月」多。回溯起点 30 天 ≤ 7 天 ≤ 今天零点，「月≥周≥日」照样成立。
-                    let nowDate = Date()
-                    let now = Int64(nowDate.timeIntervalSince1970)
-                    let cal = Calendar.current
-                    let weekStart = UsageWindow.lookbackStart(days: 7, now: nowDate, calendar: cal)
-                    let monthStart = UsageWindow.lookbackStart(days: 30, now: nowDate, calendar: cal)
-                    o.week  = try? store.rangeSummary(UsageFilter(start: weekStart, end: now))
-                    o.month = try? store.rangeSummary(UsageFilter(start: monthStart, end: now))
-                    // 按 AI 分组的码片：只查勾了的 (app, 周期)，避免白白多跑 SQL
-                    let dayStart = UsageWindow.lookbackStart(days: 1, now: nowDate, calendar: cal)
-                    for app in MBApp.allCases.map(\.rawValue) {
-                        func need(_ p: String) -> Bool {
-                            chips.contains("\(app).tokens.\(p)") || chips.contains("\(app).cost.\(p)")
-                        }
-                        guard need("today") || need("week") || need("month") else { continue }
-                        var s = AppPeriods()
-                        if need("today") { s.today = try? store.rangeSummary(UsageFilter(start: dayStart, end: now, appType: app)) }
-                        if need("week")  { s.week  = try? store.rangeSummary(UsageFilter(start: weekStart, end: now, appType: app)) }
-                        if need("month") { s.month = try? store.rangeSummary(UsageFilter(start: monthStart, end: now, appType: app)) }
-                        o.appSummaries[app] = s
-                    }
+                    o.data = try loader.load(chips: chips)
                     // codex.quota.<窗口标签>（如 codex.quota.5H / codex.quota.30D）
                     if wantCodex { o.codexWindows = CodexQuota.latest() }
                 } catch {
@@ -277,12 +241,12 @@ final class PanelModel: ObservableObject {
             guard let self else { return }
             if let err = out.errorText {
                 self.error = err
-            } else {
-                self.snap = out.snap
-                self.mbToday = out.today
-                self.mbWeek = out.week
-                self.mbMonth = out.month
-                self.mbAppSummaries = out.appSummaries
+            } else if let data = out.data {
+                self.snap = data.snap
+                self.mbToday = data.today
+                self.mbWeek = data.week
+                self.mbMonth = data.month
+                self.mbAppSummaries = data.appSummaries
                 self.mbCodexQuota = out.codexWindows
                 self.error = nil
                 // Antigravity 走联网查询（OAuth + Google API），独立 Task 不阻塞 reload；

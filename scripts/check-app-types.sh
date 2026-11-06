@@ -39,7 +39,7 @@ if not m:
 upstream_apps = set(re.findall(r'"([^"]+)"', m.group(1)))
 
 # 本仓库：MBApp 的 case 列表
-mb = (root / "Sources/App/MenuBarKeys.swift").read_text(encoding="utf-8")
+mb = (root / "Sources/Shared/MenuBar/MenuBarKeys.swift").read_text(encoding="utf-8")
 m = re.search(r"enum MBApp: String, CaseIterable \{.*?\n\s*case ([^\n]+)\n", mb, re.S)
 if not m:
     sys.exit("❌ 解析不到 MBApp 的 case 行 —— 本仓库结构可能变了")
@@ -52,7 +52,7 @@ LOCAL_ONLY: set = set()
 missing = upstream_apps - local_apps
 if missing:
     fail.append(f"MBApp 缺少上游用量 app：{sorted(missing)}\n"
-                f"   → 在 Sources/App/MenuBarKeys.swift 的 MBApp 末尾追加，并在\n"
+                f"   → 在 Sources/Shared/MenuBar/MenuBarKeys.swift 的 MBApp 末尾追加，并在\n"
                 f"     MenuBarSettingsView.swift 加对应分组 + MBKey 的 group 键")
 extra = local_apps - upstream_apps - LOCAL_ONLY
 if extra:
