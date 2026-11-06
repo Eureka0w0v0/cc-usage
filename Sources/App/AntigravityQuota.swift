@@ -192,23 +192,9 @@ actor AntigravityQuota {
         guard let bin = dirs.map({ ($0 as NSString).appendingPathComponent("agy") })
             .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return nil }
 
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: bin)
-        proc.arguments = ["--version"]
-        let out = Pipe()
-        proc.standardOutput = out
-        proc.standardError = FileHandle.nullDevice
-        proc.standardInput = FileHandle.nullDevice
-        let finished = DispatchSemaphore(value: 0)
-        proc.terminationHandler = { _ in finished.signal() }
-        do { try proc.run() } catch { return nil }
-        if finished.wait(timeout: .now() + versionProbeTimeout) == .timedOut {
-            proc.terminate()
-            return nil
-        }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        guard proc.terminationStatus == 0 else { return nil }
-        return AntigravityQuotaParsing.parseVersion(String(decoding: data, as: UTF8.self))
+        guard let out = ProcessRunner.run(URL(fileURLWithPath: bin), ["--version"], timeout: versionProbeTimeout),
+              out.status == 0 else { return nil }
+        return AntigravityQuotaParsing.parseVersion(String(decoding: out.stdout, as: UTF8.self))
     }
 
     // MARK: - HTTP helpers

@@ -152,6 +152,10 @@ enum QuotaService {
 /// 纯 Foundation、可在后台线程执行的凭据读取器。取舍规则（先当前用户账户、再旧查法、
 /// 最后凭据文件）和 JSON 解析都在 `Sources/Shared/Quota/ClaudeCredentialSource.swift`，这里只起进程、读文件。
 enum ClaudeCredentialReader {
+    /// `security` 最多等多久。钥匙串弹窗要等用户点，不能太短；但也不能无限：这段卡住时 QuotaCache.inflight 不结束，
+    /// 所有 get_quota 搭车方一起等。超时当查不到，接着读凭据文件。
+    private static let keychainTimeout: TimeInterval = 60
+
     /// 按优先级读取：Keychain → 文件。返回凭据或降级状态。
     static func read() -> Result<ClaudeCredential, QuotaStatus> {
         // 来源 1：macOS Keychain。上游取 $USER；从访达启动时环境里没有它的话退回登录名（同一个值）。
@@ -181,19 +185,10 @@ enum ClaudeCredentialReader {
         }
     }
 
-    /// 跑一次 `/usr/bin/security <arguments>`；进程起不来返回 nil。
-    /// stderr 接空设备：不读的管道一旦写满，子进程会卡在 write 上、这里的 waitUntilExit 永远等不到。
+    /// 跑一次 `/usr/bin/security <arguments>`；进程起不来或超时返回 nil。
     private static func runSecurity(_ arguments: [String]) -> SecurityLookupOutput? {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        proc.arguments = arguments
-        let out = Pipe()
-        proc.standardOutput = out
-        proc.standardError = FileHandle.nullDevice
-        do { try proc.run() } catch { return nil }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        proc.waitUntilExit()
-        return SecurityLookupOutput(status: proc.terminationStatus, stdout: data)
+        ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/security"), arguments, timeout: keychainTimeout)
+            .map { SecurityLookupOutput(status: $0.status, stdout: $0.stdout) }
     }
 }
 

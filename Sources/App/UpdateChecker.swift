@@ -199,16 +199,19 @@ final class UpdateChecker: ObservableObject {
         return file
     }
 
+    /// 解压的上限。包只有几 MB，正常一两秒；卡住时要回到「更新失败」，不能一直显示 Installing。
+    private nonisolated static let unzipTimeout: TimeInterval = 120
+
     /// ditto 解压并返回包内的 .app。
     private nonisolated static func extractApp(from zip: URL) throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ccusage-update-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        p.arguments = ["-xk", zip.path, dir.path]
-        try p.run(); p.waitUntilExit()
-        guard p.terminationStatus == 0 else { throw Err("unzip failed (ditto exit \(p.terminationStatus))") }
+        guard let out = ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/ditto"), ["-xk", zip.path, dir.path],
+                                          timeout: unzipTimeout) else {
+            throw Err("unzip failed or timed out")
+        }
+        guard out.status == 0 else { throw Err("unzip failed (ditto exit \(out.status))") }
         let apps = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?
             .filter { $0.pathExtension == "app" } ?? []
         guard let app = apps.first else { throw Err("no .app in archive") }
