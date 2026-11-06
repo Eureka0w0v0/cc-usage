@@ -39,7 +39,7 @@ final class PanelModel: ObservableObject {
     /// 是主观取舍 → 给个开关，不替用户拍板。
     @Published var mbQuotaBar: Bool  { didSet { persist(MBKey.quotaBar, mbQuotaBar) } }
 
-    /// 按 AI 分组的码片选中集（"claude.tokens.today" / "codex.quota" …）。
+    /// 按 AI 分组的码片选中集（ChipKey 的 rawValue）。
     /// didSet 落盘 + 立即补一轮 reload，让新勾选的数字马上出现。
     @Published var mbAppChips: Set<String> {
         didSet {
@@ -70,14 +70,14 @@ final class PanelModel: ObservableObject {
         UserDefaults.standard.set(val, forKey: key)
     }
 
-    func chipOn(_ key: String) -> Bool { mbAppChips.contains(key) }
+    func chipOn(_ key: ChipKey) -> Bool { mbAppChips.contains(key) }
     /// 设置面板 checkbox 的绑定入口（Set 成员 ↔ Toggle）。
-    func chipBinding(_ key: String) -> Binding<Bool> {
+    func chipBinding(_ key: ChipKey) -> Binding<Bool> {
         Binding(
             get: { [weak self] in self?.mbAppChips.contains(key) ?? false },
             set: { [weak self] on in
                 guard let self else { return }
-                if on { self.mbAppChips.insert(key) } else { self.mbAppChips.remove(key) }
+                if on { self.mbAppChips.insert(key.rawValue) } else { self.mbAppChips.remove(key.rawValue) }
             }
         )
     }
@@ -151,7 +151,7 @@ final class PanelModel: ObservableObject {
         reload()
         restartTimer()
         if mbAnyQuotaOn { refreshQuotaNow() }   // 启动时若已开启额度码片，立即取一次
-        if mbAppChips.contains(where: { $0.hasPrefix("agy.quota.") }) { refreshAntigravityNow() }
+        if mbAppChips.hasQuotaChip(.agy) { refreshAntigravityNow() }
         updater.start()
         // 状态项可见性巡检：真被挤掉后 2s 内按实测空位一步压回；全屏/锁屏等遮蔽不动宽度
         observeMenuBarConcealment()
@@ -223,8 +223,7 @@ final class PanelModel: ObservableObject {
         let chips = mbAppChips   // 值拷贝进后台闭包，避免在途中被设置面板改动
         // Codex 窗口列表：勾了码片要用，设置面板展开 Codex 分组也要用（得先有列表才能给出勾选项）。
         // 扫描本身是主线程碰不得的活（~/.codex/sessions 递归枚举 + 尾读），一律在这条后台链上做。
-        let wantCodex = chips.contains { $0.hasPrefix("codex.quota.") }
-            || UserDefaults.standard.bool(forKey: MBKey.groupCodex)
+        let wantCodex = chips.hasQuotaChip(.codex) || UserDefaults.standard.bool(forKey: MBKey.groupCodex)
 
         Task { [weak self] in
             let out = await Task.detached(priority: .userInitiated) { () -> ReloadOutput in
@@ -252,7 +251,7 @@ final class PanelModel: ObservableObject {
                 self.error = nil
                 // Antigravity 走联网查询（OAuth + Google API），独立 Task 不阻塞 reload；
                 // 有勾选或设置面板需要列表时才发起。
-                if self.mbAppChips.contains(where: { $0.hasPrefix("agy.quota.") }) {
+                if self.mbAppChips.hasQuotaChip(.agy) {
                     self.refreshAntigravityNow()
                 }
                 self.reloadWidgetsThrottled()

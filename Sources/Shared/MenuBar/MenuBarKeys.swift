@@ -48,7 +48,7 @@ enum EmbedKey {
 }
 
 /// 菜单栏可分组展示的 AI 来源。All（全部合计）不在此枚举里——它就是 MBKey 那组旧开关。
-/// 码片 key 格式 "\(rawValue).tokens.today" / "\(rawValue).cost.week" / "codex.quota"。
+/// 码片键见 ChipKey。
 enum MBApp: String, CaseIterable {
     // rawValue 必须等于 cc-switch DB 的 app_type（grokbuild 而非 grok）。
     //
@@ -88,4 +88,31 @@ enum MBApp: String, CaseIterable {
         case .pi: return nil
         }
     }
+}
+
+/// 按 AI 分组的码片键。`mb.appChips` 里存的就是 rawValue，格式变了用户的勾选就丢了：
+///   <app>.tokens.<today|week|month>、<app>.cost.<today|week|month>、<app>.quota.<额度档>
+/// 选中集本身仍是 Set<String>：里面可能有更早版本留下、这一版不认识的键，要原样保留。
+enum ChipKey: Hashable {
+    enum Metric: String, CaseIterable { case tokens, cost }
+    enum Period: String, CaseIterable { case today, week, month }
+
+    case usage(MBApp, Metric, Period)
+    /// 额度档：Codex 是窗口标签（5H / 7D / 30D），Antigravity 是桶 id。
+    case quota(MBApp, String)
+
+    var rawValue: String {
+        switch self {
+        case .usage(let app, let metric, let period): return "\(app.rawValue).\(metric.rawValue).\(period.rawValue)"
+        case .quota(let app, let tier): return Self.quotaPrefix(app) + tier
+        }
+    }
+
+    static func quotaPrefix(_ app: MBApp) -> String { "\(app.rawValue).quota." }
+}
+
+extension Set where Element == String {
+    func contains(_ key: ChipKey) -> Bool { contains(key.rawValue) }
+    /// 这一家有没有勾任何额度码片。
+    func hasQuotaChip(_ app: MBApp) -> Bool { contains { $0.hasPrefix(ChipKey.quotaPrefix(app)) } }
 }

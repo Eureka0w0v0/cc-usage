@@ -108,12 +108,11 @@ struct MenuBarLabel: View {
         let all = segments.map(\.text).joined(separator: "  ")
         if !all.isEmpty { out.append(Piece(icon: nil, title: nil, text: all, quotas: [])) }
         for app in MBApp.allCases {
-            let a = app.rawValue
-            let sums = model.mbAppSummaries[a]
+            let sums = model.mbAppSummaries[app.rawValue]
             var segs: [String] = []
             var quotas: [QuotaChip] = []
-            func add(_ letter: String, _ s: UsageSummary?, _ tokKey: String, _ costKey: String) {
-                let tok = model.chipOn(tokKey), cost = model.chipOn(costKey)
+            func add(_ letter: String, _ s: UsageSummary?, _ period: ChipKey.Period) {
+                let tok = model.chipOn(.usage(app, .tokens, period)), cost = model.chipOn(.usage(app, .cost, period))
                 guard tok || cost else { return }
                 guard let s else { segs.append("\(letter):—"); return }   // 同上：占位撑住宽度
                 var p: [String] = []
@@ -121,9 +120,9 @@ struct MenuBarLabel: View {
                 if cost { p.append(Fmt.costCompact(s.cost)) }
                 segs.append("\(letter):\(p.joined(separator: "·"))")
             }
-            add("D", sums?.today, "\(a).tokens.today", "\(a).cost.today")
-            add("W", sums?.week,  "\(a).tokens.week",  "\(a).cost.week")
-            add("M", sums?.month, "\(a).tokens.month", "\(a).cost.month")
+            add("D", sums?.today, .today)
+            add("W", sums?.week, .week)
+            add("M", sums?.month, .month)
             // 额度段跟在所属 AI 段内：Claude 走官方接口两档，Codex 走本地快照（窗口自适应）
             if app == .claude {
                 // 窗口标签一律用时长。原来七日额度叫 "W"，而 All 组的 "W" 是「本周用量」——
@@ -132,8 +131,8 @@ struct MenuBarLabel: View {
                 if model.mbQuotaWeek { quotas.append(QuotaChip(label: "7D", pct: tier("seven_day")?.utilization)) }
             }
             if app == .codex {
-                let anyOn = model.mbAppChips.contains { $0.hasPrefix("codex.quota.") }
-                let sel = model.mbCodexQuota.filter { model.chipOn("codex.quota.\($0.label)") }
+                let anyOn = model.mbAppChips.hasQuotaChip(.codex)
+                let sel = model.mbCodexQuota.filter { model.chipOn(.quota(.codex, $0.label)) }
                 if anyOn && model.mbCodexQuota.isEmpty {
                     quotas.append(QuotaChip(label: "—", pct: nil))   // 勾了但没扫到快照（没装 Codex / 会话被清）
                 } else {
@@ -143,8 +142,8 @@ struct MenuBarLabel: View {
             if app == .agy {
                 // 官方额度按桶勾选（Gemini 5H / Gemini 7D / Claude 5H / Claude 7D，服务端回几档就有几档）
                 let tiers = model.mbAntigravityQuota
-                let anyOn = model.mbAppChips.contains { $0.hasPrefix("agy.quota.") }
-                let sel = tiers.filter { model.chipOn("agy.quota.\($0.bucketId)") }
+                let anyOn = model.mbAppChips.hasQuotaChip(.agy)
+                let sel = tiers.filter { model.chipOn(.quota(.agy, $0.bucketId)) }
                 if anyOn && tiers.isEmpty {
                     quotas.append(QuotaChip(label: "—", pct: nil))   // 勾了但没查到（没装 / 未登录 / 网络失败）
                 } else {

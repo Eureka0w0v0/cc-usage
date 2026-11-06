@@ -58,7 +58,7 @@ struct MenuBarSettingsView: View {
                         noQuota("No Codex data")
                     } else {
                         ForEach(windows, id: \.label) { w in
-                            check(w.label, model.chipBinding("codex.quota.\(w.label)"))
+                            check(w.label, model.chipBinding(.quota(.codex, w.label)))
                         }
                     }
                 }
@@ -104,7 +104,7 @@ struct MenuBarSettingsView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(tiers) { t in
                                 check("\(t.label) · \(Int(t.usedPercent.rounded()))%",
-                                      model.chipBinding("agy.quota.\(t.bucketId)"))
+                                      model.chipBinding(.quota(.agy, t.bucketId)))
                             }
                         }
                     }
@@ -140,16 +140,15 @@ struct MenuBarSettingsView: View {
 
     /// 单个 AI 的 Tokens/Cost 两行（D/W/M 勾选走 chipBinding，落盘 + 即时补数）。
     @ViewBuilder private func appRows(_ app: MBApp) -> some View {
-        let a = app.rawValue
         row("Tokens") {
-            check("Day",   model.chipBinding("\(a).tokens.today"))
-            check("Week",  model.chipBinding("\(a).tokens.week"))
-            check("Month", model.chipBinding("\(a).tokens.month"))
+            check("Day",   model.chipBinding(.usage(app, .tokens, .today)))
+            check("Week",  model.chipBinding(.usage(app, .tokens, .week)))
+            check("Month", model.chipBinding(.usage(app, .tokens, .month)))
         }
         row("Cost") {
-            check("Day",   model.chipBinding("\(a).cost.today"))
-            check("Week",  model.chipBinding("\(a).cost.week"))
-            check("Month", model.chipBinding("\(a).cost.month"))
+            check("Day",   model.chipBinding(.usage(app, .cost, .today)))
+            check("Week",  model.chipBinding(.usage(app, .cost, .week)))
+            check("Month", model.chipBinding(.usage(app, .cost, .month)))
         }
     }
 

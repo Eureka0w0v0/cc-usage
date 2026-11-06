@@ -35,19 +35,19 @@ struct MenuBarDataLoader {
         out.week = try? store.rangeSummary(UsageFilter(start: weekStart, end: end), calendar: calendar)
         out.month = try? store.rangeSummary(UsageFilter(start: monthStart, end: end), calendar: calendar)
         let dayStart = UsageWindow.lookbackStart(days: 1, now: now, calendar: calendar)
-        for app in MBApp.allCases.map(\.rawValue) {
-            func need(_ p: String) -> Bool {
-                chips.contains("\(app).tokens.\(p)") || chips.contains("\(app).cost.\(p)")
+        for app in MBApp.allCases {
+            func need(_ p: ChipKey.Period) -> Bool {
+                chips.contains(.usage(app, .tokens, p)) || chips.contains(.usage(app, .cost, p))
             }
             func summary(_ start: Int64) -> UsageSummary? {
-                try? store.rangeSummary(UsageFilter(start: start, end: end, appType: app), calendar: calendar)
+                try? store.rangeSummary(UsageFilter(start: start, end: end, appType: app.rawValue), calendar: calendar)
             }
-            guard need("today") || need("week") || need("month") else { continue }
+            guard need(.today) || need(.week) || need(.month) else { continue }
             var s = AppPeriods()
-            if need("today") { s.today = summary(dayStart) }
-            if need("week") { s.week = summary(weekStart) }
-            if need("month") { s.month = summary(monthStart) }
-            out.appSummaries[app] = s
+            if need(.today) { s.today = summary(dayStart) }
+            if need(.week) { s.week = summary(weekStart) }
+            if need(.month) { s.month = summary(monthStart) }
+            out.appSummaries[app.rawValue] = s
         }
         return out
     }
