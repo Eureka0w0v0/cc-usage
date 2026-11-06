@@ -479,60 +479,10 @@ public final class SessionOverlay {
         }
     }
 
-    // MARK: - 文件收集(对齐 collect_jsonl_files:固定三层,不递归)
+    // MARK: - 文件收集
 
     private func collectJSONLFiles() -> [String] {
-        dirCache.files {
-            let fm = FileManager.default
-            var files: [String] = []
-            var dirs: [String] = [projectsDir]
-            guard let projects = try? fm.contentsOfDirectory(atPath: projectsDir) else { return (files, dirs) }
-            for proj in projects {
-                let projPath = (projectsDir as NSString).appendingPathComponent(proj)
-                guard isDirectory(projPath) else { continue }
-                dirs.append(projPath)
-                guard let subs = try? fm.contentsOfDirectory(atPath: projPath) else { continue }
-                for sub in subs {
-                    let subPath = (projPath as NSString).appendingPathComponent(sub)
-                    if sub.hasSuffix(".jsonl") {
-                        files.append(subPath)                    // 主会话
-                    } else if isDirectory(subPath) {
-                        // 会话目录本身也要记：它下面「有没有长出 subagents/」这个判断
-                        // 就依赖它的内容，漏记会让新开的子 agent 一直看不见。
-                        dirs.append(subPath)
-                        let subagents = (subPath as NSString).appendingPathComponent("subagents")
-                        guard isDirectory(subagents) else { continue }
-                        dirs.append(subagents)
-                        appendJSONLChildren(subagents, &files)   // 子 agent
-                        let workflows = (subagents as NSString).appendingPathComponent("workflows")
-                        if isDirectory(workflows),
-                           let wfs = try? fm.contentsOfDirectory(atPath: workflows) {
-                            dirs.append(workflows)
-                            for wf in wfs {                      // Workflow 子 agent
-                                let wfPath = (workflows as NSString).appendingPathComponent(wf)
-                                if isDirectory(wfPath) {
-                                    dirs.append(wfPath)
-                                    appendJSONLChildren(wfPath, &files)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return (files, dirs)
-        }
-    }
-
-    private func appendJSONLChildren(_ dir: String, _ files: inout [String]) {
-        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
-        for e in entries where e.hasSuffix(".jsonl") {
-            files.append((dir as NSString).appendingPathComponent(e))
-        }
-    }
-
-    private func isDirectory(_ path: String) -> Bool {
-        var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+        dirCache.files { ClaudeSessionFiles.discover(projectsDir) }
     }
 
     /// mtime 纳秒 + 文件大小(与上游 metadata_modified_nanos 同精度,用 stat 拿真 ns)。
