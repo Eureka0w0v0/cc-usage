@@ -425,11 +425,11 @@ public final class SessionOverlay {
                        cacheCreation: Int64, cacheCreation1h: Int64)
         -> (input: Double, output: Double, cacheRead: Double, cacheCreation: Double) {
         guard let p = pricing.find(model) else { return (0, 0, 0, 0) }
-        return (Double(input) * p.input / 1_000_000,
-                Double(output) * p.output / 1_000_000,
-                Double(cacheRead) * p.cacheRead / 1_000_000,
-                ClaudeCacheWriteBilling.cost(tokens: cacheCreation, oneHourTokens: cacheCreation1h,
-                                             pricePerMillion: p.cacheCreation, oneHourRate: oneHourRate ?? true))
+        var c = p.cost(input: input, output: output, cacheRead: cacheRead, cacheCreation: 0)
+        c.cacheCreation = ClaudeCacheWriteBilling.cost(tokens: cacheCreation, oneHourTokens: cacheCreation1h,
+                                                       pricePerMillion: p.cacheCreation,
+                                                       oneHourRate: oneHourRate ?? true)
+        return c
     }
 
     /// 已被 cc-switch 入库的行从叠加层剔除(request_id 精确去重的兜底)。

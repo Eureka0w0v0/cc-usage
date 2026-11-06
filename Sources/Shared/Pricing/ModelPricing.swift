@@ -367,7 +367,7 @@ public enum ModelPricing {
     /// 动机：SQL 侧只做精确匹配，而 Swift 侧 `lookup` 会走候选链（剥命名空间、
     /// 剥日期尾、点转横线、前缀兜底）。不预解析的话 `anthropic/claude-opus-4.6`
     /// 这类 id 在聚合里命不中记 $0、在逐行补算里却能命中——同一屏上下两个数打架。
-    /// 库里 distinct 值通常十几个，代价远小于本文件已有的 188 条静态插入。
+    /// 库里 distinct 值通常十几个，代价远小于本文件已有的两百多条静态插入。
     private static func seedResolvedAliases(_ db: OpaquePointer) {
         var ids = Set<String>()
         for tbl in ["proxy_request_logs", "usage_daily_rollups"] {
@@ -531,12 +531,10 @@ public enum ModelPricing {
         billableInput: Int64, output: Int64, cacheRead: Int64, cacheCreation: Int64
     ) -> (input: String, output: String, cacheRead: String, cacheCreation: String, total: String)? {
         guard let p = lookup(model) else { return nil }
-        let ic = Double(billableInput) * p.input / 1_000_000
-        let oc = Double(output) * p.output / 1_000_000
-        let crc = Double(cacheRead) * p.cacheRead / 1_000_000
-        let ccc = Double(cacheCreation) * p.cacheCreation / 1_000_000
+        let c = PricingTable.Price(p).cost(input: billableInput, output: output,
+                                           cacheRead: cacheRead, cacheCreation: cacheCreation)
         let mult = multiplier == 0 ? 1.0 : multiplier
-        let fmt = { (v: Double) in String(format: "%.6f", v) }
-        return (fmt(ic), fmt(oc), fmt(crc), fmt(ccc), fmt((ic + oc + crc + ccc) * mult))
+        return (Fmt.usd6(c.input), Fmt.usd6(c.output), Fmt.usd6(c.cacheRead), Fmt.usd6(c.cacheCreation),
+                Fmt.usd6((c.input + c.output + c.cacheRead + c.cacheCreation) * mult))
     }
 }

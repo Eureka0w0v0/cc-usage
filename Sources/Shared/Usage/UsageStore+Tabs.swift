@@ -216,17 +216,16 @@ extension UsageStore {
     /// 照上游有 499 / 500），计时是叠加层现场估的（SessionOverlay）或 OMP 自己记的（OmpOverlay），没有计时时
     /// latencyMs 0、firstTokenMs nil，与库里的约定相同。
     static func overlayRequestLogRow(_ r: OverlayRow) -> RequestLogRow {
-        let fmt6 = { (v: Double) in String(format: "%.6f", v) }
-        return RequestLogRow(
+        RequestLogRow(
             requestId: r.requestId, providerId: r.providerId,
             providerName: r.providerName, appType: r.appType,
             model: r.model, requestModel: r.requestModel ?? r.model, pricingModel: nil,
             costMultiplier: "1.0",
             inputTokens: r.input, outputTokens: r.output,
             cacheReadTokens: r.cacheRead, cacheCreationTokens: r.cacheCreation,
-            inputCostUsd: fmt6(r.inputCost), outputCostUsd: fmt6(r.outputCost),
-            cacheReadCostUsd: fmt6(r.cacheReadCost), cacheCreationCostUsd: fmt6(r.cacheCreationCost),
-            totalCostUsd: fmt6(r.totalCost),
+            inputCostUsd: Fmt.usd6(r.inputCost), outputCostUsd: Fmt.usd6(r.outputCost),
+            cacheReadCostUsd: Fmt.usd6(r.cacheReadCost), cacheCreationCostUsd: Fmt.usd6(r.cacheCreationCost),
+            totalCostUsd: Fmt.usd6(r.totalCost),
             isStreaming: true, latencyMs: r.latencyMs, firstTokenMs: r.firstTokenMs, durationMs: nil,
             statusCode: Int(r.statusCode), errorMessage: r.errorMessage, createdAt: r.createdAt,
             dataSource: r.dataSource   // 与 dataSourceBreakdown 同一真值，不按 providerId 反推

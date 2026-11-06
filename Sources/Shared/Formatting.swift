@@ -45,6 +45,9 @@ public enum Fmt {
         return "$" + sign + grouped + (parts.count > 1 ? "." + parts[1] : "")
     }
 
+    /// 金额的线上格式：桥接 JSON 和请求日志的成本都是 6 位小数的字符串（对齐 usage_stats.rs 的 format!("{:.6}")）。
+    public static func usd6(_ v: Double) -> String { String(format: "%.6f", v) }
+
     /// 千分位分隔，还原「153,980,903」。formatter 静态复用（走势图悬停时每帧都调）。
     public static func grouped(_ n: Int64) -> String {
         groupedFormatter.string(from: NSNumber(value: n)) ?? "\(n)"

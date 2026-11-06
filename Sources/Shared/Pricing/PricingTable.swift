@@ -12,6 +12,20 @@ struct PricingTable {
         var output: Double
         var cacheRead: Double
         var cacheCreation: Double
+
+        /// 成本 = tokens × 每百万单价。先乘后除的次序不能换：与 cc-switch 算出的数要逐位一致。
+        static func cost(_ tokens: Double, perMillion price: Double) -> Double {
+            tokens * price / 1_000_000
+        }
+
+        /// 四项成本，倍率 1，缓存写入按定价表的 5 分钟价（Claude 的 1 小时档见 ClaudeCacheWriteBilling）。
+        func cost(input: Int64, output: Int64, cacheRead: Int64, cacheCreation: Int64)
+            -> (input: Double, output: Double, cacheRead: Double, cacheCreation: Double) {
+            (Self.cost(Double(input), perMillion: self.input),
+             Self.cost(Double(output), perMillion: self.output),
+             Self.cost(Double(cacheRead), perMillion: self.cacheRead),
+             Self.cost(Double(cacheCreation), perMillion: self.cacheCreation))
+        }
     }
 
     /// 键是小写 model_id（见 load）。
@@ -61,10 +75,12 @@ struct PricingTable {
         }
         // db 没有该模型(上游 seed 尚未跟进新模型)→ 回落内置表。库里已有的定价
         // 永远优先，所以用户在 cc-switch 改过的价不会被这里覆盖。
-        if let b = ModelPricing.lookup(modelId) {
-            return Price(input: b.input, output: b.output,
-                         cacheRead: b.cacheRead, cacheCreation: b.cacheCreation)
-        }
-        return nil
+        return ModelPricing.lookup(modelId).map(Price.init)
+    }
+}
+
+extension PricingTable.Price {
+    init(_ row: ModelPricing.Row) {
+        self.init(input: row.input, output: row.output, cacheRead: row.cacheRead, cacheCreation: row.cacheCreation)
     }
 }

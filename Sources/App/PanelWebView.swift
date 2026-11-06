@@ -293,7 +293,7 @@ struct PanelWebView: NSViewRepresentable {
                 "providerName": s.providerName,
                 "requestCount": s.requestCount,
                 "totalTokens": s.totalTokens,
-                "totalCost": String(format: "%.6f", s.totalCost),
+                "totalCost": Fmt.usd6(s.totalCost),
                 "successRate": s.successRate,
                 "avgLatencyMs": s.avgLatencyMs,
             ].merging(performanceDict(s.performance)) { current, _ in current }
@@ -305,8 +305,8 @@ struct PanelWebView: NSViewRepresentable {
                 "model": s.model,
                 "requestCount": s.requestCount,
                 "totalTokens": s.totalTokens,
-                "totalCost": String(format: "%.6f", s.totalCost),
-                "avgCostPerRequest": String(format: "%.6f", s.avgCostPerRequest),
+                "totalCost": Fmt.usd6(s.totalCost),
+                "avgCostPerRequest": Fmt.usd6(s.avgCostPerRequest),
                 "successRate": s.successRate,
             ].merging(performanceDict(s.performance)) { current, _ in current }
         }
@@ -327,7 +327,7 @@ struct PanelWebView: NSViewRepresentable {
         private func summaryDict(_ s: UsageSummary) -> [String: Any] {
             return [
                 "totalRequests": s.requests,
-                "totalCost": String(format: "%.6f", s.cost),
+                "totalCost": Fmt.usd6(s.cost),
                 "totalInputTokens": s.input,
                 "totalOutputTokens": s.output,
                 "totalCacheCreationTokens": s.creation,
@@ -362,7 +362,7 @@ struct PanelWebView: NSViewRepresentable {
                 return [
                     "date": iso.string(from: Date(timeIntervalSince1970: TimeInterval(b.startTs))),
                     "requestCount": b.requestCount,
-                    "totalCost": String(format: "%.6f", b.cost),
+                    "totalCost": Fmt.usd6(b.cost),
                     "totalTokens": b.input + b.output,
                     "totalInputTokens": b.input,
                     "totalOutputTokens": b.output,
@@ -381,7 +381,7 @@ struct PanelWebView: NSViewRepresentable {
                 [
                     "dataSource": $0.dataSource,
                     "requestCount": $0.requestCount,
-                    "totalCostUsd": String(format: "%.6f", $0.totalCost),
+                    "totalCostUsd": Fmt.usd6($0.totalCost),
                 ]
             }
         }

@@ -29,8 +29,8 @@ public enum ClaudeCacheWriteBilling {
     public static func cost(tokens: Int64, oneHourTokens: Int64,
                             pricePerMillion: Double, oneHourRate: Bool) -> Double {
         let oneHour = oneHourRate ? min(max(oneHourTokens, 0), tokens) : 0
-        return (Double(tokens - oneHour) + Double(oneHour) * oneHourMultiplier)
-            * pricePerMillion / 1_000_000
+        return PricingTable.Price.cost(Double(tokens - oneHour) + Double(oneHour) * oneHourMultiplier,
+                                       perMillion: pricePerMillion)
     }
 
     /// 「4.0.12」→ [4, 0, 12]。只认开头的数字和点（「4.0.7-beta.1」→ [4, 0, 7]），认不出为 nil。

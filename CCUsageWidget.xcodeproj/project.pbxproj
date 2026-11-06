@@ -128,6 +128,7 @@
 		99E489EF52A92F4BEE5B8C08 /* DataSourceBreakdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450359DFC5AEC0C170B78D45 /* DataSourceBreakdownTests.swift */; };
 		9EA7FB50ED3E1F49F8E4F4B3 /* OverlayFileIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 869C9FCEB64DF373B9C1A343 /* OverlayFileIO.swift */; };
 		9F2A4E878B48EC111C58B147 /* ClaudeQuotaParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5562EEAF2958AE3D6E9EDE /* ClaudeQuotaParsing.swift */; };
+		A05600C8DCF485943C5D11A9 /* PricingCostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 661BD2166B5D419FC83C3138 /* PricingCostTests.swift */; };
 		A0CB7E73D3914366ED32B5C8 /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = C220121AE696BC3A8889DECB /* TrendChart.swift */; };
 		A1876B0DA565B57B6D016E05 /* OverlayFileIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 869C9FCEB64DF373B9C1A343 /* OverlayFileIO.swift */; };
 		A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */ = {isa = PBXBuildFile; fileRef = 7C5506EFDDB250B8217B59FD /* brand-gemini.png */; };
@@ -293,6 +294,7 @@
 		634C51174DEDC2D7B7C89288 /* TrendAxisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendAxisTests.swift; sourceTree = "<group>"; };
 		64A17EA95052E02B82E244B1 /* StatsRealTotalTokensTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsRealTotalTokensTests.swift; sourceTree = "<group>"; };
 		64E641B0127A816441802E29 /* SessionTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTiming.swift; sourceTree = "<group>"; };
+		661BD2166B5D419FC83C3138 /* PricingCostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingCostTests.swift; sourceTree = "<group>"; };
 		6AC6250907BF253C5B8ABBD1 /* QuotaWarning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWarning.swift; sourceTree = "<group>"; };
 		6B3E5D981FBFF4D027390E89 /* WidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetViews.swift; sourceTree = "<group>"; };
 		6CA2B9D133F5B1BEA18E82D8 /* EmbedSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedSettingsTests.swift; sourceTree = "<group>"; };
@@ -462,6 +464,7 @@
 				8436DCC2F5C5FC6AEF6256B2 /* OverlayStatusTests.swift */,
 				462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */,
 				4A79728DAD95A349D54CBC66 /* PricingCandidatesTests.swift */,
+				661BD2166B5D419FC83C3138 /* PricingCostTests.swift */,
 				93814BF68F4EABE02C4D6FB7 /* ProviderFilterTests.swift */,
 				257C11FFFD819FF62888DFFC /* ProviderStatsIdentityTests.swift */,
 				06F920755A53E1290F9C2A48 /* QuotaWarningTests.swift */,
@@ -926,6 +929,7 @@
 				B577BCB5242D1078D673C3E4 /* OverlayStatusTests.swift in Sources */,
 				487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */,
 				CCBC5F29DF2F3BE14EF8DAE4 /* PricingCandidatesTests.swift in Sources */,
+				A05600C8DCF485943C5D11A9 /* PricingCostTests.swift in Sources */,
 				CC095E182D843601C39C0914 /* PricingTable.swift in Sources */,
 				A9FED5E7C3C42C8FA79EDDA7 /* ProviderFilterTests.swift in Sources */,
 				186BAD2B5F7F3BD476D7CC9A /* ProviderStatsIdentityTests.swift in Sources */,

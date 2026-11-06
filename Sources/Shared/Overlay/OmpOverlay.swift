@@ -303,10 +303,11 @@ public final class OmpOverlay {
         if let reported = r.costs.reported {
             c = reported
         } else if let p = pricing.find(r.model) {
-            c.input = Double(r.input) * p.input / 1_000_000
-            c.output = Double(r.output) * p.output / 1_000_000
-            c.cacheRead = Double(r.cacheRead) * p.cacheRead / 1_000_000
-            c.cacheWrite = Double(r.cacheWrite) * p.cacheCreation / 1_000_000
+            let priced = p.cost(input: r.input, output: r.output, cacheRead: r.cacheRead, cacheCreation: r.cacheWrite)
+            c.input = priced.input
+            c.output = priced.output
+            c.cacheRead = priced.cacheRead
+            c.cacheWrite = priced.cacheCreation
             c.total = c.input + c.output + c.cacheRead + c.cacheWrite
         }
         let name = names[r.providerId]
