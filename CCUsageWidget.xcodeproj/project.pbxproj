@@ -133,6 +133,7 @@
 		8DE44302B54F8A2C23F556BF /* TrendLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C2B67C6FF99B506C0B07A6 /* TrendLayoutTests.swift */; };
 		8E258BBA2AA8F30950850AE3 /* BridgePayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DDD80AA4D8CF0ECE41B3B7E /* BridgePayloadTests.swift */; };
 		90C0B88B080D42446840B0E1 /* AntigravityQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */; };
+		91F5123605E04A05CC99D400 /* AntigravityQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */; };
 		9227F582CA4E76EC46D82231 /* AntigravityQuotaParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498E02D62D74B3AB1FCD1C83 /* AntigravityQuotaParsingTests.swift */; };
 		927A7ADE8F197ADD3CCCE84D /* MenuBarDataLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F5822308D03B3BD280180D /* MenuBarDataLoader.swift */; };
 		927EF6C2C404B7A86709DFCF /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC6250907BF253C5B8ABBD1 /* QuotaWarning.swift */; };
@@ -1006,6 +1007,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				91F5123605E04A05CC99D400 /* AntigravityQuota.swift in Sources */,
 				25CDE9BD2D814F2000B35C0B /* AntigravityQuotaParsing.swift in Sources */,
 				9227F582CA4E76EC46D82231 /* AntigravityQuotaParsingTests.swift in Sources */,
 				DA1661CBA41012B0BF7F9E04 /* BridgeArgs.swift in Sources */,

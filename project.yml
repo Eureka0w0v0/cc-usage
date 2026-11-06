@@ -55,6 +55,7 @@ targets:
 
   # ── 单元测试（直接把 Sources/Shared 编进来 → 同模块可见 internal，不依赖宿主 App）──
   # 全部对着临时 sqlite / 临时目录跑，不碰真实 ~/.cc-switch 与 ~/.claude/projects。
+  # 额度层的两个文件也编进来：网络和凭据都能注入，失败路径要测（Shared 不认识 App 符号的保证由 Widget target 把关）。
   # 运行: scripts/test.sh
   CCUsageWidgetTests:
     type: bundle.unit-test
@@ -62,6 +63,7 @@ targets:
     sources:
       - Tests
       - Sources/Shared
+      - Sources/App/AntigravityQuota.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganxing.ccusage.tests

@@ -19,6 +19,9 @@ import SQLite3
 actor AntigravityQuota {
     static let shared = AntigravityQuota()
 
+    /// 一次 HTTP 往返。
+    typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
     // Antigravity 桌面应用公开内置的 Google OAuth 客户端凭据（每个安装包都含，社区工具通用，
     // 非用户私密）。用户真正的私密凭据是 refresh_token，只从本机读取、绝不入库。
     // 分片拼接：避免密钥扫描器把这对公开常量误判为泄露的私密而拦下提交。
@@ -34,6 +37,11 @@ actor AntigravityQuota {
     /// `agy --version` 最多等多久（上游 VERSION_PROBE_TIMEOUT）。
     private static let versionProbeTimeout: TimeInterval = 5
 
+    private let transport: Transport
+    private let storedRefreshToken: @Sendable () -> String?
+    private let localAgyVersion: @Sendable () -> String?
+    private let minInterval: TimeInterval
+
     private var accessToken: String?
     private var accessExpiry = Date.distantPast
     private var projectID: String?
@@ -41,10 +49,21 @@ actor AntigravityQuota {
     private var cache: [AntigravityTier] = []
     private var cacheAt = Date.distantPast
 
+    /// 网络、本机凭据和 agy 版本都从这里注入，测试不碰真实环境。
+    init(transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
+         refreshToken: @escaping @Sendable () -> String? = { AntigravityQuota.readRefreshToken() },
+         agyVersion: @escaping @Sendable () -> String? = { AntigravityQuota.probeAgyVersion() },
+         minInterval: TimeInterval = 30) {
+        self.transport = transport
+        self.storedRefreshToken = refreshToken
+        self.localAgyVersion = agyVersion
+        self.minInterval = minInterval
+    }
+
     /// 各档实时额度；未装 Antigravity / 未登录 / 网络失败返回上次结果（首次为空）。30s 节流。
     /// 失败时保留上次结果（stale-if-error），不闪空。
     func latest() async -> [AntigravityTier] {
-        if Date().timeIntervalSince(cacheAt) < 30 { return cache }
+        if Date().timeIntervalSince(cacheAt) < minInterval { return cache }
         // 闸门在入口就推进,成败一视同仁。只在成功后推进的话 30s 节流对失败路径完全
         // 失效——Dashboard 每 5 秒调一次,凭据一过期就是每小时 720 次带 client_secret
         // 与 refresh_token 的 POST 打向 Google,足以被限流甚至标记异常。
@@ -61,7 +80,7 @@ actor AntigravityQuota {
 
     private func validAccessToken() async -> String? {
         if let t = accessToken, Date() < accessExpiry.addingTimeInterval(-60) { return t }
-        guard let rt = refreshToken() else { return nil }
+        guard let rt = storedRefreshToken() else { return nil }
         guard var req = post(Self.tokenEndpoint) else { return nil }
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let form = ["client_id": Self.clientID, "client_secret": Self.clientSecret,
@@ -77,7 +96,7 @@ actor AntigravityQuota {
     }
 
     /// 从 state.vscdb 的 oauthToken 值里挖出 Google refresh_token（`1//…`）。
-    private func refreshToken() -> String? {
+    private nonisolated static func readRefreshToken() -> String? {
         guard let outer = readOAuthValue(),
               let l1 = Data(base64Encoded: outer) else { return nil }
         // l1 里嵌一段更长的 base64；longestBase64 返回其**解码后**的 blob，明文 refresh_token 在里面
@@ -85,7 +104,7 @@ actor AntigravityQuota {
         return firstRefreshToken(in: l1)
     }
 
-    private func firstRefreshToken(in data: Data) -> String? {
+    private nonisolated static func firstRefreshToken(in data: Data) -> String? {
         // ASCII 扫描：连续可打印段中匹配 "1//" 开头的 token
         var run = [UInt8]()
         for b in data {
@@ -94,7 +113,7 @@ actor AntigravityQuota {
         }
         return pick(&run)
     }
-    private func pick(_ run: inout [UInt8]) -> String? {
+    private nonisolated static func pick(_ run: inout [UInt8]) -> String? {
         guard let s = String(bytes: run, encoding: .ascii), let r = s.range(of: "1//") else { return nil }
         // 只保留 Google refresh_token 合法字符集（base64url + '/'），遇到别的字节即截断，
         // 否则会把后面粘着的 protobuf 字节也带进 token → invalid_grant
@@ -107,7 +126,7 @@ actor AntigravityQuota {
     }
 
     /// 内层 base64（GetUserStatus/oauth protobuf blob），取最长可解码段。
-    private func longestBase64(in bytes: [UInt8]) -> Data? {
+    private nonisolated static func longestBase64(in bytes: [UInt8]) -> Data? {
         func isB64(_ b: UInt8) -> Bool {
             (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 43 || b == 47 || b == 61
         }
@@ -127,7 +146,7 @@ actor AntigravityQuota {
         return best
     }
 
-    private func readOAuthValue() -> String? {
+    private nonisolated static func readOAuthValue() -> String? {
         guard FileManager.default.fileExists(atPath: Self.dbPath) else { return nil }
         var db: OpaquePointer?
         guard sqlite3_open_v2("file:\(Self.dbPath)?mode=ro", &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
@@ -172,9 +191,10 @@ actor AntigravityQuota {
     /// 探测会起子进程、最多等 5 秒，放到 GCD 队列上跑，不占 Swift 并发的协作线程。
     private func resolvedAgyVersion() async -> String {
         if let v = agyVersion { return v }
+        let probe = localAgyVersion
         let v = await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
             DispatchQueue.global(qos: .utility).async {
-                cont.resume(returning: Self.probeAgyVersion() ?? AntigravityQuotaParsing.fallbackAgyVersion)
+                cont.resume(returning: probe() ?? AntigravityQuotaParsing.fallbackAgyVersion)
             }
         }
         agyVersion = v
@@ -210,7 +230,7 @@ actor AntigravityQuota {
         r.setValue(userAgent, forHTTPHeaderField: "User-Agent")
     }
     private func json(_ req: URLRequest) async -> [String: Any]? {
-        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+        guard let (data, resp) = try? await transport(req),
               (resp as? HTTPURLResponse)?.statusCode == 200,
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return obj
