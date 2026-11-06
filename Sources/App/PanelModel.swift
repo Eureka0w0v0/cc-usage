@@ -16,11 +16,14 @@ final class PanelModel: ObservableObject {
     @Published var mbToday: UsageSummary?
     @Published var mbWeek: UsageSummary?
     @Published var mbMonth: UsageSummary?
-    // 官方订阅额度窗口（five_hour / seven_day），供菜单栏电池码片用。
-    // 仅当有「额度」码片开启时才发起查询；实际是否命中官方接口由 QuotaCache 5 分钟节流决定。
-    @Published var quotaTiers: [QuotaTier] = []
+    /// 各家的额度读数，三个来源的类型在写进来时转成 QuotaReading。
+    /// - Claude：官方订阅额度窗口（five_hour / seven_day），有「额度」码片开启时才查；实际是否命中官方接口由
+    ///   QuotaCache 5 分钟节流决定。
+    /// - Codex：限额窗口快照，勾了 codex.quota.* 或展开设置分组才扫描。
+    /// - Antigravity：官方额度各档，勾了 agy.quota.* 或展开设置分组才联网查。
+    @Published var quota: [MBApp: [QuotaReading]] = [:]
     /// Claude 套餐显示名（如 "Max 20x"），随额度一起从凭据里读出来；还没拉过额度时为 nil、界面上不显示。
-    var claudePlanLabel: String? { quotaTiers.lazy.compactMap(\.planLabel).first }
+    @Published var claudePlanLabel: String?
 
     // 菜单栏码片开关——放在 @Published（而非视图里的 @AppStorage）里，因为 MenuBarExtra 的 label
     // 对 @AppStorage 变化不可靠响应，但对本 model 的 @Published 变化一定响应（Tokens 数已验证）。
@@ -51,10 +54,6 @@ final class PanelModel: ObservableObject {
 
     /// 单个 AI 的 D/W/M 汇总（只算勾了码片的 app，reload 时装配）。
     @Published var mbAppSummaries: [String: MenuBarDataLoader.AppPeriods] = [:]
-    /// Codex 限额窗口快照（勾了 codex.quota 才扫描）。
-    @Published var mbCodexQuota: [CodexQuota.Window] = []
-    /// Antigravity 官方额度各档（勾了 agy.quota.* 或展开设置分组才联网查）。
-    @Published var mbAntigravityQuota: [AntigravityTier] = []
 
     /// 菜单栏宽度上限：nil = 全宽（默认）。规则在 WidthGovernor；放在 @Published 里是因为 MenuBarExtra 的
     /// label 只对本 model 的 @Published 变化可靠响应（见上面码片开关的注释）。
@@ -178,8 +177,13 @@ final class PanelModel: ObservableObject {
     func refreshQuotaNow() {
         Task { [weak self] in
             let tiers = await QuotaService.forceTiersForBridge()
-            self?.quotaTiers = tiers
+            self?.applyClaudeQuota(tiers)
         }
+    }
+
+    func applyClaudeQuota(_ tiers: [QuotaTier]) {
+        quota[.claude] = tiers.map(QuotaReading.init)
+        claudePlanLabel = tiers.lazy.compactMap(\.planLabel).first
     }
 
     /// 联网取 Antigravity 官方额度（30s actor 内节流）。设置面板展开或勾选时触发。
@@ -191,7 +195,7 @@ final class PanelModel: ObservableObject {
             let tiers = await AntigravityQuota.shared.latest()
             await MainActor.run {
                 guard let self else { return }
-                self.mbAntigravityQuota = tiers
+                self.quota[.agy] = tiers.map(QuotaReading.init)
                 self.antigravityFetching = false
             }
         }
@@ -209,7 +213,7 @@ final class PanelModel: ObservableObject {
     /// 一次后台 reload 的产出（值类型，跨线程安全）。
     private struct ReloadOutput: Sendable {
         var data: MenuBarDataLoader.Output?
-        var codexWindows: [CodexQuota.Window] = []
+        var codexWindows: [QuotaReading] = []
         var errorText: String?
     }
 
@@ -247,7 +251,7 @@ final class PanelModel: ObservableObject {
                 self.mbWeek = data.week
                 self.mbMonth = data.month
                 self.mbAppSummaries = data.appSummaries
-                self.mbCodexQuota = out.codexWindows
+                self.quota[.codex] = out.codexWindows
                 self.error = nil
                 // Antigravity 走联网查询（OAuth + Google API），独立 Task 不阻塞 reload；
                 // 有勾选或设置面板需要列表时才发起。
@@ -261,7 +265,7 @@ final class PanelModel: ObservableObject {
                 if self.mbAnyQuotaOn {
                     Task { [weak self] in
                         let tiers = await QuotaService.fetchTiersForBridge()
-                        self?.quotaTiers = tiers
+                        self?.applyClaudeQuota(tiers)
                     }
                 }
             }

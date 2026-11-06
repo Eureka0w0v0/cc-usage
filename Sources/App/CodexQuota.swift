@@ -7,11 +7,6 @@ import Foundation
 /// 此时按 0% 展示，避免陈旧百分比误导。窗口标签按 window_minutes 自适应
 /// （Plus/Pro = 5H + 周，Free = 30 天），不写死档位。
 enum CodexQuota {
-    struct Window: Equatable, Sendable {
-        let label: String        // "5H" / "W" / "30D" / 其他按时长换算
-        let usedPercent: Double
-    }
-
     private typealias Raw = CodexRateLimits.RawWindow
 
     private static let lock = NSLock()
@@ -19,7 +14,7 @@ enum CodexQuota {
 
     /// 最新限额窗口列表；没装过 Codex / 找不到快照返回空。整个扫描 30s 节流
     /// （reload 每 5s 一次，尾读文件虽便宜也不必每轮都做）。
-    static func latest(now: Date = Date()) -> [Window] {
+    static func latest(now: Date = Date()) -> [QuotaReading] {
         lock.lock(); defer { lock.unlock() }
         if let c = cache, now.timeIntervalSince(c.at) < 30 {
             return zeroed(c.raw, now: now)
@@ -30,10 +25,11 @@ enum CodexQuota {
     }
 
     /// 过了 resets_at 的窗口归零（窗口已重置，真实用量从 0 重新累计）。
-    private static func zeroed(_ raw: [Raw], now: Date) -> [Window] {
+    private static func zeroed(_ raw: [Raw], now: Date) -> [QuotaReading] {
         raw.map { w in
             let reset = w.resetsAt > 0 && now.timeIntervalSince1970 > w.resetsAt
-            return Window(label: w.label, usedPercent: reset ? 0 : w.usedPercent)
+            return QuotaReading(key: w.label, label: w.label, usedPercent: reset ? 0 : w.usedPercent,
+                                resetAt: w.resetsAt > 0 ? Date(timeIntervalSince1970: w.resetsAt) : nil)
         }
     }
 

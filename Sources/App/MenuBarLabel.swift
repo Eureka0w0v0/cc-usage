@@ -20,7 +20,7 @@ private enum MBIcons {
 }
 
 /// 菜单栏合成图缓存。MenuBarLabel 以 @ObservedObject 订阅 PanelModel，任何 @Published 变动
-/// （含 label 根本不读的 snap/error/quotaTiers）都会重求 body，而内容绝大多数轮次没变。
+/// （含 label 根本不读的 snap/error）都会重求 body，而内容绝大多数轮次没变。
 /// 按「内容 + ⚡ 开关 + 宽度上限」做 key：命中就复用同一个 NSImage 实例——省掉 TextKit 测量
 /// 与光栅化，也避免 SwiftUI 每轮拿到新实例去重设状态项、白白重排。只在主线程访问。
 @MainActor
@@ -70,8 +70,6 @@ struct MenuBarLabel: View {
         return segs
     }
 
-    private func tier(_ name: String) -> QuotaTier? { model.quotaTiers.first { $0.name == name } }
-
     /// 默认全宽；只有 PanelModel 的宽度 governor（MenuBarWidthGovernor.swift）判定状态项
     /// 真被 macOS 挤出菜单栏时才给出 mbWidthCap，由 composite 尾部截断。
     var body: some View {
@@ -80,18 +78,6 @@ struct MenuBarLabel: View {
         // 渲染空白；品牌图标要与文本交错，只能整体合成单图，isTemplate 让明暗/失焦自动着色。
         Image(nsImage: composite)
             .onAppear { model.start() }
-    }
-
-    /// 一段菜单栏内容：品牌图标 + 该 AI 的文本。All 段无图标（⚡ 就是本应用标识）。
-    /// 一个额度码片。pct = nil 表示勾了但没数据（没装 / 未登录 / 扫不到快照）。
-    /// 额度不再混进文本段——它要自绘（进度条 / 危险胶囊），跟用量文本分开建模。
-    private struct QuotaChip {
-        let label: String        // 窗口时长（5H/7D/30D）或模型家族名
-        let pct: Double?
-        var speech: String {
-            guard let pct else { return label == "—" ? "quota unavailable" : "\(label) unavailable" }
-            return "\(label) \(Int(pct.rounded()))% used"
-        }
     }
 
     /// 一段菜单栏内容：品牌图标 + 用量文本 + 额度码片。All 段无图标（⚡ 就是本应用标识）。
@@ -110,7 +96,6 @@ struct MenuBarLabel: View {
         for app in MBApp.allCases {
             let sums = model.mbAppSummaries[app.rawValue]
             var segs: [String] = []
-            var quotas: [QuotaChip] = []
             func add(_ letter: String, _ s: UsageSummary?, _ period: ChipKey.Period) {
                 let tok = model.chipOn(.usage(app, .tokens, period)), cost = model.chipOn(.usage(app, .cost, period))
                 guard tok || cost else { return }
@@ -123,33 +108,9 @@ struct MenuBarLabel: View {
             add("D", sums?.today, .today)
             add("W", sums?.week, .week)
             add("M", sums?.month, .month)
-            // 额度段跟在所属 AI 段内：Claude 走官方接口两档，Codex 走本地快照（窗口自适应）
-            if app == .claude {
-                // 窗口标签一律用时长。原来七日额度叫 "W"，而 All 组的 "W" 是「本周用量」——
-                // 两个 W 同屏含义不同，没法读，这里改 7D 彻底分开。
-                if model.mbQuota5H   { quotas.append(QuotaChip(label: "5H", pct: tier("five_hour")?.utilization)) }
-                if model.mbQuotaWeek { quotas.append(QuotaChip(label: "7D", pct: tier("seven_day")?.utilization)) }
-            }
-            if app == .codex {
-                let anyOn = model.mbAppChips.hasQuotaChip(.codex)
-                let sel = model.mbCodexQuota.filter { model.chipOn(.quota(.codex, $0.label)) }
-                if anyOn && model.mbCodexQuota.isEmpty {
-                    quotas.append(QuotaChip(label: "—", pct: nil))   // 勾了但没扫到快照（没装 Codex / 会话被清）
-                } else {
-                    quotas.append(contentsOf: sel.map { QuotaChip(label: $0.label, pct: $0.usedPercent) })
-                }
-            }
-            if app == .agy {
-                // 官方额度按桶勾选（Gemini 5H / Gemini 7D / Claude 5H / Claude 7D，服务端回几档就有几档）
-                let tiers = model.mbAntigravityQuota
-                let anyOn = model.mbAppChips.hasQuotaChip(.agy)
-                let sel = tiers.filter { model.chipOn(.quota(.agy, $0.bucketId)) }
-                if anyOn && tiers.isEmpty {
-                    quotas.append(QuotaChip(label: "—", pct: nil))   // 勾了但没查到（没装 / 未登录 / 网络失败）
-                } else {
-                    quotas.append(contentsOf: sel.map { QuotaChip(label: $0.label, pct: $0.usedPercent) })
-                }
-            }
+            // 额度段跟在所属 AI 段内
+            let quotas = MenuBarQuota.chips(for: app, readings: model.quota[app] ?? [], selection: model.mbAppChips,
+                                            claude5H: model.mbQuota5H, claudeWeek: model.mbQuotaWeek)
             if !segs.isEmpty || !quotas.isEmpty {
                 out.append(Piece(icon: app.iconAsset, title: app.title,
                                  text: segs.joined(separator: " "), quotas: quotas))

@@ -91,19 +91,19 @@ private struct AppSettingsGroup: View {
             // 逐窗口勾选，交互与 Claude 对齐；窗口从本地快照发现（Plus=5H+Week，Free=30D）。
             // 读 model 里后台扫好的快照：这段视图代码在主线程，不能在这里递归枚举 ~/.codex/sessions。
             SettingsRow("Quota") {
-                let windows = model.mbCodexQuota
+                let windows = model.quota[.codex] ?? []
                 if windows.isEmpty {
                     SettingsNote("No Codex data")
                 } else {
-                    ForEach(windows, id: \.label) { w in
-                        SettingsCheck(w.label, model.chipBinding(.quota(.codex, w.label)))
+                    ForEach(windows) { w in
+                        SettingsCheck(w.label, model.chipBinding(.quota(.codex, w.key)))
                     }
                 }
             }
         } else {
             // Antigravity：用量来自 cc-switch v4.0.18 起导入的会话日志（库里 app_type = agy，含 IDE 会话）；
             // 额度联网查官方接口，按档勾选（服务端回几档就列几档），显示已用 %
-            let tiers = model.mbAntigravityQuota
+            let tiers = model.quota[.agy] ?? []
             if tiers.isEmpty {
                 SettingsRow("Quota") { SettingsNote("No Antigravity data") }
             } else {
@@ -111,7 +111,7 @@ private struct AppSettingsGroup: View {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(tiers) { t in
                             SettingsCheck("\(t.label) · \(Int(t.usedPercent.rounded()))%",
-                                          model.chipBinding(.quota(.agy, t.bucketId)))
+                                          model.chipBinding(.quota(.agy, t.key)))
                         }
                     }
                 }

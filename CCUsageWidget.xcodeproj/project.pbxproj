@@ -18,6 +18,7 @@
 		0D56DE130F92E81DAC397904 /* CodexRateLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = D251B8061DDAC1139500D598 /* CodexRateLimits.swift */; };
 		0DB32A66B84D5E260ECB71C5 /* brand-grok.png in Resources */ = {isa = PBXBuildFile; fileRef = 3B12A88A474853068E9E3317 /* brand-grok.png */; };
 		1007263746872BD9A3AC7D49 /* UsageWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B73337F714D31D3F9ED742D0 /* UsageWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		1035E5F72D7CA2246DAD04C6 /* MenuBarQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3420F1AF00FC1A2ACBF681 /* MenuBarQuota.swift */; };
 		10845118D926008DCC2A0A3E /* TrendLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75BAF875CACF63F0FC09F52 /* TrendLayout.swift */; };
 		1329182C2D0640CD5AC9AA06 /* ClaudeUsageParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B25718FAFE68A3DB8F0457CA /* ClaudeUsageParsing.swift */; };
 		133BC0DB52299D099831BBB9 /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8F4FC41DE201B88BBBE364 /* UsageStore+Summary.swift */; };
@@ -66,6 +67,7 @@
 		4B5053F22AC3D38BBE7C55D6 /* UsageStore+Trend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D108F47E63C782C8ADA61DF /* UsageStore+Trend.swift */; };
 		4D72635B24472E37E7C7D604 /* OmpUsageParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBD08CFCAAB420E1803400E4 /* OmpUsageParsingTests.swift */; };
 		4ED4ED8BB487DE9354BDE086 /* ClaudePlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E86FC3B0DB3A30035ECD5A4D /* ClaudePlanTests.swift */; };
+		4F5E85AEBD5CA5DFCDB6E6BD /* QuotaReading.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D7D866AB8549A3B01A9743A /* QuotaReading.swift */; };
 		501F2A32456DC507157E3F74 /* UsageStore+FirstDate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0751B47782E40406D6F829EF /* UsageStore+FirstDate.swift */; };
 		5313ACB4FD9AD929ED4F434C /* SessionOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B7579031ABBBFE04A53F94 /* SessionOverlayTests.swift */; };
 		59181A026DD2C64A3B86B4EE /* TimeParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6BD0BCA9E3975AC633FC3FF /* TimeParsing.swift */; };
@@ -97,6 +99,7 @@
 		715EF426039D9928601B8152 /* ClaudeQuotaParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5562EEAF2958AE3D6E9EDE /* ClaudeQuotaParsing.swift */; };
 		71893AB2B92CBF17DDB60DEF /* brand-opencode.png in Resources */ = {isa = PBXBuildFile; fileRef = 09D1E9749B8E07DB4B72929A /* brand-opencode.png */; };
 		74B0E5093888AA23C3FD5C89 /* MenuBarChipMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144A1EE4C00CF2D9BAD7C510 /* MenuBarChipMigration.swift */; };
+		75175F0B9696A28D48170D8E /* MenuBarQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3420F1AF00FC1A2ACBF681 /* MenuBarQuota.swift */; };
 		76E88BC6058DB37F63DB203B /* SessionTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64E641B0127A816441802E29 /* SessionTiming.swift */; };
 		77720F160EBA126E00CF30D5 /* ClaudeUsageParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B25718FAFE68A3DB8F0457CA /* ClaudeUsageParsing.swift */; };
 		77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D584EE6E87C0844CE987F0 /* QuotaService.swift */; };
@@ -116,6 +119,7 @@
 		853C54BDEF4F68DAA8DEDAA4 /* UsageSQL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4462E2D0CD755D67113F48A0 /* UsageSQL.swift */; };
 		8600D492AD999E4427D89EE2 /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC6250907BF253C5B8ABBD1 /* QuotaWarning.swift */; };
 		86244885B33BF84C737A1C0E /* UsageStore+Trend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D108F47E63C782C8ADA61DF /* UsageStore+Trend.swift */; };
+		884E49D7D11ACF7A5A932ACC /* MenuBarQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3420F1AF00FC1A2ACBF681 /* MenuBarQuota.swift */; };
 		890A92A15BDEF3B835ADC401 /* MenuBarChipMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144A1EE4C00CF2D9BAD7C510 /* MenuBarChipMigration.swift */; };
 		892CBEBF86D99F9D78778C47 /* OmpSessionFilesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00273AD257B651844D8FCEDF /* OmpSessionFilesTests.swift */; };
 		89F443C28CC086135593AE54 /* MenuBarKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = B434B7494219B30355AC8F20 /* MenuBarKeys.swift */; };
@@ -154,6 +158,7 @@
 		A8E7F6A79EEE15E8B809545A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20D62ABBAC169F3225CD479 /* Theme.swift */; };
 		A99CCBF14FF6DCD2F03D296C /* SyncCursorCompatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B0A19B0E75AF7C4A2A7B928 /* SyncCursorCompatTests.swift */; };
 		A9FED5E7C3C42C8FA79EDDA7 /* ProviderFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93814BF68F4EABE02C4D6FB7 /* ProviderFilterTests.swift */; };
+		AB80DD2B9A3B5539C3DB8EA7 /* QuotaReading.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D7D866AB8549A3B01A9743A /* QuotaReading.swift */; };
 		ABCB2B3E4A8D071E9B3D86A1 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D2498591D36FB30C840D74 /* SessionOverlay.swift */; };
 		ADA726ABDA81F094AC7BCFEF /* OmpSessionFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = D729258F5AA886E079A0E1E5 /* OmpSessionFiles.swift */; };
 		ADD7F6D4EFE87280EBE9A9A5 /* OverlayRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0946763210CA0084E67C704 /* OverlayRow.swift */; };
@@ -177,6 +182,7 @@
 		BDEFB8F5D06E56C9A883160E /* UsageStore+FirstDate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0751B47782E40406D6F829EF /* UsageStore+FirstDate.swift */; };
 		BE6B961EB15B3F8095D28A05 /* WidthGovernorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F83472BBFAA94652964AD2 /* WidthGovernorTests.swift */; };
 		BE791EAF82A6ABECF7719D91 /* OmpOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3268B8122C5885753CECF856 /* OmpOverlay.swift */; };
+		BF347597571028D7FB7D6FE9 /* MenuBarQuotaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8242EFD378C649C24203FAB1 /* MenuBarQuotaTests.swift */; };
 		C3BF44ECE8E00C3D276B5A9B /* RequestLogMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF175D2CE003149697FEE62 /* RequestLogMergeTests.swift */; };
 		C3EFCC6A9C5C2CD15868F98F /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD0BC76597EA7B1CA061A1A /* TestSupport.swift */; };
 		C6B81B06C101B533894E5972 /* OverlayStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AF0C1E7F0688F323E9FAB4 /* OverlayStats.swift */; };
@@ -204,6 +210,7 @@
 		DA72E63B29AE992A43BA0E77 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = FE46559B13C9C8A264B5681B /* libsqlite3.tbd */; };
 		DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */; };
 		DC95846C7A9493ECAF728A71 /* MenuBarDataLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F5822308D03B3BD280180D /* MenuBarDataLoader.swift */; };
+		DCFDF7A482E3163E8B832346 /* QuotaReading.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D7D866AB8549A3B01A9743A /* QuotaReading.swift */; };
 		DEF0BEDBCB4ABC9D21BB2357 /* JSONLChainScanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F50273603149EF8E51283D5C /* JSONLChainScanTests.swift */; };
 		DF08DFE9935A9F42DEBA989A /* UsageStore+RequestLogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1B498D55089EC69BFD88F38 /* UsageStore+RequestLogs.swift */; };
 		DF663F21A1F4A5BAACB483AD /* RequestLogMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B44155DFCABB3AE6D7ACCDCD /* RequestLogMerge.swift */; };
@@ -295,6 +302,7 @@
 		278087BE7F069843E288EEB0 /* AntigravityQuotaParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityQuotaParsing.swift; sourceTree = "<group>"; };
 		2C680FCBEA94CAC502E56E10 /* ClaudeCacheWriteBillingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCacheWriteBillingTests.swift; sourceTree = "<group>"; };
 		2CF175D2CE003149697FEE62 /* RequestLogMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestLogMergeTests.swift; sourceTree = "<group>"; };
+		2D7D866AB8549A3B01A9743A /* QuotaReading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaReading.swift; sourceTree = "<group>"; };
 		2DD92AB9ED76B0ADA5CD07CC /* MenuBarWidthGovernor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarWidthGovernor.swift; sourceTree = "<group>"; };
 		316F79F14E6A53F1CA747517 /* WindowDrag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowDrag.swift; sourceTree = "<group>"; };
 		31A4A54383DF9D9141EEB2E9 /* OmpUsageParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmpUsageParsing.swift; sourceTree = "<group>"; };
@@ -307,6 +315,7 @@
 		3B0A19B0E75AF7C4A2A7B928 /* SyncCursorCompatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCursorCompatTests.swift; sourceTree = "<group>"; };
 		3B12A88A474853068E9E3317 /* brand-grok.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-grok.png"; sourceTree = "<group>"; };
 		3D108F47E63C782C8ADA61DF /* UsageStore+Trend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+Trend.swift"; sourceTree = "<group>"; };
+		3D3420F1AF00FC1A2ACBF681 /* MenuBarQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarQuota.swift; sourceTree = "<group>"; };
 		40CDBEA70D4CF12353B80A47 /* CodexRateLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRateLimitsTests.swift; sourceTree = "<group>"; };
 		4462E2D0CD755D67113F48A0 /* UsageSQL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSQL.swift; sourceTree = "<group>"; };
 		450359DFC5AEC0C170B78D45 /* DataSourceBreakdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataSourceBreakdownTests.swift; sourceTree = "<group>"; };
@@ -341,6 +350,7 @@
 		7956EC6440F54CE21ECC59EA /* UsageFirstDateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageFirstDateTests.swift; sourceTree = "<group>"; };
 		79BF70807E5EF23308F00D3D /* ChipKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChipKeyTests.swift; sourceTree = "<group>"; };
 		7C5506EFDDB250B8217B59FD /* brand-gemini.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-gemini.png"; sourceTree = "<group>"; };
+		8242EFD378C649C24203FAB1 /* MenuBarQuotaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarQuotaTests.swift; sourceTree = "<group>"; };
 		8436DCC2F5C5FC6AEF6256B2 /* OverlayStatusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayStatusTests.swift; sourceTree = "<group>"; };
 		869C9FCEB64DF373B9C1A343 /* OverlayFileIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayFileIO.swift; sourceTree = "<group>"; };
 		8BC51416C9BC4ED6869BC931 /* DirListCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirListCache.swift; sourceTree = "<group>"; };
@@ -508,6 +518,7 @@
 				F50273603149EF8E51283D5C /* JSONLChainScanTests.swift */,
 				1204682563F4D4F55197E096 /* MBAppTests.swift */,
 				6406D7B906589CBE28357688 /* MenuBarDataLoaderTests.swift */,
+				8242EFD378C649C24203FAB1 /* MenuBarQuotaTests.swift */,
 				D1B329187C6B1B870A6A8E90 /* MenuBarStripTests.swift */,
 				A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */,
 				5E8E9E18A677821DEA1BD190 /* NiceScaleTests.swift */,
@@ -591,6 +602,7 @@
 				144A1EE4C00CF2D9BAD7C510 /* MenuBarChipMigration.swift */,
 				60F5822308D03B3BD280180D /* MenuBarDataLoader.swift */,
 				B434B7494219B30355AC8F20 /* MenuBarKeys.swift */,
+				3D3420F1AF00FC1A2ACBF681 /* MenuBarQuota.swift */,
 				591111A5D789097F22B5B89D /* MenuBarStrip.swift */,
 				BB5D74478B74503A476D695A /* WidthGovernor.swift */,
 			);
@@ -615,6 +627,7 @@
 				BAB5CF8868DC08111CC916BF /* ClaudePlan.swift */,
 				1C5562EEAF2958AE3D6E9EDE /* ClaudeQuotaParsing.swift */,
 				D251B8061DDAC1139500D598 /* CodexRateLimits.swift */,
+				2D7D866AB8549A3B01A9743A /* QuotaReading.swift */,
 				6AC6250907BF253C5B8ABBD1 /* QuotaWarning.swift */,
 			);
 			path = Quota;
@@ -856,6 +869,7 @@
 				8B6CBD22B770039997493C80 /* MenuBarChipMigration.swift in Sources */,
 				E86BCAFEEE947CF133D2326B /* MenuBarDataLoader.swift in Sources */,
 				AFA01F8BAE4E46C1BD266423 /* MenuBarKeys.swift in Sources */,
+				884E49D7D11ACF7A5A932ACC /* MenuBarQuota.swift in Sources */,
 				CC78F23791194F0350CAF471 /* MenuBarStrip.swift in Sources */,
 				EC45AA659587E3CA2A0F3FD6 /* ModelId.swift in Sources */,
 				960FC45AA9ED9ABEDF351AF0 /* ModelPricing.swift in Sources */,
@@ -868,6 +882,7 @@
 				3923705F3050CB2D9F6B91C7 /* OverlayRow.swift in Sources */,
 				3AC7954BA94CEB6436471376 /* OverlayStats.swift in Sources */,
 				1FD019317590E783B40F3167 /* PricingTable.swift in Sources */,
+				DCFDF7A482E3163E8B832346 /* QuotaReading.swift in Sources */,
 				E672F78F837DD077EA20B645 /* QuotaWarning.swift in Sources */,
 				DF663F21A1F4A5BAACB483AD /* RequestLogMerge.swift in Sources */,
 				5C6F71164593F58EBA7DCD7C /* SQLiteSupport.swift in Sources */,
@@ -921,6 +936,7 @@
 				78A4D07CB5D712F1C99CB82E /* MenuBarKeys.swift in Sources */,
 				79DF1F59109D2C6A54E0C8D7 /* MenuBarLabel.swift in Sources */,
 				F4342FBA8A4CA98A394C52D6 /* MenuBarPanel.swift in Sources */,
+				75175F0B9696A28D48170D8E /* MenuBarQuota.swift in Sources */,
 				D8ED16440C920A8A54D36E37 /* MenuBarSettingsView.swift in Sources */,
 				25B06981AB4B1EC3698F7C30 /* MenuBarStrip.swift in Sources */,
 				95F4FDE148D12D8EA048820D /* MenuBarWidthGovernor.swift in Sources */,
@@ -937,6 +953,7 @@
 				D235AF54DE908310AA3C85D7 /* PanelModel.swift in Sources */,
 				DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */,
 				ED133E6D39523D0045C3C1F7 /* PricingTable.swift in Sources */,
+				4F5E85AEBD5CA5DFCDB6E6BD /* QuotaReading.swift in Sources */,
 				77AA2D061ABC424D6E71757B /* QuotaService.swift in Sources */,
 				8600D492AD999E4427D89EE2 /* QuotaWarning.swift in Sources */,
 				25C121ACC119939C1C1AC7F7 /* RequestLogMerge.swift in Sources */,
@@ -1006,6 +1023,8 @@
 				DC95846C7A9493ECAF728A71 /* MenuBarDataLoader.swift in Sources */,
 				23AB5972DC8324C02F07CB3B /* MenuBarDataLoaderTests.swift in Sources */,
 				89F443C28CC086135593AE54 /* MenuBarKeys.swift in Sources */,
+				1035E5F72D7CA2246DAD04C6 /* MenuBarQuota.swift in Sources */,
+				BF347597571028D7FB7D6FE9 /* MenuBarQuotaTests.swift in Sources */,
 				8BD0D4C8841DD096133370E2 /* MenuBarStrip.swift in Sources */,
 				B5EF96527E45E39772554752 /* MenuBarStripTests.swift in Sources */,
 				30C9C3207CA9A45A9D49DD99 /* ModelId.swift in Sources */,
@@ -1032,6 +1051,7 @@
 				A9FED5E7C3C42C8FA79EDDA7 /* ProviderFilterTests.swift in Sources */,
 				186BAD2B5F7F3BD476D7CC9A /* ProviderStatsIdentityTests.swift in Sources */,
 				BD2D18A9218B3E19DD3F8BD2 /* QueryErrorTests.swift in Sources */,
+				AB80DD2B9A3B5539C3DB8EA7 /* QuotaReading.swift in Sources */,
 				927EF6C2C404B7A86709DFCF /* QuotaWarning.swift in Sources */,
 				CE20EC32EEFDDE1325AAD048 /* QuotaWarningTests.swift in Sources */,
 				D0CA38B4062ABCFD957CACC8 /* RFC3339Tests.swift in Sources */,
