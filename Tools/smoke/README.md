@@ -12,3 +12,4 @@ bash Tools/smoke/smoke.sh /tmp/ccusage/frozen /tmp/ccusage/smoke
 
 - `extract_handle.py` 把 `handle` 那段 switch 原样抠出来，包成不依赖 WebKit 的类，走的是发版的代码。
 - 额度给假数据，不读钥匙串、不联网；设置类命令存在脚本内存里，不写 UserDefaults；Chrome 用临时配置目录。
+- 页面时钟钉在冻结时刻（`db/live.db` 的 mtime）：面板默认看「今天」，隔几天再跑也有同样的数据。

@@ -5,7 +5,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createInterface } from "node:readline";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -103,6 +103,23 @@ handlers.set("Runtime.exceptionThrown", (p) => failures.push(`exception: ${p.exc
 handlers.set("Runtime.consoleAPICalled", (p) => {
   if (p.type === "error") failures.push(`console.error: ${p.args.map((a) => a.value ?? a.description).join(" ").slice(0, 300)}`);
 });
+// 页面时钟钉在冻结那一刻：live.db 是 .backup 写出来的，mtime 就是冻结时间。面板默认看「今天」，
+// 不钉的话冻结过一天表格就是空的，请求详情也点不到。Date() 不带 new 调用时照旧返回字符串。
+const frozenAt = statSync(join(frozen, "db/live.db")).mtimeMs;
+await page("Page.addScriptToEvaluateOnNewDocument", {
+  source: `(() => {
+    const RealDate = Date;
+    const shift = ${frozenAt} - RealDate.now();
+    function FrozenDate(...args) {
+      if (!new.target) return new RealDate(RealDate.now() + shift).toString();
+      return args.length ? new RealDate(...args) : new RealDate(RealDate.now() + shift);
+    }
+    Object.setPrototypeOf(FrozenDate, RealDate);
+    FrozenDate.prototype = RealDate.prototype;
+    FrozenDate.now = () => RealDate.now() + shift;
+    window.Date = FrozenDate;
+  })();`,
+});
 await page("Page.addScriptToEvaluateOnNewDocument", {
   source: `
     window.webkit = { messageHandlers: {
@@ -149,7 +166,7 @@ await page("Page.navigate", { url: `http://127.0.0.1:${port}/` });
 await waitFor(`document.querySelector("#root")?.children.length > 0`, "根节点渲染");
 await sleep(1500);
 
-// 冻结数据到 2026-11-05 为止，默认时间范围可能是空的：切到最长的预设，让表格有行。
+// 时钟钉在冻结时刻（见上），默认的「今天」范围里就有行。
 const report = {};
 report.buttons = await evaluate(`[...document.querySelectorAll("button,[role=tab]")].map((b) => b.textContent.trim()).filter(Boolean).slice(0, 40)`);
 await shot("01-initial");
