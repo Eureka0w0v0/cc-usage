@@ -288,7 +288,16 @@ public enum ModelPricing {
     ///   上游 main `258c367f`），上游 v4.0.23 收录（同价）后于 2026-11-10 移除。
     ///
     /// 本区清空时空字典是正常状态，不是遗漏。
-    static let localExtras: [String: Row] = [:]
+    static let localExtras: [String: Row] = [
+        // Claude Fable 5.2 / Mythos 5.2（2026-11-10 对照官方定价页）：$8 / $40，比 5.1 便宜两成。
+        // 缓存读 0.025x = $0.20——不是常规 0.1x 的 $0.80，也不是 5.1 的 $0.25；
+        // 缓存写 1.25x = $10（$16 是 1 小时档，本表只有 5 分钟一列，1 小时档由
+        // ClaudeCacheWriteBilling 按 ×1.6 现算，正好 $16）。
+        // 候选链不把末尾的 `-2` 当日期尾，前缀兜底又是 `id-` 单向，缺行时查不到价、记 $0。
+        // 上游 seed 到 v4.0.28 / main `bd487e83` 都没有这两行。
+        "claude-fable-5-2": R(8, 40, 0.20, 10),  // Claude Fable 5.2
+        "claude-mythos-5-2": R(8, 40, 0.20, 10),  // Claude Mythos 5.2
+    ]
 
     /// 查价与 TEMP 兜底表用的全集。上游优先：用户在 cc-switch 改过的价、上游修正过的价
     /// 都不该被本地行盖掉。

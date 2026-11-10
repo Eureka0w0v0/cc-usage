@@ -65,6 +65,26 @@ final class ModelPricingFallbackTests: XCTestCase {
                           ModelPricing.lookup("claude-fable-5")?.cacheRead)
     }
 
+    // Fable 5.2 / Mythos 5.2：2026-11-10 对照官方定价页核过——$8 / $40，比 5.1 便宜两成。
+    // 缓存读 0.025x = $0.20：不是常规 0.1x 的 $0.80，也不是 5.1 的 $0.25；缓存写 1.25x = $10
+    //（$16 是 1 小时档，本表只有 5 分钟一列）。上游 seed 到 v4.0.28 仍未收录，先放 localExtras。
+    // 负责杀的变异体：删掉 fable-5-2 行（查不到价，记 $0）/ 漏掉 mythos-5-2 行 / 整行照抄 5.1 /
+    // 缓存读按 0.1x 录成 0.8 或照抄 5.1 的 0.25 / 缓存写误录 1 小时档 16。
+    func testBuiltinTableHasFable52AtOfficialPrices() throws {
+        for id in ["claude-fable-5-2", "claude-mythos-5-2"] {
+            let row = try XCTUnwrap(ModelPricing.lookup(id), id)
+            XCTAssertEqual(row.input, 8, id)
+            XCTAssertEqual(row.output, 40, id)
+            XCTAssertEqual(row.cacheRead, 0.2, id)
+            XCTAssertEqual(row.cacheCreation, 10, id)
+        }
+        XCTAssertEqual(ModelPricing.lookup("claude-fable-5-2[1m]")?.cacheRead, 0.2)
+        XCTAssertEqual(ModelPricing.lookup("anthropic/claude-fable-5-2")?.cacheRead, 0.2)
+        // 5-2 不是日期尾，不能被归一成 fable-5 再按 $10 / $50、缓存读 $1 计价
+        XCTAssertNotEqual(ModelPricing.lookup("claude-fable-5-2")?.input,
+                          ModelPricing.lookup("claude-fable-5")?.input)
+    }
+
     // Opus 5.5（2026-09-23 发布）：$4 / $20，缓存读是 0.05x = $0.20——既不是常规 0.1x 的
     // $0.40，也不是 Opus 5 的 $0.50；缓存写照常 1.25x = $5（$8 是 1 小时档，本表只有 5 分钟一列）。
     // 负责杀的变异体：删掉 opus-5-5 行（2026-10-10 起由上游 seed 提供，PR #7600）/
