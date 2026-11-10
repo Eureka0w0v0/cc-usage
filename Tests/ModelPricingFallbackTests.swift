@@ -106,13 +106,10 @@ final class ModelPricingFallbackTests: XCTestCase {
         XCTAssertEqual(haiku.cacheCreation, 0.125)
     }
 
-    // 本地先行区只在上游 seed 缺席时存在：上游收录后本用例报红，提醒把本地行删掉
-    //（否则同一 id 两处各一份，下次改价容易漏）。顺带锁住「合并没把任何一边丢掉」。
-    // 负责杀的变异体：table 只取 upstream 忘了 merge / localExtras 里塞了上游已有的 id。
-    /// 上游 main `258c367f`（v4.0.22 之后、未发版）新增的三条 Grok Build 定价先行收进 localExtras。
+    /// 三条 Grok Build 定价：先在 localExtras 先行，上游 v4.0.23 收录后改由生成区提供（同价）。
     /// `grok-` 不走前缀匹配、查价层也不剥 `-build`，所以必须逐条精确收录。
     /// 负责杀的变异体：漏掉任一条 / 单价抄错。
-    func testGrokBuildLocalExtrasCarryUpstreamMainPrices() {
+    func testGrokBuildRowsCarryUpstreamPrices() {
         let expected: [String: (Double, Double, Double, Double)] = [
             "grok-4.6-build": (2, 6, 0.50, 0),
             "grok-4.7-build": (2, 6, 0.50, 0),
@@ -125,6 +122,21 @@ final class ModelPricingFallbackTests: XCTestCase {
         }
     }
 
+    // GPT-6.1 Terra（上游 v4.0.25 收录）：2026-11-10 对照 OpenAI 官方模型页核过——Standard 档
+    // $1 / $5，缓存读 5% = $0.05，缓存写取 30 分钟档 $1.25（12 小时档 $2.50 本表无列）。
+    // 定价同步只照搬上游 seed，上游录错时本用例兜底。
+    // 负责杀的变异体：任一字段录错 / 缓存写误录 12 小时档 2.5 / 删掉该行。
+    func testBuiltinTableHasGPT61TerraAtOfficialPrices() throws {
+        let row = try XCTUnwrap(ModelPricing.lookup("gpt-6.1-terra"))
+        XCTAssertEqual(row.input, 1)
+        XCTAssertEqual(row.output, 5)
+        XCTAssertEqual(row.cacheRead, 0.05)
+        XCTAssertEqual(row.cacheCreation, 1.25)
+    }
+
+    // 本地先行区只在上游 seed 缺席时存在：上游收录后本用例报红，提醒把本地行删掉
+    //（否则同一 id 两处各一份，下次改价容易漏）。顺带锁住「合并没把任何一边丢掉」。
+    // 负责杀的变异体：table 只取 upstream 忘了 merge / localExtras 里塞了上游已有的 id。
     func testLocalExtrasAreAbsentUpstream() {
         let dup = Set(ModelPricing.localExtras.keys).intersection(ModelPricing.upstream.keys)
         XCTAssertTrue(dup.isEmpty, "上游已收录，请从 localExtras 删除：\(dup.sorted())")
