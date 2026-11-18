@@ -155,4 +155,47 @@ final class SessionOverlayTests: XCTestCase {
         XCTAssertEqual(rows.map(\.requestId), ["session:m3"])
         XCTAssertEqual(rows.first?.output, 7)
     }
+
+    // MARK: - 行快照
+
+    private func appendLine(_ line: String, to file: String) throws {
+        let fh = try XCTUnwrap(FileHandle(forWritingAtPath: file))
+        try fh.seekToEnd()
+        try fh.write(contentsOf: Data((line + "\n").utf8))
+        try fh.close()
+    }
+
+    /// 行没变时连续取到的是同一份数组（写时复制，不拷贝元素）：一轮刷新有好几条查询都要这份行，
+    /// 行有上万条时每条查询各拷一遍是白花的。
+    /// 负责杀的变异体：每次都从字典现做一份数组。
+    func testPendingRowsReturnTheSameArrayWhileNothingChanges() throws {
+        _ = try writeSession([assistantLine(id: "m1", output: 10, stop: true),
+                              assistantLine(id: "m2", output: 20, stop: true)])
+        let first = overlay.pendingRows(db: db)
+        let second = overlay.pendingRows(db: db)
+        XCTAssertEqual(Set(first.map(\.requestId)), ["session:m1", "session:m2"])
+        XCTAssertTrue(PendingRowsMerger.sameStorage(first, second), "没有变化时不该重新拷贝")
+    }
+
+    /// 行一变快照就作废：新增、替换（同一条回复后面的块带来更大的输出）、入库后被剔除，三种都要立刻反映出来。
+    /// 负责杀的变异体：只在某几处改行的地方让快照失效，漏掉替换或剔除（数字不再更新）。
+    func testSnapshotFollowsEveryKindOfRowChange() throws {
+        let file = try writeSession([assistantLine(id: "m1", output: 10, stop: false)])
+        let initial = overlay.pendingRows(db: db)
+        XCTAssertEqual(initial.map(\.output), [10])
+
+        try appendLine(assistantLine(id: "m2", output: 5, stop: true), to: file)
+        let added = overlay.pendingRows(db: db)
+        XCTAssertEqual(Set(added.map(\.requestId)), ["session:m1", "session:m2"], "新增的行")
+        XCTAssertFalse(PendingRowsMerger.sameStorage(initial, added))
+
+        try appendLine(assistantLine(id: "m1", output: 99, stop: true), to: file)
+        let replaced = overlay.pendingRows(db: db)
+        XCTAssertEqual(replaced.first { $0.requestId == "session:m1" }?.output, 99, "被替换的行")
+
+        try Fixture.insertLog(dbPath, id: "session:m1", output: 99, createdAt: 1)
+        let pruned = overlay.pendingRows(db: db)
+        XCTAssertEqual(pruned.map(\.requestId), ["session:m2"], "入库后被剔除的行")
+        XCTAssertEqual(initial.map(\.output), [10], "之前拿到的数组不受后续扫描影响")
+    }
 }

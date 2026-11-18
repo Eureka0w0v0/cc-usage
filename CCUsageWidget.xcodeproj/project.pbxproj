@@ -22,6 +22,7 @@
 		10845118D926008DCC2A0A3E /* TrendLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75BAF875CACF63F0FC09F52 /* TrendLayout.swift */; };
 		1329182C2D0640CD5AC9AA06 /* ClaudeUsageParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B25718FAFE68A3DB8F0457CA /* ClaudeUsageParsing.swift */; };
 		133BC0DB52299D099831BBB9 /* UsageStore+Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8F4FC41DE201B88BBBE364 /* UsageStore+Summary.swift */; };
+		13A3BC7579406F19E2ACAFF5 /* PendingRowsMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4191330280E0CE28B162736A /* PendingRowsMerger.swift */; };
 		158ED47EFD3E8A960B58B8F9 /* UsageSQL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4462E2D0CD755D67113F48A0 /* UsageSQL.swift */; };
 		1635BCDD5D777AB253C584AC /* UsageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA8DAFF3CCEE62A47CCC0700 /* UsageStoreTests.swift */; };
 		1736E7470BD4901F8F35314B /* OmpOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3268B8122C5885753CECF856 /* OmpOverlay.swift */; };
@@ -48,6 +49,7 @@
 		28B4E4426A12A6D943DE79E0 /* NiceScaleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E8E9E18A677821DEA1BD190 /* NiceScaleTests.swift */; };
 		28CBB792D9B92A327E575772 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = FE46559B13C9C8A264B5681B /* libsqlite3.tbd */; };
 		28E474C6A763719184D6C090 /* ClaudePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAB5CF8868DC08111CC916BF /* ClaudePlan.swift */; };
+		2D1F9EACDE1B8BB76B8CDE0B /* PendingRowsMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35DC2244AECFF585C5EF52E /* PendingRowsMergerTests.swift */; };
 		2ED2612CF369DF1C9E3DECF5 /* ClaudeSessionFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65DAB1054A665B194CE67AE /* ClaudeSessionFiles.swift */; };
 		2F7C1BA51315A51A1C47EA60 /* OmpOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD962A14316054D9A982BE4 /* OmpOverlayTests.swift */; };
 		2FB870100920324A6F8DB6F1 /* CodexQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36764B37F900CFF7A2CD31CB /* CodexQuota.swift */; };
@@ -55,6 +57,7 @@
 		302D41ABC3492FFF75A3BF55 /* SessionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D2498591D36FB30C840D74 /* SessionOverlay.swift */; };
 		30C9C3207CA9A45A9D49DD99 /* ModelId.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C57951EE7A5D7B30378ED0 /* ModelId.swift */; };
 		36ADA7BAC26F33E0F1EEB585 /* EmbedSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA2B9D133F5B1BEA18E82D8 /* EmbedSettingsTests.swift */; };
+		36ADC67B674C381CA23BF513 /* PendingRowsMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4191330280E0CE28B162736A /* PendingRowsMerger.swift */; };
 		377A8335128EC7F888FE408B /* TrendChartRenderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96956B343B096AD5F7973CEC /* TrendChartRenderTests.swift */; };
 		3923705F3050CB2D9F6B91C7 /* OverlayRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0946763210CA0084E67C704 /* OverlayRow.swift */; };
 		3AC7954BA94CEB6436471376 /* OverlayStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AF0C1E7F0688F323E9FAB4 /* OverlayStats.swift */; };
@@ -149,6 +152,7 @@
 		96EE6CC460B3E28963637471 /* ClaudeSessionFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65DAB1054A665B194CE67AE /* ClaudeSessionFiles.swift */; };
 		975232C83BA6432D6A737C8A /* WidthGovernor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB5D74478B74503A476D695A /* WidthGovernor.swift */; };
 		979F6078AC724DE28DD4CC01 /* OverlayDB.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F57D819D08A4D1E4A8A664 /* OverlayDB.swift */; };
+		97B7FCD56E467D995BEF8DF5 /* PendingRowsMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4191330280E0CE28B162736A /* PendingRowsMerger.swift */; };
 		987B15E61F9724EC4A124284 /* ClaudeCredentialSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB638A418DEEBCBA0B1AF2D /* ClaudeCredentialSource.swift */; };
 		9923C40A00C0C72038DEBBF4 /* TrendAxis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14E50F14C41D531700D19262 /* TrendAxis.swift */; };
 		99E489EF52A92F4BEE5B8C08 /* DataSourceBreakdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450359DFC5AEC0C170B78D45 /* DataSourceBreakdownTests.swift */; };
@@ -334,6 +338,7 @@
 		3D108F47E63C782C8ADA61DF /* UsageStore+Trend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+Trend.swift"; sourceTree = "<group>"; };
 		3D3420F1AF00FC1A2ACBF681 /* MenuBarQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarQuota.swift; sourceTree = "<group>"; };
 		40CDBEA70D4CF12353B80A47 /* CodexRateLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRateLimitsTests.swift; sourceTree = "<group>"; };
+		4191330280E0CE28B162736A /* PendingRowsMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRowsMerger.swift; sourceTree = "<group>"; };
 		4462E2D0CD755D67113F48A0 /* UsageSQL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSQL.swift; sourceTree = "<group>"; };
 		450359DFC5AEC0C170B78D45 /* DataSourceBreakdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataSourceBreakdownTests.swift; sourceTree = "<group>"; };
 		45E808353F9922E4E141F092 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
@@ -429,6 +434,7 @@
 		E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-openai.png"; sourceTree = "<group>"; };
 		E20D62ABBAC169F3225CD479 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		E2C2B67C6FF99B506C0B07A6 /* TrendLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendLayoutTests.swift; sourceTree = "<group>"; };
+		E35DC2244AECFF585C5EF52E /* PendingRowsMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRowsMergerTests.swift; sourceTree = "<group>"; };
 		E40A0978CC32ECC113BABC14 /* UsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStore.swift; sourceTree = "<group>"; };
 		E50FA82869360DF5BE4941CF /* brand-minimax.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-minimax.png"; sourceTree = "<group>"; };
 		E86FC3B0DB3A30035ECD5A4D /* ClaudePlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudePlanTests.swift; sourceTree = "<group>"; };
@@ -558,6 +564,7 @@
 				CBD08CFCAAB420E1803400E4 /* OmpUsageParsingTests.swift */,
 				8436DCC2F5C5FC6AEF6256B2 /* OverlayStatusTests.swift */,
 				462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */,
+				E35DC2244AECFF585C5EF52E /* PendingRowsMergerTests.swift */,
 				A6E1E0FFADE4854E3B15683E /* PendingUsageSourceTests.swift */,
 				4A79728DAD95A349D54CBC66 /* PricingCandidatesTests.swift */,
 				661BD2166B5D419FC83C3138 /* PricingCostTests.swift */,
@@ -710,6 +717,7 @@
 				D7F57D819D08A4D1E4A8A664 /* OverlayDB.swift */,
 				869C9FCEB64DF373B9C1A343 /* OverlayFileIO.swift */,
 				B0946763210CA0084E67C704 /* OverlayRow.swift */,
+				4191330280E0CE28B162736A /* PendingRowsMerger.swift */,
 				C5D2498591D36FB30C840D74 /* SessionOverlay.swift */,
 				64E641B0127A816441802E29 /* SessionTiming.swift */,
 			);
@@ -917,6 +925,7 @@
 				9EA7FB50ED3E1F49F8E4F4B3 /* OverlayFileIO.swift in Sources */,
 				3923705F3050CB2D9F6B91C7 /* OverlayRow.swift in Sources */,
 				3AC7954BA94CEB6436471376 /* OverlayStats.swift in Sources */,
+				97B7FCD56E467D995BEF8DF5 /* PendingRowsMerger.swift in Sources */,
 				1FD019317590E783B40F3167 /* PricingTable.swift in Sources */,
 				D1E55DB496A1572518441787 /* ProcessRunner.swift in Sources */,
 				DCFDF7A482E3163E8B832346 /* QuotaReading.swift in Sources */,
@@ -990,6 +999,7 @@
 				EAF6298F00F11D3745F72053 /* OverlayStats.swift in Sources */,
 				D235AF54DE908310AA3C85D7 /* PanelModel.swift in Sources */,
 				DB6E4BC01EF07F52EEAAB432 /* PanelWebView.swift in Sources */,
+				13A3BC7579406F19E2ACAFF5 /* PendingRowsMerger.swift in Sources */,
 				ED133E6D39523D0045C3C1F7 /* PricingTable.swift in Sources */,
 				BBC088B18587ADF8B99BCBC1 /* ProcessRunner.swift in Sources */,
 				4F5E85AEBD5CA5DFCDB6E6BD /* QuotaReading.swift in Sources */,
@@ -1089,6 +1099,8 @@
 				C6B81B06C101B533894E5972 /* OverlayStats.swift in Sources */,
 				B577BCB5242D1078D673C3E4 /* OverlayStatusTests.swift in Sources */,
 				487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */,
+				36ADC67B674C381CA23BF513 /* PendingRowsMerger.swift in Sources */,
+				2D1F9EACDE1B8BB76B8CDE0B /* PendingRowsMergerTests.swift in Sources */,
 				7850014F189F3162FB974FD2 /* PendingUsageSourceTests.swift in Sources */,
 				CCBC5F29DF2F3BE14EF8DAE4 /* PricingCandidatesTests.swift in Sources */,
 				A05600C8DCF485943C5D11A9 /* PricingCostTests.swift in Sources */,

@@ -3,6 +3,9 @@ import Foundation
 /// 「cc-switch 还没入库」的用量来源：UsageStore 的全部查询都把它们产出的行并进结果，加一种来源不用改 UsageStore。
 public protocol PendingUsageSource: AnyObject {
     /// 当前全部待入库行。db 是调用方已打开的只读连接，用于查游标、定价和已入库的行。
+    ///
+    /// 行没变时最好每次交出同一份数组（数组是写时复制的，不会拷贝元素）：PendingRowsMerger 靠「还是同一份」
+    /// 判断要不要重新合并。每次都交出新数组也不会出错，只是每条查询都要重新合并一遍。
     func pendingRows(db: OpaquePointer) -> [OverlayRow]
 }
 

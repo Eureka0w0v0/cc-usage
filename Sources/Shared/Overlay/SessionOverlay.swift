@@ -46,7 +46,11 @@ public final class SessionOverlay: PendingUsageSource {
     private let ccSwitchVersion: () -> String?
 
     private let lock = NSLock()
-    private var rows: [String: OverlayRow] = [:]   // requestId → 待入库行
+    /// requestId → 待入库行。任何一处改它都会让 snapshot 作废（didSet 不读旧值，改字典仍是原地改）。
+    private var rows: [String: OverlayRow] = [:] { didSet { snapshot = nil } }
+    /// `Array(rows.values)` 的缓存：行没变时每次交出同一份数组（写时复制，不拷贝元素）。一轮刷新里好几条
+    /// 查询都要这份行，行有上万条时每条各拷一遍是白花的；合并器也靠「还是同一份数组」判断要不要重新合并。
+    private var snapshot: [OverlayRow]?
     private var lastRefresh: Date?
 
     /// cc-switch 记在 session_log_sync 里的单文件消化进度。
@@ -126,11 +130,19 @@ public final class SessionOverlay: PendingUsageSource {
         lock.lock()
         defer { lock.unlock() }
         if let last = lastRefresh, Date().timeIntervalSince(last) < minRefreshInterval {
-            return Array(rows.values)
+            return snapshotLocked()
         }
         refreshLocked(db)
         lastRefresh = Date()
-        return Array(rows.values)
+        return snapshotLocked()
+    }
+
+    /// 当前的行，内容和顺序恒等于此刻的 `Array(rows.values)`。
+    private func snapshotLocked() -> [OverlayRow] {
+        if let snapshot { return snapshot }
+        let fresh = Array(rows.values)
+        snapshot = fresh
+        return fresh
     }
 
     // MARK: - 扫描

@@ -42,7 +42,10 @@ public final class OmpOverlay: PendingUsageSource {
     private let rootsProvider: () -> OmpSessionFiles.Roots
 
     private let lock = NSLock()
-    private var rows: [String: OverlayRow] = [:]
+    /// 任何一处改它都会让 snapshot 作废。
+    private var rows: [String: OverlayRow] = [:] { didSet { snapshot = nil } }
+    /// `Array(rows.values)` 的缓存，行没变时每次交出同一份数组（同 SessionOverlay.snapshot）。
+    private var snapshot: [OverlayRow]?
     private var lastRefresh: Date?
 
     /// 一条解析出来的记录，连同它做投影去重要查的子会话链接。
@@ -118,11 +121,19 @@ public final class OmpOverlay: PendingUsageSource {
         lock.lock()
         defer { lock.unlock() }
         if let last = lastRefresh, Date().timeIntervalSince(last) < minRefreshInterval {
-            return Array(rows.values)
+            return snapshotLocked()
         }
         refreshLocked(db)
         lastRefresh = Date()
-        return Array(rows.values)
+        return snapshotLocked()
+    }
+
+    /// 当前的行，内容和顺序恒等于此刻的 `Array(rows.values)`。
+    private func snapshotLocked() -> [OverlayRow] {
+        if let snapshot { return snapshot }
+        let fresh = Array(rows.values)
+        snapshot = fresh
+        return fresh
     }
 
     // MARK: - 扫描

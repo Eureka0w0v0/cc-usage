@@ -77,6 +77,31 @@ final class OmpOverlayTests: XCTestCase {
                                              fileTimestamp: 0)).requestId
     }
 
+    // MARK: - 行快照
+
+    /// 行没变时连续取到的是同一份数组（理由同 SessionOverlayTests）；文件变了、行入库了都要跟上。
+    /// 负责杀的变异体：每次都从字典现做一份数组 / 重建后还交出旧快照。
+    func testPendingRowsReuseTheArrayUntilRowsChange() throws {
+        // 定价表没过期才谈得上「没有变化」：本组默认的 pricingTTL = 0 让每一轮都重新成行（那是为了测查价），
+        // 这里用线上的 5 分钟。
+        let overlay = OmpOverlay(sessionsDir: sessionsDir, minRefreshInterval: 0, pricingTTL: 300)
+        func rows() -> [OverlayRow] { overlay.pendingRows(db: db) }
+        let a1 = assistant("a1")
+        try write([a1])
+        let first = rows(), second = rows()
+        XCTAssertEqual(first.count, 1)
+        XCTAssertTrue(PendingRowsMerger.sameStorage(first, second), "没有变化时不该重新拷贝")
+
+        try append(assistant("a2", ts: "2026-10-29T13:18:42.984Z") + "\n")
+        let added = rows()
+        XCTAssertEqual(added.count, 2, "新增的行")
+        XCTAssertFalse(PendingRowsMerger.sameStorage(first, added))
+
+        try Fixture.insertLog(dbPath, id: try requestId(a1), app: "omp", createdAt: 1, dataSource: "omp_session")
+        XCTAssertEqual(rows().count, 1, "入库后被剔除的行")
+        XCTAssertEqual(first.count, 1, "之前拿到的数组不受后续扫描影响")
+    }
+
     // MARK: - 读失败：进度不动，下一轮重试（同 SessionOverlay.readTailLocked）
 
     private func chmod(_ mode: Int, _ file: String) throws {
