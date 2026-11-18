@@ -67,7 +67,8 @@ final class ModelPricingFallbackTests: XCTestCase {
 
     // Fable 5.2 / Mythos 5.2：2026-11-10 对照官方定价页核过——$8 / $40，比 5.1 便宜两成。
     // 缓存读 0.025x = $0.20：不是常规 0.1x 的 $0.80，也不是 5.1 的 $0.25；缓存写 1.25x = $10
-    //（$16 是 1 小时档，本表只有 5 分钟一列）。上游 seed 到 v4.0.28 仍未收录，先放 localExtras。
+    //（$16 是 1 小时档，本表只有 5 分钟一列）。Fable 5.2 上游 v4.0.30 收录（#9426，同价）后改由生成区提供；
+    // Mythos 5.2 上游到 v4.0.34 仍没有，留在 localExtras。
     // 负责杀的变异体：删掉 fable-5-2 行（查不到价，记 $0）/ 漏掉 mythos-5-2 行 / 整行照抄 5.1 /
     // 缓存读按 0.1x 录成 0.8 或照抄 5.1 的 0.25 / 缓存写误录 1 小时档 16。
     func testBuiltinTableHasFable52AtOfficialPrices() throws {
@@ -152,6 +153,25 @@ final class ModelPricingFallbackTests: XCTestCase {
         XCTAssertEqual(row.output, 5)
         XCTAssertEqual(row.cacheRead, 0.05)
         XCTAssertEqual(row.cacheCreation, 1.25)
+    }
+
+    // 上游 v4.0.30 ~ v4.0.34 新收录的三个模型：2026-11-18 对照官方定价页核过。
+    // - Gemini 4 Carbon：$2 / $10、缓存 $0.10 是到 2026-11-30 为止的介绍价（12-01 起 $4 / $20 / $0.20，
+    //   等上游改 seed 后再同步）；只有隐式缓存，没有缓存写入价。
+    // - Gemini 4 Hydrogen：$1.50 / $7.50、缓存 $0.075，同样没有缓存写入价。
+    // - Qwen4 Max：$1.50 / $4.50、缓存读 $0.075，缓存写入取 5 分钟档 $1.875（1 小时档 $3 本表无列）。
+    // 负责杀的变异体：任一字段录错 / 漏掉任一行 / Qwen 缓存写误录 1 小时档 3 / Carbon 提前录成挂牌价。
+    func testBuiltinTableHasV4034AdditionsAtOfficialPrices() {
+        let expected: [String: (Double, Double, Double, Double)] = [
+            "gemini-4-carbon": (2, 10, 0.10, 0),
+            "gemini-4-hydrogen": (1.5, 7.5, 0.075, 0),
+            "qwen4-max": (1.5, 4.5, 0.075, 1.875),
+        ]
+        for (id, p) in expected {
+            guard let row = ModelPricing.lookup(id) else { XCTFail("缺少 \(id)"); continue }
+            XCTAssertEqual(row.input, p.0, id); XCTAssertEqual(row.output, p.1, id)
+            XCTAssertEqual(row.cacheRead, p.2, id); XCTAssertEqual(row.cacheCreation, p.3, id)
+        }
     }
 
     // 本地先行区只在上游 seed 缺席时存在：上游收录后本用例报红，提醒把本地行删掉

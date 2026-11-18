@@ -80,8 +80,8 @@ final class SessionOverlayTests: XCTestCase {
         XCTAssertEqual(r.totalCost, 0.252, accuracy: 1e-12)
     }
 
-    // Fable 5.2：上游 seed 到 v4.0.28 仍未收录 → 回落内置表，按官方价 $8 / $40、缓存读 $0.20、
-    // 缓存写（没有 1 小时拆分，全按 5 分钟档）$10 计。
+    // Fable 5.2：库里没有这个模型（cc-switch 低于 v4.0.30 的 seed 不含它）→ 回落内置表，按官方价 $8 / $40、
+    // 缓存读 $0.20、缓存写（没有 1 小时拆分，全按 5 分钟档）$10 计。
     // 负责杀的变异体：删掉内置表 fable-5-2 行（成本归 0）/ 整行照抄 fable-5-1（0.377）/
     // 缓存读按 0.1x 录成 0.8（0.9016）/ 缓存写误录 1 小时档 16（0.3616）。
     func testFable52FallsBackToBuiltinAtOfficialPrices() throws {

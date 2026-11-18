@@ -29,9 +29,10 @@ public enum ModelPricing {
         Row(input: i, output: o, cacheRead: cr, cacheCreation: cw)
     }
 
-    /// 对齐 cc-switch seed_model_pricing 的 236 条内置定价（同步至 v4.0.28）。
+    /// 对齐 cc-switch seed_model_pricing 的 240 条内置定价（同步至 v4.0.34）。
     /// 由 scripts/sync-pricing.sh 生成，勿手改；新模型先放下面的 `localExtras`。
     static let upstream: [String: Row] = [
+        "claude-fable-5-2": R(8, 40, 0.2, 10),  // Claude Fable 5.2
         "claude-fable-5-1": R(10, 50, 0.25, 12.5),  // Claude Fable 5.1
         "claude-mythos-5-1": R(10, 50, 0.25, 12.5),  // Claude Mythos 5.1
         "claude-fable-5": R(10, 50, 1, 12.5),  // Claude Fable 5
@@ -130,6 +131,8 @@ public enum ModelPricing {
         "gpt-4o": R(2.5, 10, 1.25, 0),  // GPT-4o
         "gpt-4o-mini": R(0.15, 0.6, 0.075, 0),  // GPT-4o Mini
         "gemini-4-argon": R(2, 10, 0.1, 0),  // Gemini 4 Argon
+        "gemini-4-carbon": R(2, 10, 0.1, 0),  // Gemini 4 Carbon
+        "gemini-4-hydrogen": R(1.5, 7.5, 0.075, 0),  // Gemini 4 Hydrogen
         "gemini-3.8-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.8 Flash
         "gemini-3.7-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.7 Flash
         "gemini-3.6-flash": R(0.75, 3.75, 0.075, 0),  // Gemini 3.6 Flash
@@ -209,6 +212,7 @@ public enum ModelPricing {
         "mimo-v2-pro": R(0.435, 0.87, 0.0036, 0),  // MiMo V2 Pro
         "mimo-v2.5": R(0.14, 0.28, 0.0028, 0),  // MiMo V2.5
         "mimo-v2.5-pro": R(0.435, 0.87, 0.0036, 0),  // MiMo V2.5 Pro
+        "qwen4-max": R(1.5, 4.5, 0.075, 1.875),  // Qwen4 Max
         "qwen3.8-max": R(2, 6, 0.25, 2.5),  // Qwen3.8 Max
         "qwen3.8-flash": R(0.15, 0.47, 0.016, 0.2),  // Qwen3.8 Flash
         "qwen3.8-2.4t-a95b": R(2, 6, 0.25, 2.5),  // Qwen3.8 2.4T A95B
@@ -286,16 +290,16 @@ public enum ModelPricing {
     ///   $0.50），上游 v4.0.0 收录（PR #7600，同价）后于 2026-10-10 移除。
     /// - `grok-4.6-build` / `grok-4.7-build` / `grok-4.7-build-fast` 曾在此先行（取自当时未发版的
     ///   上游 main `258c367f`），上游 v4.0.23 收录（同价）后于 2026-11-10 移除。
+    /// - `claude-fable-5-2` 曾在此先行，上游 v4.0.30 收录（#9426，同价）后于 2026-11-18 移除。
     ///
     /// 本区清空时空字典是正常状态，不是遗漏。
     static let localExtras: [String: Row] = [
-        // Claude Fable 5.2 / Mythos 5.2（2026-11-10 对照官方定价页）：$8 / $40，比 5.1 便宜两成。
+        // Claude Mythos 5.2（2026-11-10 对照官方定价页）：与 Fable 5.2 同价，$8 / $40，比 5.1 便宜两成。
         // 缓存读 0.025x = $0.20——不是常规 0.1x 的 $0.80，也不是 5.1 的 $0.25；
         // 缓存写 1.25x = $10（$16 是 1 小时档，本表只有 5 分钟一列，1 小时档由
         // ClaudeCacheWriteBilling 按 ×1.6 现算，正好 $16）。
         // 候选链不把末尾的 `-2` 当日期尾，前缀兜底又是 `id-` 单向，缺行时查不到价、记 $0。
-        // 上游 seed 到 v4.0.28 / main `bd487e83` 都没有这两行。
-        "claude-fable-5-2": R(8, 40, 0.20, 10),  // Claude Fable 5.2
+        // 上游 v4.0.30 只收录了 Fable 5.2；到 v4.0.34 / main `bdbc9604` 都没有这一行。
         "claude-mythos-5-2": R(8, 40, 0.20, 10),  // Claude Mythos 5.2
     ]
 
