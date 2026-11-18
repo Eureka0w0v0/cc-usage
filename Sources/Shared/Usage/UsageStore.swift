@@ -193,7 +193,8 @@ public final class UsageStore: @unchecked Sendable {
     }
     /// 按当前库 schema 生成跨源去重过滤（明细表别名 l）。所有读明细的路径都要带它。
     func effectiveUsageFilter(_ db: OpaquePointer) -> String {
-        Self.effectiveUsageFilterL(hasSemantics: hasSemantics(db))
+        Self.effectiveUsageFilterL(hasSemantics: hasSemantics(db),
+                                   hasRequestModel: SQLite.hasColumn(db, "proxy_request_logs", "request_model"))
     }
     /// 单行「真实消耗 Tokens」= 新增输入 + 输出 + 缓存写入 + 缓存命中，与 Hero 的
     /// `UsageSummary.tokensProcessed` 同口径（对齐 sql_helpers.rs::real_total_tokens_sql，

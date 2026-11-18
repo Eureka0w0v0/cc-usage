@@ -158,4 +158,93 @@ final class CrossSourceDedupTests: XCTestCase {
         XCTAssertEqual(try requestCount(around: t + day), 2, "新语义代理行要求写入量一致")
         XCTAssertEqual(try requestCount(around: t + 2 * day), 2, "放宽只针对 codex_session")
     }
+
+    // MARK: - Codex 请求模型别名（上游 v4.0.25 #7643）
+
+    /// Codex 会话日志记的是客户端填的模型别名，代理行的 `model` 是路由映射后的上游模型，两边对不上，
+    /// 旧规则把同一笔请求算两次。会话行是 Codex 时，代理行的 `request_model` 等于会话行的模型也算同一笔。
+    /// 向量照搬上游 test_matching_proxy_log_matches_codex_request_model_alias /
+    /// test_effective_filter_dedups_only_codex_request_model_alias。
+    private func insertAliasPair(_ tag: String, app: String = "codex", source: String = "codex_session",
+                                 requestModel: String?, sessionModel: String = "GPT-5.6-Sol-JoyBuilder",
+                                 proxyStatus: Int = 200, at t: Int64) throws {
+        try Fixture.insertLog(dbPath, id: "proxy-\(tag)", app: app, model: "gpt-5.6-sol",
+                              input: 100, output: 20, cacheRead: 10, cacheCreation: 0, createdAt: t,
+                              dataSource: "proxy", status: proxyStatus, providerId: "provider-1",
+                              requestModel: requestModel)
+        try Fixture.insertLog(dbPath, id: "session-\(tag)", app: app, model: sessionModel,
+                              input: 100, output: 20, cacheRead: 10, cacheCreation: 0, createdAt: t + 60,
+                              dataSource: source, providerId: "_\(source)")
+    }
+
+    /// 杀变异体：缺这一支（别名那对不去重）/ 比较时不 LOWER 或不 TRIM（第二对前后带空白、大小写不同）。
+    func testCodexSessionDedupedAgainstProxyRequestModelAlias() throws {
+        let t = Fixture.ts(2026, 11, 2, 12)
+        let day: Int64 = 86_400
+        try insertAliasPair("plain", requestModel: "gpt-5.6-sol-joybuilder", at: t)
+        try insertAliasPair("padded", requestModel: " gpt-5.6-sol-joybuilder ", at: t + day)
+
+        XCTAssertEqual(try requestCount(around: t), 1, "代理行的请求模型就是会话行的模型别名，应去重")
+        XCTAssertEqual(try requestCount(around: t + day), 1, "前后空白和大小写不影响匹配")
+        let page = try store.requestLogs(LogQueryFilter(start: t - 1200, end: t + 1200), page: 0, pageSize: 20)
+        XCTAssertEqual(page.rows.map(\.requestId), ["proxy-plain"], "保留代理行，剔除会话行")
+    }
+
+    /// 杀变异体：不判空（空对空那一对被误去重）。`<> 'unknown'` 那一句照上游原样保留，但它拦的情形
+    /// （两边都是 unknown）已经被原有的 unknown 分支放行了，去掉它结果不变，没有用例能区分。
+    func testAliasBranchIgnoresMissingOrPlaceholderRequestModel() throws {
+        let t = Fixture.ts(2026, 11, 2, 12)
+        let day: Int64 = 86_400
+        for (i, invalid) in [nil, "", "  ", "unknown", " UNKNOWN "].enumerated() {
+            let at = t + Int64(i) * day
+            try insertAliasPair("invalid\(i)", requestModel: invalid, at: at)
+            XCTAssertEqual(try requestCount(around: at), 2, "request_model = \(invalid.map { "'\($0)'" } ?? "NULL") 不能放宽匹配")
+        }
+        // 会话行的模型也是空的：两边去空白后都是空串，字面上「相等」，只有判空那一句拦得住。
+        let blank = t + 10 * day
+        try insertAliasPair("blank", requestModel: " ", sessionModel: "", at: blank)
+        XCTAssertEqual(try requestCount(around: blank), 2, "空对空不算别名匹配")
+    }
+
+    /// 杀变异体：分支不限 `app_type = 'codex'`（app 是 gemini、来源却是 codex_session 的那对被误去重）/
+    /// 不限 `codex_session` 来源（app 是 codex 但来源是 session_log 的那对被误去重）/ 不要求代理行成功。
+    func testAliasBranchIsCodexSessionOnly() throws {
+        let t = Fixture.ts(2026, 11, 2, 12)
+        let day: Int64 = 86_400
+        try insertAliasPair("gemini", app: "gemini", source: "gemini_session",
+                            requestModel: "gpt-5.6-sol-joybuilder", at: t)
+        try insertAliasPair("othersource", source: "session_log",
+                            requestModel: "gpt-5.6-sol-joybuilder", at: t + day)
+        try insertAliasPair("failed", requestModel: "gpt-5.6-sol-joybuilder", proxyStatus: 400, at: t + 2 * day)
+        try insertAliasPair("mismatched", app: "gemini", source: "codex_session",
+                            requestModel: "gpt-5.6-sol-joybuilder", at: t + 3 * day)
+
+        XCTAssertEqual(try requestCount(around: t), 2, "别名匹配只对 Codex 开")
+        XCTAssertEqual(try requestCount(around: t + day), 2, "来源不是 codex_session 不放宽")
+        XCTAssertEqual(try requestCount(around: t + 2 * day), 2, "代理行没成功不算同一笔")
+        XCTAssertEqual(try requestCount(around: t + 3 * day), 2, "来源是 codex_session 但 app 不是 codex，也不放宽")
+    }
+
+    /// 旧库没有 request_model 列：过滤器里照写这一列会在 prepare 阶段失败，所有读路径一起挂。
+    /// 杀变异体：不看 schema、恒带别名分支。
+    func testAliasBranchIsOmittedWhenRequestModelColumnIsMissing() throws {
+        let path = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("ccusage-test-norequestmodel-\(UUID().uuidString).db")
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let schema = Fixture.schema.replacingOccurrences(of: #"\s*request_model TEXT,"#, with: "",
+                                                         options: .regularExpression)
+        XCTAssertFalse(schema.contains("request_model"), "夹具没去掉 request_model 列")
+        try Fixture.exec(path, schema)
+        let t = Fixture.ts(2026, 11, 2, 12)
+        try Fixture.insertLog(path, id: "proxy-old", app: "codex", model: "gpt-5.6-sol",
+                              input: 100, output: 20, cacheRead: 10, createdAt: t,
+                              dataSource: "proxy", providerId: "provider-1")
+        try Fixture.insertLog(path, id: "session-old", app: "codex", model: "gpt-5.6-sol-joybuilder",
+                              input: 100, output: 20, cacheRead: 10, createdAt: t + 60,
+                              dataSource: "codex_session", providerId: "_codex_session")
+
+        let legacy = try Fixture.store(path)
+        XCTAssertEqual(try legacy.rangeSummaryLogsOnly(UsageFilter(start: t - 1200, end: t + 1200)).requests, 2,
+                       "没有 request_model 列时查询照常，模型不同的一对不去重")
+    }
 }

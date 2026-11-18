@@ -124,12 +124,25 @@ extension UsageStore {
     /// 写入量 0 当「没记」，放行会话行的任意写入量。旧库没有这一列就省掉该分支——旧库里的
     /// Codex 会话行由旧导入器写入、写入量恒为 0，已被第二个分支放行，结果不变（缺列时照写
     /// 会在 prepare 阶段报错，所有读路径一起挂）。读路径统一经 `effectiveUsageFilter(db)` 取用。
-    static func effectiveUsageFilterL(hasSemantics: Bool) -> String {
+    ///
+    /// `hasRequestModel`：库里有没有 request_model 列。上游 v4.0.25（#7643）在模型匹配里加了一支：
+    /// Codex 会话日志记的是客户端填的模型别名，代理行的 model 是路由映射后的上游模型，两边对不上；
+    /// 会话行是 Codex（app_type 和来源都是）时，代理行的 request_model 等于会话行的模型也算同一笔。
+    /// request_model 为空或 `unknown` 不放宽——没有可用的别名时不能扩大这条启发式的范围。缺列同样省掉。
+    static func effectiveUsageFilterL(hasSemantics: Bool, hasRequestModel: Bool) -> String {
         let legacyCodexProxy = hasSemantics ? """
 
                                 OR (proxy_dedup.cache_creation_tokens=0
                                     AND proxy_dedup.input_token_semantics=0
                                     AND COALESCE(l.data_source,'proxy')='codex_session')
+            """ : ""
+        let codexRequestModelAlias = hasRequestModel ? """
+
+                                OR (l.app_type='codex'
+                                    AND COALESCE(l.data_source,'proxy')='codex_session'
+                                    AND NULLIF(TRIM(proxy_dedup.request_model),'') IS NOT NULL
+                                    AND LOWER(TRIM(proxy_dedup.request_model))<>'unknown'
+                                    AND LOWER(TRIM(proxy_dedup.request_model))=LOWER(TRIM(l.model)))
             """ : ""
         return """
         NOT (COALESCE(l.data_source,'proxy') IN ('session_log','codex_session','gemini_session','opencode_session')
@@ -145,7 +158,7 @@ extension UsageStore {
                                     AND COALESCE(l.data_source,'proxy') IN ('codex_session','gemini_session','opencode_session'))\(legacyCodexProxy))
                            AND proxy_dedup.created_at BETWEEN l.created_at-\(dedupWindowSeconds) AND l.created_at+\(dedupWindowSeconds)
                            AND (LOWER(proxy_dedup.model)=LOWER(l.model)
-                                OR LOWER(proxy_dedup.model)='unknown' OR LOWER(l.model)='unknown')))
+                                OR LOWER(proxy_dedup.model)='unknown' OR LOWER(l.model)='unknown'\(codexRequestModelAlias))))
         """
     }
 }
