@@ -66,8 +66,14 @@ enum ClaudeSessionFiles {
         try? FileManager.default.contentsOfDirectory(atPath: dir)
     }
 
+    /// 拼路径照旧用 `appendingPathComponent`（处理目录末尾的 `/`，结果和 cc-switch 记在 session_log_sync 里的
+    /// 路径逐字相同），再转成原生的连续 UTF-8 存储。不转的话拿到的是桥接的 Cocoa 字符串（NSPathStore2）：这些
+    /// 路径是叠加层几个字典的键，每个刷新 tick 每个文件要查好几次，桥接字符串的哈希和比较都走慢路径——全量
+    /// 数据下占一轮刷新开销的一半。
     private static func join(_ dir: String, _ name: String) -> String {
-        (dir as NSString).appendingPathComponent(name)
+        var path = (dir as NSString).appendingPathComponent(name)
+        path.makeContiguousUTF8()
+        return path
     }
 
     private static func isDirectory(_ path: String) -> Bool {

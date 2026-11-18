@@ -108,7 +108,9 @@ enum OmpSessionFiles {
     static func entries(_ dir: String) -> [Entry] {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return [] }
         return names.map { name in
-            let path = (dir as NSString).appendingPathComponent(name)
+            // 转成原生的连续 UTF-8 存储，理由同 ClaudeSessionFiles.join：路径是 OmpOverlay 的字典键，每轮还要整列比一遍。
+            var path = (dir as NSString).appendingPathComponent(name)
+            path.makeContiguousUTF8()
             var st = stat()
             var kind = Kind.other
             if lstat(path, &st) == 0 {

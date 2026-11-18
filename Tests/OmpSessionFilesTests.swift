@@ -48,6 +48,16 @@ final class OmpSessionFilesTests: XCTestCase {
         XCTAssertEqual(found, ["proj/a/child.jsonl", "proj/a/deeper/grand.jsonl", "proj/a.jsonl"])
     }
 
+    /// 路径要是原生（连续 UTF-8）字符串，理由同 ClaudeSessionFilesTests：它们是 OmpOverlay 的字典键，
+    /// 每轮还要整列比一遍。负责杀的变异体：拼完路径不转成原生存储。
+    func testDiscoveredFilesUseNativeStringStorage() throws {
+        try touch("proj/a.jsonl")
+        try touch("proj/a/child.jsonl")
+        let found = OmpSessionFiles.discover(roots()).files
+        XCTAssertEqual(relative(found), ["proj/a/child.jsonl", "proj/a.jsonl"])
+        for file in found { XCTAssertTrue(file.isContiguousUTF8, file) }
+    }
+
     /// 负责杀的变异体：跟了符号链接（文件或项目目录）。
     func testSkipsSymlinkedFilesAndDirectories() throws {
         let real = try touch("proj/real.jsonl")

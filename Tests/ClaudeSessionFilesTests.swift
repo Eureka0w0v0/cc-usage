@@ -46,6 +46,24 @@ final class ClaudeSessionFilesTests: XCTestCase {
                                          path("p/s1/subagents/workflows"), path("p/s1/subagents/workflows/wf_1")])
     }
 
+    /// 发现出来的路径要是原生（连续 UTF-8）字符串：它们是叠加层几个字典的键，每个刷新 tick 每个文件都要查好几次。
+    /// `appendingPathComponent` 给的是桥接的 Cocoa 字符串，哈希和比较不走 UTF-8 快路径——全量数据下占一轮刷新
+    /// 开销的一半。内容不能变：还得和 cc-switch 记在 session_log_sync 里的路径逐字相同。
+    /// 负责杀的变异体：拼完路径不转成原生存储。
+    func testDiscoveredFilesUseNativeStringStorage() throws {
+        try touch("p/main.jsonl")
+        try touch("p/s1/subagents/agent.jsonl")
+        try touch("p/s1/subagents/workflows/wf_1/step.jsonl")
+        let found = ClaudeSessionFiles.discover(root)
+        XCTAssertEqual(found.files.count, 3)
+        for file in found.files {
+            XCTAssertTrue(file.isContiguousUTF8, file)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file), file)
+        }
+        XCTAssertEqual(Set(found.files), [path("p/main.jsonl"), path("p/s1/subagents/agent.jsonl"),
+                                          path("p/s1/subagents/workflows/wf_1/step.jsonl")])
+    }
+
     func testMissingRootRecordsItSoItsCreationInvalidatesTheCache() {
         let missing = path("nope")
         let found = ClaudeSessionFiles.discover(missing)
