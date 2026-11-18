@@ -5,10 +5,10 @@ import Foundation
 /// 早前挂在 SessionOverlay 上，让定价模块反向依赖会话扫描器、形成 ModelPricing ↔ SessionOverlay
 /// 的环；搬到这里之后依赖只剩单向：overlay → ModelPricing → ModelId。
 enum ModelId {
-    /// 对齐 model_pricing_candidates(裁剪版:只保留 Claude 会话日志会遇到的规则——
-    /// 路径/冒号清洗、[1m] 上下文标记、命名空间前缀、ISO/8位/6位日期后缀、
-    /// -v<N> 版本尾、推理档后缀、claude id 的 dot→dash。上游还有一条
-    /// claude-<非Anthropic系>前缀剥离,Claude Code 日志不会产生,不复刻)。
+    /// 对齐 model_pricing_candidates(裁剪版:路径/冒号清洗、[1m] 上下文标记、命名空间前缀、
+    /// ISO/8位/6位日期后缀、-v<N> 版本尾、推理档后缀、Hydrogen Orchestrator 回落基础模型、
+    /// claude id 的 dot→dash。上游还有一条 claude-<非Anthropic系>前缀剥离,Claude Code 日志
+    /// 不会产生,不复刻)。各条规则压栈的先后与上游相同——候选的顺序就是查价的优先级。
     static func pricingCandidates(_ modelId: String) -> [String] {
         var cleaned = modelId
         if let idx = cleaned.range(of: "/", options: .backwards) { cleaned = String(cleaned[idx.upperBound...]) }
@@ -37,12 +37,18 @@ enum ModelId {
             where candidate.hasSuffix(suffix) && candidate.count > suffix.count {
                 queue.append(String(candidate.dropLast(suffix.count)))
             }
+            // Antigravity 的「Gemini 4 Hydrogen (Orchestrator)」就是 Hydrogen 在跑执行步骤（上游 v4.0.33
+            // #9542）。原始 id 留在前面，给它单独定的价仍然优先；只认这一个确切的 id，不是通用的后缀剥离。
+            if candidate == hydrogenOrchestrator { queue.append(hydrogenBase) }
             if candidate.hasPrefix("claude-") && candidate.contains(".") {
                 queue.append(candidate.replacingOccurrences(of: ".", with: "-"))
             }
         }
         return candidates
     }
+
+    private static let hydrogenOrchestrator = "gemini-4-hydrogen-orchestrator"
+    private static let hydrogenBase = "gemini-4-hydrogen"
 
     private static func stripBedrockVersionSuffix(_ id: String) -> String? {
         guard let r = id.range(of: "-v", options: .backwards) else { return nil }

@@ -233,6 +233,7 @@
 		E34D5CCE71FDDE308668470A /* brand-minimax.png in Resources */ = {isa = PBXBuildFile; fileRef = E50FA82869360DF5BE4941CF /* brand-minimax.png */; };
 		E672F78F837DD077EA20B645 /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC6250907BF253C5B8ABBD1 /* QuotaWarning.swift */; };
 		E73264967292A2593561CBCA /* ClaudePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAB5CF8868DC08111CC916BF /* ClaudePlan.swift */; };
+		E75D0371223269AF9101AF6E /* HydrogenOrchestratorPricingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFCA9BD39723C9E97462CDF6 /* HydrogenOrchestratorPricingTests.swift */; };
 		E77C3550A9D0E65C1A3E9AF1 /* TimeParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6BD0BCA9E3975AC633FC3FF /* TimeParsing.swift */; };
 		E7EC69F38405B69289B99CB6 /* NiceScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEE9EE50B0C471159BCFDC9A /* NiceScale.swift */; };
 		E86BCAFEEE947CF133D2326B /* MenuBarDataLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F5822308D03B3BD280180D /* MenuBarDataLoader.swift */; };
@@ -436,6 +437,7 @@
 		F75BAF875CACF63F0FC09F52 /* TrendLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendLayout.swift; sourceTree = "<group>"; };
 		FCD0820202DA7BEE030DC3CC /* brand-kimi.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-kimi.png"; sourceTree = "<group>"; };
 		FE46559B13C9C8A264B5681B /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		FFCA9BD39723C9E97462CDF6 /* HydrogenOrchestratorPricingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrogenOrchestratorPricingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -539,6 +541,7 @@
 				581B74090E8AD015CE9C4DBE /* FallbackTableSeedTests.swift */,
 				E1AB14D881996E7BEEB26551 /* FormattingTests.swift */,
 				C5961E0610DE25AB1C57F7C7 /* HTTPDownloadTests.swift */,
+				FFCA9BD39723C9E97462CDF6 /* HydrogenOrchestratorPricingTests.swift */,
 				F50273603149EF8E51283D5C /* JSONLChainScanTests.swift */,
 				1204682563F4D4F55197E096 /* MBAppTests.swift */,
 				6406D7B906589CBE28357688 /* MenuBarDataLoaderTests.swift */,
@@ -1049,6 +1052,7 @@
 				68B805CE1560AC2AF4047FC6 /* FormattingTests.swift in Sources */,
 				C2208B3BCF0D2CCA42B9D679 /* HTTPDownload.swift in Sources */,
 				B5724B30C32044F78120D6A3 /* HTTPDownloadTests.swift in Sources */,
+				E75D0371223269AF9101AF6E /* HydrogenOrchestratorPricingTests.swift in Sources */,
 				DEF0BEDBCB4ABC9D21BB2357 /* JSONLChainScanTests.swift in Sources */,
 				DF8815CBF74320ECBF8DA905 /* JSONLScan.swift in Sources */,
 				2502962B7560D96B21CCA1FE /* MBAppTests.swift in Sources */,
