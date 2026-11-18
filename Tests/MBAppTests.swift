@@ -5,14 +5,15 @@ final class MBAppTests: XCTestCase {
     /// rawValue 必须等于库里的 app_type，顺序就是菜单栏里各段的排列。
     func testMenuBarOrderIsUnchanged() {
         XCTAssertEqual(MBApp.allCases.map(\.rawValue),
-                       ["claude", "codex", "gemini", "opencode", "agy", "grokbuild", "pi", "mcode", "kimi", "omp", "dsh"])
+                       ["claude", "codex", "gemini", "opencode", "agy", "grokbuild", "pi", "mcode", "kimi", "omp", "dsh",
+                        "copilot", "workbuddy"])
     }
 
     /// 负责杀的变异体：设置面板直接 ForEach(allCases)，Antigravity 跑到 OpenCode 后面。
     func testSettingsOrderKeepsAntigravityAfterMiniMax() {
         XCTAssertEqual(MBApp.settingsOrder.map(\.title),
                        ["Claude", "Codex", "Gemini", "OpenCode", "Grok", "Pi", "MiniMax Code", "Antigravity",
-                        "Kimi Code", "Oh My Pi", "DeepSeek Harness"])
+                        "Kimi Code", "Oh My Pi", "DeepSeek Harness", "Copilot CLI", "WorkBuddy"])
     }
 
     func testSettingsOrderListsEveryAppOnce() {
@@ -26,13 +27,32 @@ final class MBAppTests: XCTestCase {
         XCTAssertEqual(keys, [.claude: "mb.group.claude", .codex: "mb.group.codex", .gemini: "mb.group.gemini",
                               .opencode: "mb.group.opencode", .agy: "mb.group.antigravity", .grokbuild: "mb.group.grok",
                               .pi: "mb.group.pi", .mcode: "mb.group.mcode", .kimi: "mb.group.kimi", .omp: "mb.group.omp",
-                              .dsh: "mb.group.dsh"])
+                              .dsh: "mb.group.dsh", .copilot: "mb.group.copilot",
+                              .workbuddy: "mb.group.workbuddy"])
     }
 
     func testQuotaNotes() {
         for app in [MBApp.claude, .codex, .agy] { XCTAssertNil(app.quotaNote, "\(app) 有额度数据") }
         for app in [MBApp.gemini, .opencode, .grokbuild, .pi, .mcode] { XCTAssertEqual(app.quotaNote, "No quota API") }
-        for app in [MBApp.kimi, .omp, .dsh] { XCTAssertEqual(app.quotaNote, "Not supported") }
+        for app in [MBApp.kimi, .omp, .dsh, .copilot, .workbuddy] {
+            XCTAssertEqual(app.quotaNote, "Not supported")
+        }
+    }
+
+    /// 每家的图标要么是包里真有的模板图，要么明说没有（Pi）。负责杀的变异体：新分组的图标名写错 / 忘了放图。
+    func testIconAssetsExistInBrandIcons() throws {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../Sources/App/BrandIcons").standardizedFileURL
+        for app in MBApp.allCases {
+            guard let asset = app.iconAsset else {
+                XCTAssertEqual(app, .pi, "只有 Pi 没有图标")
+                continue
+            }
+            XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("\(asset).png").path),
+                          "\(app) 的图标 \(asset).png 不在 BrandIcons 里")
+        }
+        XCTAssertEqual(MBApp.copilot.iconAsset, "brand-copilot")
+        XCTAssertEqual(MBApp.workbuddy.iconAsset, "brand-workbuddy")
     }
 
     /// 其余持久化键：重构时最容易顺手「修」掉的就是这些字符串。

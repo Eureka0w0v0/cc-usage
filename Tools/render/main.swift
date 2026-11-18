@@ -27,9 +27,8 @@ MainActor.assumeIsolated {
 struct RenderScenarios {
     let outDir: String
     private let defaults = UserDefaults.standard
-    private let groupKeys = [MBKey.groupAll, MBKey.groupClaude, MBKey.groupCodex, MBKey.groupGemini, MBKey.groupOpencode,
-                             MBKey.groupAntigravity, MBKey.groupGrok, MBKey.groupPi, MBKey.groupMcode, MBKey.groupKimi,
-                             MBKey.groupOmp, MBKey.groupDsh]
+    /// All 加上每一家的展开键：从 MBApp 取，加分组时不用回来改这里（漏了的话新分组在「全展开」里是收起的）。
+    private let groupKeys = [MBKey.groupAll] + MBApp.allCases.map(\.expansionKey)
 
     /// 额度开关只从 UserDefaults 设：mbQuota5H / mbQuotaWeek 的 didSet 会立刻拉官方额度，渲染绝不能走到网络和钥匙串。
     private func model(chips: [String] = [], quota5H: Bool = false, quotaWeek: Bool = false) -> PanelModel {
@@ -83,7 +82,8 @@ struct RenderScenarios {
 
         let chips = ["claude.tokens.today", "claude.cost.week", "codex.tokens.month", "codex.quota.7D", "gemini.cost.today",
                      "opencode.tokens.week", "agy.tokens.today", "agy.quota.3p-weekly", "grokbuild.cost.month",
-                     "pi.tokens.today", "mcode.cost.week", "kimi.tokens.month", "omp.cost.today", "dsh.tokens.week"]
+                     "pi.tokens.today", "mcode.cost.week", "kimi.tokens.month", "omp.cost.today", "dsh.tokens.week",
+                     "copilot.tokens.today", "workbuddy.cost.week"]
         let full = model(chips: chips, quota5H: true)
         setQuota(full, claude: claude, codex: codex, agy: agy)
         png(MenuBarSettingsView(model: full), name: "settings-all-open-full")
@@ -132,7 +132,8 @@ struct RenderScenarios {
         record("quota-numbers", quota)
 
         let perApp = model(chips: ["claude.tokens.today", "claude.cost.today", "claude.tokens.week", "codex.cost.month",
-                                   "grokbuild.tokens.today", "pi.cost.week", "dsh.tokens.month", "omp.tokens.today"])
+                                   "grokbuild.tokens.today", "pi.cost.week", "dsh.tokens.month", "omp.tokens.today",
+                                   "copilot.tokens.today", "workbuddy.cost.today"])
         perApp.mbTokToday = false
         perApp.mbCostToday = false
         record("apps-placeholder", perApp)

@@ -53,7 +53,10 @@ final class MenuBarQuotaTests: XCTestCase {
     }
 
     func testOtherAppsHaveNoQuotaChips() {
-        for app in [MBApp.gemini, .opencode, .grokbuild, .pi, .mcode, .kimi, .omp, .dsh] {
+        // 没有额度数据的各家按「除了有额度的三家以外的全部」算，新加的分组自动进来。
+        let withoutQuota = MBApp.allCases.filter { ![.claude, .codex, .agy].contains($0) }
+        XCTAssertEqual(withoutQuota.count, 10)
+        for app in withoutQuota {
             XCTAssertEqual(chips(app, [reading("x", 1)], ["\(app.rawValue).quota.x"]), [])
         }
     }

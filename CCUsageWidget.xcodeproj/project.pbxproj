@@ -25,6 +25,7 @@
 		158ED47EFD3E8A960B58B8F9 /* UsageSQL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4462E2D0CD755D67113F48A0 /* UsageSQL.swift */; };
 		1635BCDD5D777AB253C584AC /* UsageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA8DAFF3CCEE62A47CCC0700 /* UsageStoreTests.swift */; };
 		1736E7470BD4901F8F35314B /* OmpOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3268B8122C5885753CECF856 /* OmpOverlay.swift */; };
+		1850759356148CD4338628F8 /* brand-workbuddy.png in Resources */ = {isa = PBXBuildFile; fileRef = D735794C9BD6FCF4E95A3D68 /* brand-workbuddy.png */; };
 		186BAD2B5F7F3BD476D7CC9A /* ProviderStatsIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 257C11FFFD819FF62888DFFC /* ProviderStatsIdentityTests.swift */; };
 		1A0156C1CD7678D38B096947 /* UsageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D85B962EBD6D1E0F549497 /* UsageModels.swift */; };
 		1AB9D7324DF34BF91A2E4087 /* CrossSourceDedupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02EC91B3D0364F51E74D43D4 /* CrossSourceDedupTests.swift */; };
@@ -62,6 +63,7 @@
 		417D94777D2B75B45D979FB0 /* ClaudeCacheWriteBillingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C680FCBEA94CAC502E56E10 /* ClaudeCacheWriteBillingTests.swift */; };
 		41D213BC716BF76C9945BE04 /* CodexRateLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = D251B8061DDAC1139500D598 /* CodexRateLimits.swift */; };
 		4770A1E35288A450B57B2FBF /* ClaudeUsageParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11229265D35EF6B37D58294B /* ClaudeUsageParsingTests.swift */; };
+		484460F54AB0D31F82C3438E /* brand-copilot.png in Resources */ = {isa = PBXBuildFile; fileRef = 3B8AD4B7E6C083A5B06859DB /* brand-copilot.png */; };
 		487AD95F97158E35DA5D0F67 /* PaginationAndCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 462453BE6E1B53389703CE33 /* PaginationAndCacheTests.swift */; };
 		4AAD9D95134DC5AD995D8511 /* UsageWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575EC9EA5B5664CB541642A8 /* UsageWindow.swift */; };
 		4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */ = {isa = PBXBuildFile; fileRef = E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */; };
@@ -328,6 +330,7 @@
 		3ABB3C3707EC50D4E1A3A1C9 /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
 		3B0A19B0E75AF7C4A2A7B928 /* SyncCursorCompatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCursorCompatTests.swift; sourceTree = "<group>"; };
 		3B12A88A474853068E9E3317 /* brand-grok.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-grok.png"; sourceTree = "<group>"; };
+		3B8AD4B7E6C083A5B06859DB /* brand-copilot.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-copilot.png"; sourceTree = "<group>"; };
 		3D108F47E63C782C8ADA61DF /* UsageStore+Trend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+Trend.swift"; sourceTree = "<group>"; };
 		3D3420F1AF00FC1A2ACBF681 /* MenuBarQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarQuota.swift; sourceTree = "<group>"; };
 		40CDBEA70D4CF12353B80A47 /* CodexRateLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRateLimitsTests.swift; sourceTree = "<group>"; };
@@ -416,6 +419,7 @@
 		D26B720C71341EDAF0A5BF0D /* MenuBarSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarSettingsView.swift; sourceTree = "<group>"; };
 		D6E3B89505AD8A40A56AD32A /* PanelWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelWebView.swift; sourceTree = "<group>"; };
 		D729258F5AA886E079A0E1E5 /* OmpSessionFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmpSessionFiles.swift; sourceTree = "<group>"; };
+		D735794C9BD6FCF4E95A3D68 /* brand-workbuddy.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "brand-workbuddy.png"; sourceTree = "<group>"; };
 		D7F57D819D08A4D1E4A8A664 /* OverlayDB.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayDB.swift; sourceTree = "<group>"; };
 		D86555EEE6D9FEEE55447458 /* ClaudeCacheWriteBilling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCacheWriteBilling.swift; sourceTree = "<group>"; };
 		DA08C33B5F223D420F140905 /* StatsPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsPerformanceTests.swift; sourceTree = "<group>"; };
@@ -738,6 +742,7 @@
 			children = (
 				AB7BF81703006F6E8E06425B /* brand-antigravity.png */,
 				CAA25E78D961070EDBD05FBD /* brand-claude.png */,
+				3B8AD4B7E6C083A5B06859DB /* brand-copilot.png */,
 				A12ACCE40C9007DC7CB66822 /* brand-deepseek.png */,
 				7C5506EFDDB250B8217B59FD /* brand-gemini.png */,
 				3B12A88A474853068E9E3317 /* brand-grok.png */,
@@ -746,6 +751,7 @@
 				214423B6ACA620FF6424C192 /* brand-omp.png */,
 				E1E7BECCFD4F7A91B63635F8 /* brand-openai.png */,
 				09D1E9749B8E07DB4B72929A /* brand-opencode.png */,
+				D735794C9BD6FCF4E95A3D68 /* brand-workbuddy.png */,
 			);
 			path = BrandIcons;
 			sourceTree = "<group>";
@@ -859,6 +865,7 @@
 				6F3F114D755ECABD55C6ADBE /* AppIcon.icns in Resources */,
 				F0A03A972CAADA8218FA9636 /* brand-antigravity.png in Resources */,
 				B37D66ED135407352107CDAE /* brand-claude.png in Resources */,
+				484460F54AB0D31F82C3438E /* brand-copilot.png in Resources */,
 				62D9343B3826C066952A880A /* brand-deepseek.png in Resources */,
 				A23AB5FE4DB021E8C1AE1FD6 /* brand-gemini.png in Resources */,
 				0DB32A66B84D5E260ECB71C5 /* brand-grok.png in Resources */,
@@ -867,6 +874,7 @@
 				B9C758ECE87B764FE9A61245 /* brand-omp.png in Resources */,
 				4ACAFD7D6663B4F72307BDC4 /* brand-openai.png in Resources */,
 				71893AB2B92CBF17DDB60DEF /* brand-opencode.png in Resources */,
+				1850759356148CD4338628F8 /* brand-workbuddy.png in Resources */,
 				B690D5FE64B100264FED2361 /* index.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

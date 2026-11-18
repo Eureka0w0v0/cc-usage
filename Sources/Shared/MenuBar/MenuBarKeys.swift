@@ -31,6 +31,8 @@ enum MBKey {
     static let groupKimi        = "mb.group.kimi"
     static let groupOmp         = "mb.group.omp"
     static let groupDsh         = "mb.group.dsh"
+    static let groupCopilot     = "mb.group.copilot"
+    static let groupWorkbuddy   = "mb.group.workbuddy"
 }
 
 /// embed 面板经 set_setting 写进 UserDefaults 的键（PanelWebView 桥接与 PanelModel 启动接管共用）。
@@ -52,16 +54,17 @@ enum EmbedKey {
 enum MBApp: String, CaseIterable {
     // rawValue 必须等于 cc-switch DB 的 app_type（grokbuild 而非 grok）。
     //
-    // 覆盖上游 `KNOWN_APP_TYPES`（src/types/usage.ts，v4.0.22）的全部 11 项。上游那份清单里没有的
+    // 覆盖上游 `KNOWN_APP_TYPES`（src/types/usage.ts，v4.0.34）的全部 13 项。上游那份清单里没有的
     // `openclaw` / `hermes` 只是"被管理的 app"，压根不产生用量行，故不进本枚举；`claude-desktop` 在查询层
     // 就折叠进 `claude`（见 foldedAppL/R），单列会只显示半个数、反而误导。
     // `omp`（Oh My Pi）v4.0.22 起由上游导入用量（本应用的 OmpOverlay 叠加还没入库的部分）；`dsh`
-    // （DeepSeek Harness）是 v4.0.22 新增的应用，用量同样来自上游的会话导入。
+    // （DeepSeek Harness）是 v4.0.22 新增的应用，用量同样来自上游的会话导入。`copilot`（GitHub Copilot CLI，
+    // v4.0.29）、`workbuddy`（腾讯 WorkBuddy，v4.0.31）同理，本应用不叠加它们的会话日志，只读库里已导入的行。
     // `agy` 原名 `antigravity`：上游 v4.0.18 有 agy 之前，本应用只拿它查额度、键是自起的名字；v2.1.0 起
     // 上游导入 Antigravity 的会话用量（app_type = agy），改成同名，旧码片键由 MenuBarChipMigration 迁移。
     // 追加新项一律放末尾：allCases 的顺序就是菜单栏里各段的排列，插在中间会平白
     // 打乱用户已经习惯的位置。
-    case claude, codex, gemini, opencode, agy, grokbuild, pi, mcode, kimi, omp, dsh
+    case claude, codex, gemini, opencode, agy, grokbuild, pi, mcode, kimi, omp, dsh, copilot, workbuddy
     var title: String {
         switch self {
         case .claude: return "Claude"; case .codex: return "Codex"
@@ -70,6 +73,7 @@ enum MBApp: String, CaseIterable {
         case .pi: return "Pi"; case .mcode: return "MiniMax Code"
         case .kimi: return "Kimi Code"
         case .omp: return "Oh My Pi"; case .dsh: return "DeepSeek Harness"
+        case .copilot: return "Copilot CLI"; case .workbuddy: return "WorkBuddy"
         }
     }
     /// 品牌模板图标（BrandIcons 里的 64×64 黑色 alpha PNG，菜单栏段前缀与设置分组
@@ -78,6 +82,8 @@ enum MBApp: String, CaseIterable {
     /// 指向一个不存在的文件名靠 NSImage 返回 nil 兜底。brand-kimi / brand-deepseek 由上游
     /// `src/icons/extracted/` 的 kimi.svg / deepseek.svg 转来（颜色统一成黑、只留 alpha）；brand-omp 取上游
     /// `src/icons/extracted/index.ts` 里 Oh My Pi 内联 SVG 的 π 字形（去掉深色底块，否则模板图是一整块实心方块）。
+    /// brand-copilot 由 `githubcopilot.svg` 转来；brand-workbuddy 取同一个 `index.ts` 里 WorkBuddy 内联 SVG 的
+    /// 猫形和眼睛两条路径（不要渐变底块和光晕），裁成原图的圆角方形。
     var iconAsset: String? {
         switch self {
         case .claude: return "brand-claude"; case .codex: return "brand-openai"
@@ -85,6 +91,7 @@ enum MBApp: String, CaseIterable {
         case .agy: return "brand-antigravity"; case .grokbuild: return "brand-grok"
         case .mcode: return "brand-minimax"; case .kimi: return "brand-kimi"
         case .omp: return "brand-omp"; case .dsh: return "brand-deepseek"
+        case .copilot: return "brand-copilot"; case .workbuddy: return "brand-workbuddy"
         case .pi: return nil
         }
     }
@@ -92,7 +99,7 @@ enum MBApp: String, CaseIterable {
     /// 设置面板里各分组的顺序。和 allCases（菜单栏段的顺序）不一样：Antigravity 在设置面板排 MiniMax Code 后面，
     /// 用户已经习惯这个位置。
     static let settingsOrder: [MBApp] = [.claude, .codex, .gemini, .opencode, .grokbuild, .pi, .mcode, .agy,
-                                         .kimi, .omp, .dsh]
+                                         .kimi, .omp, .dsh, .copilot, .workbuddy]
 
     /// 设置面板这个分组展开状态的持久化键（agy、grokbuild 的键是历史名，不能改）。
     var expansionKey: String {
@@ -108,6 +115,8 @@ enum MBApp: String, CaseIterable {
         case .kimi: return MBKey.groupKimi
         case .omp: return MBKey.groupOmp
         case .dsh: return MBKey.groupDsh
+        case .copilot: return MBKey.groupCopilot
+        case .workbuddy: return MBKey.groupWorkbuddy
         }
     }
 
@@ -121,8 +130,9 @@ enum MBApp: String, CaseIterable {
         case .gemini, .opencode, .grokbuild, .pi, .mcode:
             return "No quota API"
         // Kimi Code：上游的官方账号额度走它的授权中心（OAuth），本应用没做。Oh My Pi：按各家 API key 计费，没有统一的
-        // 额度可查。DeepSeek Harness：上游在授权中心查 DeepSeek 账号余额，本应用没做。
-        case .kimi, .omp, .dsh:
+        // 额度可查。DeepSeek Harness：上游在授权中心查 DeepSeek 账号余额，本应用没做。Copilot CLI / WorkBuddy：
+        // 上游在授权中心查 GitHub Copilot 账号的额度、WorkBuddy 账号的积分，本应用没做。
+        case .kimi, .omp, .dsh, .copilot, .workbuddy:
             return "Not supported"
         }
     }

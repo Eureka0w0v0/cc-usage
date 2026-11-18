@@ -21,7 +21,7 @@ enum MenuBarQuota {
             return claudeChips(readings, show5H: claude5H, showWeek: claudeWeek)
         case .codex, .agy:
             return selectedChips(readings, app: app, selection: selection)
-        case .gemini, .opencode, .grokbuild, .pi, .mcode, .kimi, .omp, .dsh:
+        case .gemini, .opencode, .grokbuild, .pi, .mcode, .kimi, .omp, .dsh, .copilot, .workbuddy:
             return []
         }
     }
