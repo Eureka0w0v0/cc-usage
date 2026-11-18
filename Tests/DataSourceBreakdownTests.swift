@@ -128,4 +128,25 @@ final class DataSourceBreakdownTests: XCTestCase {
         XCTAssertEqual(names, ["Oh My Pi (Session)", "DeepSeek Harness (Session)",
                                "DeepSeek Harness (OAuth)"])
     }
+
+    /// v4.0.29 / v4.0.31 新增的会话来源（GitHub Copilot CLI、WorkBuddy）：名字逐字对齐上游
+    /// provider_name_coalesce，并且能按这个名字筛选（Hero 与页签同口径）。
+    /// 负责杀的变异体：providerNameSQL 漏掉 `_copilot_session` / `_workbuddy_session` 任一分支 / 名字抄错。
+    func testCopilotAndWorkBuddySessionProvidersRenderReadableNames() throws {
+        let t = Fixture.ts(2026, 11, 14, 12)
+        try Fixture.insertLog(dbPath, id: "c1", app: "copilot", model: "gpt-5.6",
+                              input: 100, output: 10, cost: 1.5, createdAt: t,
+                              dataSource: "copilot_session", providerId: "_copilot_session", semantics: 2)
+        try Fixture.insertLog(dbPath, id: "w1", app: "workbuddy", model: "kimi-k3.1-pro",
+                              input: 100, output: 10, cost: 0.5, createdAt: t,
+                              dataSource: "workbuddy_session", providerId: "_workbuddy_session", semantics: 2)
+
+        let names = Set(try store.providerStats(LogQueryFilter()).map(\.providerName))
+        XCTAssertEqual(names, ["Copilot CLI (Session)", "WorkBuddy (Session)"])
+        for name in names {
+            let filtered = try store.rangeSummary(UsageFilter(start: t - 60, end: t + 60, providerName: name),
+                                                  calendar: Fixture.cal)
+            XCTAssertEqual(filtered.requests, 1, name)
+        }
+    }
 }
