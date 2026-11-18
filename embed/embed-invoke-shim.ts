@@ -275,6 +275,19 @@ function mockRequestLogs() {
       appType: "dsh",
       model: "deepseek-v4.1-flash",
     },
+    // v4.0.29 / v4.0.31：GitHub Copilot CLI、WorkBuddy 的会话导入
+    {
+      ...row("copilot:s1:1", "Copilot CLI (Session)", "copilot_session", 480, 5_300, 700, 4200),
+      providerId: "_copilot_session",
+      appType: "copilot",
+      model: "gpt-5.6",
+    },
+    {
+      ...row("workbuddy:s1:a1", "WorkBuddy (Session)", "workbuddy_session", 350, 0, undefined, 4800),
+      providerId: "_workbuddy_session",
+      appType: "workbuddy",
+      model: "kimi-k3.1-pro",
+    },
   ];
   return { data, total: data.length, page: 0, pageSize: 20 };
 }

@@ -372,7 +372,10 @@ function QuotaBadges({ pollMs }: { pollMs: number }) {
 
 /* ───────── 用量页（照 v4.0.20 UsageDashboard，只读） ───────── */
 
-const STATUS_CODE_OPTIONS = [200, 400, 401, 429, 500] as const;
+// 常见的网关 / 上游错误码也列上（520 / 529 是 Cloudflare、Anthropic 自己返回的）——照上游 v4.0.31 `72fe4edf`。
+const STATUS_CODE_OPTIONS = [
+  200, 400, 401, 403, 404, 429, 500, 502, 503, 504, 520, 529,
+] as const;
 
 type UsageTab = "logs" | "providers" | "models";
 const TABS: UsageTab[] = ["logs", "providers", "models"];
