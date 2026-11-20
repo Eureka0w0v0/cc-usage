@@ -110,11 +110,6 @@ struct DumpMatrix {
             }
             dumpLogFilters()
             dumpDetails()
-            attempt("dataSourceBreakdown") {
-                try ctx.store.dataSourceBreakdown().map {
-                    "\($0.dataSource) n=\($0.requestCount) cost=\(DumpFormat.num($0.totalCost))"
-                }
-            }
             attempt("snapshot default") {
                 let s = try ctx.store.snapshot(now: now, calendar: cal)
                 return [DumpFormat.summary(s.today), DumpFormat.summary(s.cumulative),

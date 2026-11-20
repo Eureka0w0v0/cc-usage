@@ -201,7 +201,7 @@ extension UsageStore {
             totalCostUsd: Fmt.usd6(r.totalCost),
             isStreaming: true, latencyMs: r.latencyMs, firstTokenMs: r.firstTokenMs, durationMs: nil,
             statusCode: Int(r.statusCode), errorMessage: r.errorMessage, createdAt: r.createdAt,
-            dataSource: r.dataSource   // 与 dataSourceBreakdown 同一真值，不按 providerId 反推
+            dataSource: r.dataSource   // 行自带的来源（叠加层定的），不按 providerId 反推
         )
     }
 }

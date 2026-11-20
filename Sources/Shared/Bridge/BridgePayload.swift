@@ -139,15 +139,4 @@ enum BridgePayload {
             ]
         }
     }
-
-    // get_usage_data_sources → DataSourceSummary[]
-    static func dataSources(_ stats: [DataSourceStat]) -> [[String: Any]] {
-        return stats.map {
-            [
-                "dataSource": $0.dataSource,
-                "requestCount": $0.requestCount,
-                "totalCostUsd": Fmt.usd6($0.totalCost),
-            ]
-        }
-    }
 }

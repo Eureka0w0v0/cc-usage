@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 extension UsageStore {
-    // MARK: - Provider Stats / Model Stats / 按来源
+    // MARK: - Provider Stats / Model Stats
     //
     // Provider / Model Stats 与上游 v4 一样把整日 rollup 也并进来，和 Hero 同口径，各行加起来等于顶部总数
     // （早先三个 Tab 都只读明细，区间跨到 30 天前时两张统计表会比 Hero 少一截，2026-10-15 随主窗口升级
@@ -226,47 +226,5 @@ extension UsageStore {
         p.firstTokenMedianMs = exact
         p.estFirstTokenMedianMs = estimated
         return p
-    }
-
-    /// 「按来源」分组，对齐 session_usage.rs::get_data_source_breakdown：
-    /// **不带时间窗**（上游此接口就是全表口径，日期选择器不作用于它）、
-    /// GROUP BY COALESCE(data_source,'proxy')、带跨源去重过滤、按请求数降序。
-    /// usage_daily_rollups 无 data_source 列，天然不参与（与上游一致）。
-    ///
-    /// 与上游的唯一有意偏差：成本用 costL（内置定价兜底）而非裸 total_cost_usd，
-    /// 与本 app 其余面板同源，未定价模型不至于显示 0。
-    public func dataSourceBreakdown() throws -> [DataSourceStat] {
-        let db = try openRO()
-        defer { sqlite3_close(db) }
-        let sql = """
-        SELECT COALESCE(l.data_source,'proxy') AS ds,
-               COUNT(*),
-               COALESCE(SUM(\(costL(db))),0)
-        FROM proxy_request_logs l
-        WHERE \(effectiveUsageFilter(db))
-        GROUP BY ds
-        """
-        let stmt = try prepare(db, sql)
-        defer { sqlite3_finalize(stmt) }
-
-        var acc: [String: (req: Int64, cost: Double)] = [:]
-        while try stepRow(stmt, sql) {
-            guard let c = sqlite3_column_text(stmt, 0) else { continue }
-            acc[String(cString: c)] = (sqlite3_column_int64(stmt, 1),
-                                       sqlite3_column_double(stmt, 2))
-        }
-        // 未入库增量按各自来源并入（SessionOverlay=session_log、OmpOverlay=omp_session，
-        // 都与库内同名桶合并，入库后自动收敛）。
-        for r in overlayRows(db, UsageFilter()) {
-            var a = acc[r.dataSource] ?? (0, 0)
-            a.req += 1
-            a.cost += r.totalCost
-            acc[r.dataSource] = a
-        }
-        return acc
-            .map { DataSourceStat(dataSource: $0.key,
-                                  requestCount: $0.value.req,
-                                  totalCost: $0.value.cost) }
-            .sorted { $0.requestCount > $1.requestCount }
     }
 }

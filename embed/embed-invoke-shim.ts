@@ -72,14 +72,6 @@ function mockInvoke(cmd: string, args?: InvokeArgs): unknown {
       return mockProviders();
     case "get_model_stats":
       return mockModels();
-    case "get_usage_data_sources":
-      return [
-        {
-          dataSource: "session_log",
-          requestCount: 128,
-          totalCostUsd: "1.234560",
-        },
-      ];
     case "get_request_logs":
       return mockRequestLogs();
     case "get_request_detail":
@@ -90,14 +82,6 @@ function mockInvoke(cmd: string, args?: InvokeArgs): unknown {
       );
     case "get_model_pricing":
       return [];
-    case "check_provider_limits":
-      return {
-        providerId: String((args as { providerId?: string })?.providerId ?? ""),
-        dailyUsage: "0",
-        dailyExceeded: false,
-        monthlyUsage: "0",
-        monthlyExceeded: false,
-      };
     case "sync_session_usage":
       return { imported: 0, skipped: 0, filesScanned: 0, errors: [] };
     case "get_quota":

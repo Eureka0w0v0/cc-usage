@@ -141,12 +141,6 @@ struct PanelWebView: NSViewRepresentable {
                 return NSNull()
             case "get_usage_summary":
                 return BridgePayload.summary(try store.rangeSummary(args.usageFilter))
-            case "get_usage_data_sources":
-                // 「按来源」只统计有 data_source 的明细行（rollups 无该列，不计入）。
-                // 真按 data_source 分组——库里除 session_log 外还有 codex_session，
-                // 升级 cc-switch 后还会出现 grok_session；旧实现把它们全贴成 session_log。
-                // 与上游一样不吃时间窗（get_data_source_breakdown 是全表口径）。
-                return BridgePayload.dataSources(try store.dataSourceBreakdown())
 
             // ── 下半部 Tabs：真查 proxy_request_logs（对齐 usage_stats.rs 字段/口径）──
             case "get_request_logs":
@@ -203,13 +197,11 @@ struct PanelWebView: NSViewRepresentable {
                     usageDisplayJSON: UserDefaults.standard.string(forKey: EmbedKey.usageDisplay),
                     ccSwitchSettings: FileManager.default.contents(atPath: settingsPath))
 
-            // 次要命令(Pricing/Sync/Limits)—返回空/桩，面板未用
+            // 次要命令(Pricing/Sync)—返回空/桩，面板未用
             case "get_model_pricing":
                 return [[String: Any]]()
             case "sync_session_usage":
                 return ["imported": 0, "skipped": 0, "filesScanned": 0, "errors": [String]()]
-            case "check_provider_limits":
-                return ["hasLimit": false]
             default:
                 return NSNull()
             }

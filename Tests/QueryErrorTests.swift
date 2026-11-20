@@ -67,7 +67,6 @@ final class QueryErrorTests: XCTestCase {
         assertStepError("requestLogs") { _ = try store.requestLogs(LogQueryFilter(), page: 0, pageSize: 20) }
         assertStepError("providerStats") { _ = try store.providerStats(LogQueryFilter(), calendar: cal) }
         assertStepError("modelStats") { _ = try store.modelStats(LogQueryFilter(), calendar: cal) }
-        assertStepError("dataSourceBreakdown") { _ = try store.dataSourceBreakdown() }
         assertStepError("firstUsageDate") { _ = try store.firstUsageDate(UsageFilter(), calendar: cal) }
     }
 

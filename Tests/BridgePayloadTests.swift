@@ -96,12 +96,6 @@ final class BridgePayloadTests: XCTestCase {
         XCTAssertEqual(d["totalTokens"] as? Int64, 5, "上游 DailyStats 的 totalTokens 只含输入 + 输出")
     }
 
-    func testDataSourceKeys() {
-        let d = BridgePayload.dataSources([DataSourceStat(dataSource: "session_log", requestCount: 1, totalCost: 2)])[0]
-        XCTAssertEqual(keys(d), ["dataSource", "requestCount", "totalCostUsd"])
-        XCTAssertEqual(d["totalCostUsd"] as? String, "2.000000")
-    }
-
     func testQuotaKeysKeepNullsForMissingValues() {
         let tier = QuotaTier(name: "five_hour", utilization: 12.5, resetsAt: nil)
         let d = BridgePayload.quota([tier])[0]
@@ -122,7 +116,6 @@ final class BridgePayloadTests: XCTestCase {
             BridgePayload.summary(s),
             BridgePayload.summaryByApp([(appType: "a", summary: s)]),
             BridgePayload.trends([TrendBucket(startTs: 0)]),
-            BridgePayload.dataSources([]),
             BridgePayload.quota([QuotaTier(name: "n", utilization: 1, resetsAt: Date(timeIntervalSince1970: 0))]),
         ]
         for p in payloads { XCTAssertTrue(JSONSerialization.isValidJSONObject(p), "\(p)") }
