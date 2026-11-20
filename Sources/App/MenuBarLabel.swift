@@ -212,7 +212,7 @@ struct MenuBarLabel: View {
 
     /// 一个额度码片的图：
     /// - 默认「标签 + 进度条」（比 "5H: 25%" 窄约 14pt，且一眼看得出满没满）；
-    /// - 关掉进度条开关则是「标签:百分比」；
+    /// - 关掉进度条开关则是「标签:百分比」；还没有读数时是「标签:—」（QuotaChip.unavailableText）；
     /// - 到告警线（QuotaWarning：剩余不到 20%，对齐 cc-switch）反白成实心胶囊、数字抠空，
     ///   并强制显示数字（快满了就得看到具体值）。
     ///
@@ -220,7 +220,7 @@ struct MenuBarLabel: View {
     /// 撞成看不清；实心胶囊在任何底色下都是一块高对比实块，是唯一到处都成立的做法。
     private func quotaChip(_ q: QuotaChip, font: NSFont) -> NSImage {
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
-        guard let pct = q.pct else { return chipImage(q.label, bar: nil, danger: false, attrs: attrs) }
+        guard let pct = q.pct else { return chipImage(q.unavailableText, bar: nil, danger: false, attrs: attrs) }
         let danger = QuotaWarning.isLow(usedPercent: pct)
         if danger || !model.mbQuotaBar {
             return chipImage("\(q.label):\(Int(pct.rounded()))%", bar: nil, danger: danger, attrs: attrs)

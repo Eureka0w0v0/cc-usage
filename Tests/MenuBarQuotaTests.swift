@@ -61,6 +61,14 @@ final class MenuBarQuotaTests: XCTestCase {
         }
     }
 
+    // 没有读数时码片写「7D:—」：只写「7D」看着像换了格式（2026-11-20 用户以为 W 改成了 7D、后面的数没了）。
+    // 负责杀的变异体：没读数时只写标签 / 占位的「—」也加上「:—」。
+    func testUnavailableChipKeepsTheColonDash() {
+        XCTAssertEqual(QuotaChip(label: "7D", pct: nil).unavailableText, "7D:—")
+        XCTAssertEqual(QuotaChip(label: "5H", pct: nil).unavailableText, "5H:—")
+        XCTAssertEqual(QuotaChip(label: "—", pct: nil).unavailableText, "—")
+    }
+
     func testSpeech() {
         XCTAssertEqual(QuotaChip(label: "5H", pct: 12.4).speech, "5H 12% used")
         XCTAssertEqual(QuotaChip(label: "7D", pct: nil).speech, "7D unavailable")

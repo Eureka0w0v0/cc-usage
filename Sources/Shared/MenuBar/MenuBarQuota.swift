@@ -6,6 +6,9 @@ struct QuotaChip: Equatable {
     let label: String        // 窗口时长（5H/7D/30D）或模型家族名
     let pct: Double?
 
+    /// 没有读数时码片上写的字：带窗口标签的写成「7D:—」（只写「7D」看着像换了格式、数没了），本身就是占位的「—」照旧。
+    var unavailableText: String { label == "—" ? "—" : "\(label):—" }
+
     var speech: String {
         guard let pct else { return label == "—" ? "quota unavailable" : "\(label) unavailable" }
         return "\(label) \(Int(pct.rounded()))% used"
