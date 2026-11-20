@@ -29,7 +29,7 @@ public enum ModelPricing {
         Row(input: i, output: o, cacheRead: cr, cacheCreation: cw)
     }
 
-    /// 对齐 cc-switch seed_model_pricing 的 240 条内置定价（同步至 v4.0.34）。
+    /// 对齐 cc-switch seed_model_pricing 的 243 条内置定价（同步至 v4.0.36）。
     /// 由 scripts/sync-pricing.sh 生成，勿手改；新模型先放下面的 `localExtras`。
     static let upstream: [String: Row] = [
         "claude-fable-5-2": R(8, 40, 0.2, 10),  // Claude Fable 5.2
@@ -58,6 +58,8 @@ public enum ModelPricing {
         "claude-3-5-haiku-20241022": R(0.8, 4, 0.08, 1),  // Claude 3.5 Haiku
         "claude-3-5-sonnet-20241022": R(3, 15, 0.3, 3.75),  // Claude 3.5 Sonnet
         "gpt-6-astra": R(10, 50, 1, 12.5),  // GPT-6 Astra
+        "gpt-6.2-sol": R(2, 10, 0.1, 2.5),  // GPT-6.2 Sol
+        "gpt-6.2-astra": R(8, 40, 0.4, 10),  // GPT-6.2 Astra
         "gpt-6.1-sol": R(2, 10, 0.1, 2.5),  // GPT-6.1 Sol
         "gpt-6.1-terra": R(1, 5, 0.05, 1.25),  // GPT-6.1 Terra
         "gpt-6-sol": R(2, 10, 0.2, 2.5),  // GPT-6 Sol
@@ -130,6 +132,7 @@ public enum ModelPricing {
         "gpt-5.2-pro": R(21, 168, 0, 0),  // GPT-5.2 Pro
         "gpt-4o": R(2.5, 10, 1.25, 0),  // GPT-4o
         "gpt-4o-mini": R(0.15, 0.6, 0.075, 0),  // GPT-4o Mini
+        "gemini-4-neon": R(3, 15, 0.15, 0),  // Gemini 4 Neon
         "gemini-4-argon": R(2, 10, 0.1, 0),  // Gemini 4 Argon
         "gemini-4-carbon": R(2, 10, 0.1, 0),  // Gemini 4 Carbon
         "gemini-4-hydrogen": R(1.5, 7.5, 0.075, 0),  // Gemini 4 Hydrogen

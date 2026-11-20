@@ -86,6 +86,30 @@ final class ModelPricingFallbackTests: XCTestCase {
                           ModelPricing.lookup("claude-fable-5")?.input)
     }
 
+    // GPT-6.2 Sol / Astra（2026-11-17 发布，上游 v4.0.35 收录）与 Gemini 4 Neon（上游 v4.0.36 收录）：
+    // 2026-11-20 对照官方页核过——Sol $2 / $10、缓存读 $0.10、缓存写 $2.50（30 分钟档，12 小时档另价，本表不分）；
+    // Astra $8 / $40 / $0.40 / $10；Neon $3 / $15、缓存读 $0.15，只有隐式缓存，写入记 0。
+    // 负责杀的变异体：删掉任一行（查不到价，记 $0）/ Sol 与 Astra 的价互换 / Neon 照抄 Argon 的 2 / 10 /
+    // 缓存写误录 12 小时档（5 或 20）。
+    func testBuiltinTableHasGpt62AndGemini4NeonAtOfficialPrices() throws {
+        let cases: [(id: String, input: Double, output: Double, cacheRead: Double, cacheCreation: Double)] = [
+            ("gpt-6.2-sol", 2, 10, 0.1, 2.5),
+            ("gpt-6.2-astra", 8, 40, 0.4, 10),
+            ("gemini-4-neon", 3, 15, 0.15, 0),
+        ]
+        for c in cases {
+            let row = try XCTUnwrap(ModelPricing.lookup(c.id), c.id)
+            XCTAssertEqual(row.input, c.input, c.id)
+            XCTAssertEqual(row.output, c.output, c.id)
+            XCTAssertEqual(row.cacheRead, c.cacheRead, c.id)
+            XCTAssertEqual(row.cacheCreation, c.cacheCreation, c.id)
+        }
+        // 推理档后缀、厂商路径照常归一
+        XCTAssertEqual(ModelPricing.lookup("gpt-6.2-sol-high")?.output, 10)
+        XCTAssertEqual(ModelPricing.lookup("openai/gpt-6.2-astra")?.output, 40)
+        XCTAssertEqual(ModelPricing.lookup("models/gemini-4-neon")?.input, 3)
+    }
+
     // Opus 5.5（2026-09-23 发布）：$4 / $20，缓存读是 0.05x = $0.20——既不是常规 0.1x 的
     // $0.40，也不是 Opus 5 的 $0.50；缓存写照常 1.25x = $5（$8 是 1 小时档，本表只有 5 分钟一列）。
     // 负责杀的变异体：删掉 opus-5-5 行（2026-10-10 起由上游 seed 提供，PR #7600）/
