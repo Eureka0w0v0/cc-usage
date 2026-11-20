@@ -65,17 +65,26 @@ struct PricingTable {
     func find(_ modelId: String) -> Price? {
         let candidates = ModelId.pricingCandidates(modelId)
         for c in candidates {
-            if let p = exact[c] { return p }
+            if let p = exact[c.id] { return p }
         }
-        for c in candidates where ModelId.shouldTryPrefixMatch(c) {
+        for c in candidates where c.allowsPrefixMatch && ModelId.shouldTryPrefixMatch(c.id) {
             // model_id LIKE 'c-%' ORDER BY LENGTH LIMIT 1(idsByLength 已按长度升序)
-            if let hit = idsByLength.first(where: { $0.hasPrefix(c + "-") }) {
+            if let hit = idsByLength.first(where: { $0.hasPrefix(c.id + "-") }) {
                 return exact[hit]
             }
         }
         // db 没有该模型(上游 seed 尚未跟进新模型)→ 回落内置表。库里已有的定价
         // 永远优先，所以用户在 cc-switch 改过的价不会被这里覆盖。
         return ModelPricing.lookup(modelId).map(Price.init)
+    }
+
+    /// 只做精确匹配的查价（对齐 find_direct_model_pricing_row）：候选不剥推理档 / tiered / thinking，
+    /// 也不做前缀匹配。库里查不到再回落内置表的精确匹配。同价推理档合并时用它取基础模型自己的价。
+    func findDirect(_ modelId: String) -> Price? {
+        for c in ModelId.directCandidates(modelId) {
+            if let p = exact[c] { return p }
+        }
+        return ModelPricing.lookupDirect(modelId).map(Price.init)
     }
 }
 

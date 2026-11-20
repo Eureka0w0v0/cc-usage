@@ -6,39 +6,39 @@ final class PricingCandidatesTests: XCTestCase {
 
     func testDateSuffixStripped() {
         // ISO 日期尾 / 8 位 / 6 位（校验月日）三种形态
-        XCTAssertTrue(ModelId.pricingCandidates("claude-sonnet-5-2026-01-01").contains("claude-sonnet-5"))
-        XCTAssertTrue(ModelId.pricingCandidates("claude-sonnet-5-20260101").contains("claude-sonnet-5"))
-        XCTAssertTrue(ModelId.pricingCandidates("claude-haiku-4-5-251001").contains("claude-haiku-4-5"))
+        XCTAssertTrue(ModelId.pricingCandidates("claude-sonnet-5-2026-01-01").map(\.id).contains("claude-sonnet-5"))
+        XCTAssertTrue(ModelId.pricingCandidates("claude-sonnet-5-20260101").map(\.id).contains("claude-sonnet-5"))
+        XCTAssertTrue(ModelId.pricingCandidates("claude-haiku-4-5-251001").map(\.id).contains("claude-haiku-4-5"))
         // 6 位但月日非法 → 不当日期剥
-        XCTAssertFalse(ModelId.pricingCandidates("model-991399").contains("model"))
+        XCTAssertFalse(ModelId.pricingCandidates("model-991399").map(\.id).contains("model"))
     }
 
     func testNamespaceAndBedrockForms() {
         // 厂商前缀 + 版本尾 + 冒号清洗（bedrock 风格 id）
-        let c = ModelId.pricingCandidates("anthropic.claude-3-5-sonnet-20241022-v2:0")
+        let c = ModelId.pricingCandidates("anthropic.claude-3-5-sonnet-20241022-v2:0").map(\.id)
         XCTAssertTrue(c.contains("claude-3-5-sonnet"))
         // 路径形式取最后一段
-        XCTAssertTrue(ModelId.pricingCandidates("openrouter/anthropic/claude-sonnet-5").contains("claude-sonnet-5"))
+        XCTAssertTrue(ModelId.pricingCandidates("openrouter/anthropic/claude-sonnet-5").map(\.id).contains("claude-sonnet-5"))
         // 内嵌 claude- 起点
-        XCTAssertTrue(ModelId.pricingCandidates("bedrock.claude-sonnet-5").contains("claude-sonnet-5"))
+        XCTAssertTrue(ModelId.pricingCandidates("bedrock.claude-sonnet-5").map(\.id).contains("claude-sonnet-5"))
     }
 
     func testContextMarkerAndDotDash() {
         // [1m] 上下文标记剥离
-        XCTAssertTrue(ModelId.pricingCandidates("claude-sonnet-4-5[1m]").contains("claude-sonnet-4-5"))
+        XCTAssertTrue(ModelId.pricingCandidates("claude-sonnet-4-5[1m]").map(\.id).contains("claude-sonnet-4-5"))
         // claude id 的 dot→dash
-        XCTAssertTrue(ModelId.pricingCandidates("Claude-Opus-4.1").contains("claude-opus-4-1"))
+        XCTAssertTrue(ModelId.pricingCandidates("Claude-Opus-4.1").map(\.id).contains("claude-opus-4-1"))
     }
 
     func testReasoningSuffixStripped() {
-        XCTAssertTrue(ModelId.pricingCandidates("gpt-5-mini-high").contains("gpt-5-mini"))
-        XCTAssertTrue(ModelId.pricingCandidates("o3-mini-low").contains("o3-mini"))
+        XCTAssertTrue(ModelId.pricingCandidates("gpt-5-mini-high").map(\.id).contains("gpt-5-mini"))
+        XCTAssertTrue(ModelId.pricingCandidates("o3-mini-low").map(\.id).contains("o3-mini"))
     }
 
     func testUnknownIsEmpty() {
-        XCTAssertTrue(ModelId.pricingCandidates("unknown").isEmpty)
-        XCTAssertTrue(ModelId.pricingCandidates("").isEmpty)
-        XCTAssertTrue(ModelId.pricingCandidates("null").isEmpty)
+        XCTAssertTrue(ModelId.pricingCandidates("unknown").map(\.id).isEmpty)
+        XCTAssertTrue(ModelId.pricingCandidates("").map(\.id).isEmpty)
+        XCTAssertTrue(ModelId.pricingCandidates("null").map(\.id).isEmpty)
     }
 
     func testShouldTryPrefixMatch() {

@@ -310,17 +310,27 @@ public enum ModelPricing {
     /// 都不该被本地行盖掉。
     public static let table: [String: Row] = upstream.merging(localExtras) { up, _ in up }
 
-    /// 按 SessionOverlay 的候选归一化（命名空间/日期尾/[1m] 等）查内置表。
+    /// 按候选链（命名空间 / 日期尾 / [1m] / 推理档 / tiered 等，见 ModelId）查内置表，次序同 find_model_pricing_row：
+    /// 全部候选先精确匹配，都落空再对允许前缀的候选做前缀匹配。
     public static func lookup(_ modelId: String) -> Row? {
-        for candidate in ModelId.pricingCandidates(modelId) {
-            if let row = table[candidate] { return row }
+        let candidates = ModelId.pricingCandidates(modelId)
+        for candidate in candidates {
+            if let row = table[candidate.id] { return row }
         }
         // 前缀兜底：与 find_model_pricing_row 同门槛，取最短命中。
-        for candidate in ModelId.pricingCandidates(modelId)
-        where ModelId.shouldTryPrefixMatch(candidate) {
-            if let hit = prefixIds.first(where: { $0.hasPrefix(candidate + "-") }) {
+        for candidate in candidates
+        where candidate.allowsPrefixMatch && ModelId.shouldTryPrefixMatch(candidate.id) {
+            if let hit = prefixIds.first(where: { $0.hasPrefix(candidate.id + "-") }) {
                 return table[hit]
             }
+        }
+        return nil
+    }
+
+    /// 只做精确匹配的内置表查价（候选见 `ModelId.directCandidates`）。
+    public static func lookupDirect(_ modelId: String) -> Row? {
+        for candidate in ModelId.directCandidates(modelId) {
+            if let row = table[candidate] { return row }
         }
         return nil
     }

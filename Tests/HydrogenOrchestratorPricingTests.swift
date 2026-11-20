@@ -29,20 +29,26 @@ final class HydrogenOrchestratorPricingTests: XCTestCase {
         "orchestrator-carbon",
     ]
 
-    // 负责杀的变异体：删掉这条候选规则 / 把它放到 dot→dash 之后或推理档之前（候选顺序变了）。
+    // 负责杀的变异体：删掉这条候选规则 / 回落的基础模型没标成「只精确匹配」（v4.0.36 #9686）/
+    // 规则排到推理档之前（候选顺序变了）。
     func testCandidatesAppendBaseModelAfterTheRawId() {
+        typealias C = ModelId.Candidate
         XCTAssertEqual(ModelId.pricingCandidates("gemini-4-hydrogen-orchestrator"),
-                       ["gemini-4-hydrogen-orchestrator", "gemini-4-hydrogen"])
+                       [C(id: "gemini-4-hydrogen-orchestrator", allowsPrefixMatch: true),
+                        C(id: "gemini-4-hydrogen", allowsPrefixMatch: false)])
         // 带档位：原始 id → 去档位 → 基础模型，自定义的带档位价和 Orchestrator 价都排在回落价前面。
         XCTAssertEqual(ModelId.pricingCandidates("gemini-4-hydrogen-orchestrator-high"),
-                       ["gemini-4-hydrogen-orchestrator-high", "gemini-4-hydrogen-orchestrator", "gemini-4-hydrogen"])
+                       [C(id: "gemini-4-hydrogen-orchestrator-high", allowsPrefixMatch: true),
+                        C(id: "gemini-4-hydrogen-orchestrator", allowsPrefixMatch: true),
+                        C(id: "gemini-4-hydrogen", allowsPrefixMatch: false)])
     }
 
     // 负责杀的变异体：规则写成后缀剥离（任何 `-orchestrator` 结尾都剥）/ 写成前缀判断（`hasPrefix`）。
     func testLookalikesGetNoExtraCandidate() {
         for id in lookalikes {
-            XCTAssertFalse(ModelId.pricingCandidates(id).contains("gemini-4-hydrogen"), id)
-            XCTAssertFalse(ModelId.pricingCandidates(id).contains("gemini-4-carbon"), id)
+            let ids = ModelId.pricingCandidates(id).map(\.id)
+            XCTAssertFalse(ids.contains("gemini-4-hydrogen"), id)
+            XCTAssertFalse(ids.contains("gemini-4-carbon"), id)
         }
     }
 
