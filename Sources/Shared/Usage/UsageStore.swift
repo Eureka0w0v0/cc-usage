@@ -200,7 +200,7 @@ public final class UsageStore: @unchecked Sendable {
     func costL(_ db: OpaquePointer) -> String {
         ModelPricing.costSQL(
             alias: "l",
-            multiplier: "COALESCE(NULLIF(CAST(l.cost_multiplier AS REAL), 0), 1.0)",
+            multiplier: CostMultiplier.sql("l.cost_multiplier"),
             hasSemantics: hasSemantics(db), hasFallbackTable: hasFallbackPricing(db),
             hasRequestModel: SQLite.hasColumn(db, "proxy_request_logs", "request_model"))
     }

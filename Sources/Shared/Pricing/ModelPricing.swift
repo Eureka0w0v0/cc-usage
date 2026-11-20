@@ -547,17 +547,17 @@ public enum ModelPricing {
     }
 
     /// 单行补算（面板明细表用）：db 成本为 0 时按内置表算出四个分项与总价，
-    /// 返回 nil 表示保持原值（已有成本，或内置表也没有该模型）。
-    /// `billableInput` 由调用方按 `billableInputSQL` 同一口径算好传入。
+    /// 返回 nil 表示保持原值（倍率为 0 的免费行，或内置表也没有该模型）。
+    /// `multiplier` 按 `CostMultiplier.value` 读出；`billableInput` 由调用方按 `billableInputSQL` 同一口径算好传入。
     public static func backfilledCosts(
         model: String, multiplier: Double,
         billableInput: Int64, output: Int64, cacheRead: Int64, cacheCreation: Int64
     ) -> (input: String, output: String, cacheRead: String, cacheCreation: String, total: String)? {
-        guard let p = lookup(model) else { return nil }
+        // 倍率 0 = 免费，总价本来就是 0，不是缺价：不补（对齐上游 v4.0.36 跳过零倍率行的补价）。
+        guard multiplier != 0, let p = lookup(model) else { return nil }
         let c = PricingTable.Price(p).cost(input: billableInput, output: output,
                                            cacheRead: cacheRead, cacheCreation: cacheCreation)
-        let mult = multiplier == 0 ? 1.0 : multiplier
         return (Fmt.usd6(c.input), Fmt.usd6(c.output), Fmt.usd6(c.cacheRead), Fmt.usd6(c.cacheCreation),
-                Fmt.usd6((c.input + c.output + c.cacheRead + c.cacheCreation) * mult))
+                Fmt.usd6((c.input + c.output + c.cacheRead + c.cacheCreation) * multiplier))
     }
 }

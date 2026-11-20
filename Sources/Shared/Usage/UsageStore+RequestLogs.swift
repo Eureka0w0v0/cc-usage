@@ -178,7 +178,7 @@ extension UsageStore {
                 pricingModel: col.textOpt(.pricingModel), model: col.text(.model),
                 requestModel: col.textOpt(.requestModel)),
               let backfilled = ModelPricing.backfilledCosts(
-                model: effective, multiplier: Double(col.text(.costMultiplier)) ?? 1,
+                model: effective, multiplier: CostMultiplier.value(col.text(.costMultiplier)),
                 billableInput: col.int(.billableInput),
                 output: outTok, cacheRead: crTok, cacheCreation: ccTok) else { return stored }
         return backfilled
