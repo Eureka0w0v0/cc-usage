@@ -77,6 +77,15 @@ final class BridgeArgsTests: XCTestCase {
     }
 
     /// 设置键不走 filter：名叫 "all" 的键要原样透传。
+    // 负责杀的变异体：数字也收（JS 传了数字时静默写进 "42"）/ 空串当缺失（上游照写）/ 读错键名。
+    func testClipboardTextMustBeAString() {
+        XCTAssertEqual(BridgeArgs(["text": "resp_0123456789abcdef"]).clipboardText, "resp_0123456789abcdef")
+        XCTAssertEqual(BridgeArgs(["text": ""]).clipboardText, "")
+        XCTAssertNil(BridgeArgs([:]).clipboardText)
+        XCTAssertNil(BridgeArgs(["text": 42]).clipboardText)
+        XCTAssertNil(BridgeArgs(["value": "x"]).clipboardText)
+    }
+
     func testNonEmptyStringKeepsAll() {
         XCTAssertEqual(BridgeArgs(["key": "all"]).nonEmptyString("key"), "all")
         XCTAssertNil(BridgeArgs(["key": ""]).nonEmptyString("key"))

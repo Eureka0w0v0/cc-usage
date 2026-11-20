@@ -93,6 +93,24 @@ struct PanelWebView: NSViewRepresentable {
                 return
             }
 
+            // copy_text_to_clipboard：请求详情里「复制请求 ID」（上游 v4.0.35 起；macOS 上前端先调它，失败才回落 WebView
+            // 剪贴板）。不认识的命令一律回 null、不报错，不补这条的话前端会提示「已复制」而剪贴板没变。
+            // 剪贴板属于 AppKit，就在这里（主线程）写，不进后台队列。
+            if cmd == "copy_text_to_clipboard" {
+                guard let text = BridgeArgs(args).clipboardText else {
+                    replyHandler(nil, "copy_text_to_clipboard: text must be a string"); return
+                }
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                if pasteboard.setString(text, forType: .string) {
+                    replyHandler(NSNull(), nil)
+                } else {
+                    Self.log.error("pasteboard write failed")
+                    replyHandler(nil, "pasteboard write failed")
+                }
+                return
+            }
+
             // 其余命令：后台执行查询，主线程回填（replyHandler 的调用约定）
             Self.workQueue.async { [self] in
                 do {

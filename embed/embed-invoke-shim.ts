@@ -117,6 +117,9 @@ function mockInvoke(cmd: string, args?: InvokeArgs): unknown {
     }
     case "get_init_error":
       return null;
+    // 剪贴板只在原生侧写；预览里抛错，让 @/lib/clipboard 回落 navigator.clipboard（同上游失败时的路径）
+    case "copy_text_to_clipboard":
+      throw new Error("copy_text_to_clipboard is native-only");
     default:
       return null;
   }

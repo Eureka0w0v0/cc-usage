@@ -65,4 +65,7 @@ struct BridgeArgs {
         guard let s = raw[key] as? String, !s.isEmpty else { return nil }
         return s
     }
+
+    /// copy_text_to_clipboard 的 `{ text }`：必须是字符串（空串照样写进剪贴板，同上游）；缺失或不是字符串为 nil。
+    var clipboardText: String? { raw["text"] as? String }
 }
