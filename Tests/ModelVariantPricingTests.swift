@@ -145,6 +145,21 @@ final class ModelVariantPricingTests: XCTestCase {
         XCTAssertNil(price(table, "gemini-3.1-flash-tiered"))
     }
 
+    // 库里缺 seed 行（用户的 cc-switch 比内置表老）、另有一条能被前缀撞上的自定义行时：内置表的精确价先于
+    // 库里的前缀价——上游的库总带着 seed，精确匹配先命中。查的是「内置表 ∪ 库」，同名时库里的优先。
+    // 负责杀的变异体：查价改回「库精确 → 库前缀 → 内置表」/ 同名时内置表盖过库里的价。
+    func testBuiltinExactPriceBeatsADatabasePrefixMatch() throws {
+        try insertPrice("gemini-4-hydrogen-tiered", [2, 10, 0.1, 0])
+        var table = try loadPricing()
+        XCTAssertEqual(price(table, "gemini-4-hydrogen"), hydrogen)
+        XCTAssertEqual(price(table, "gemini-4-hydrogen-low"), hydrogen)
+        XCTAssertEqual(price(table, "gemini-4-hydrogen-tiered"), [2, 10, 0.1, 0], "同名时库里的价优先")
+        try insertPrice("gemini-4-hydrogen", [9, 9, 0.9, 0])
+        table = try loadPricing()
+        XCTAssertEqual(price(table, "gemini-4-hydrogen-low"), [9, 9, 0.9, 0])
+        XCTAssertEqual(PricingTable().find("gemini-4-hydrogen-high").map(\.input), 1.5, "还没读库时只用内置表")
+    }
+
     // 候选按队列展开：`claude-opus-4.6-<日期>` 先去日期得到 `claude-opus-4.6`，再点转横线得到 `claude-opus-4-6`。
     // 两个都在库里且价不同时，取前者（v4.0.34 的栈式展开会先取后者）。
     // 负责杀的变异体：展开顺序改回栈（后进先出）。

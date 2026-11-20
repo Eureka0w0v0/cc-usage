@@ -1,11 +1,12 @@
 import Foundation
 import SQLite3
 
-/// 库里 model_pricing 的内存快照 + 查价，两个叠加层共用（原先只在 SessionOverlay 里，原样搬出）。
+/// 库里 model_pricing 的内存快照 + 查价，两个叠加层和统计口径（同价推理档合并）共用。
 ///
-/// 查价逐条对齐 usage_stats.rs::find_model_pricing_row：候选精确匹配 → 前缀匹配
-/// （`model_id LIKE 'c-%' ORDER BY LENGTH LIMIT 1`）；库里查不到再回落内置表（上游 seed
-/// 还没跟进的新模型）。库里已有的定价永远优先，用户在 cc-switch 改过的价不会被内置表覆盖。
+/// 查价逐条对齐 usage_stats.rs::find_model_pricing_row / find_direct_model_pricing_row，查的是「内置表 ∪ 库」，
+/// 同名时库里的行优先（用户在 cc-switch 改过的价不会被内置表覆盖）。上游的库里总带着它那一版的 seed；
+/// 用户的 cc-switch 版本较老、库里缺新模型的 seed 行时，这里用内置表（= 上游最新 seed）补上，
+/// 这样才和上游一样先命中精确价，而不是先撞上库里某条自定义行的前缀。
 struct PricingTable {
     struct Price: Equatable {
         var input: Double
@@ -28,10 +29,17 @@ struct PricingTable {
         }
     }
 
-    /// 键是小写 model_id（见 load）。
-    private(set) var exact: [String: Price] = [:]
-    /// 前缀匹配用：小写、短 id 优先（对齐 ORDER BY LENGTH ASC）。
-    private(set) var idsByLength: [String] = []
+    /// 库里的行，键是小写 model_id（见 load）。
+    private(set) var exact: [String: Price]
+    /// 前缀匹配用：库 ∪ 内置表的全部 id，按长度、再按字典序升序（对齐 ORDER BY LENGTH ASC，同长时取值固定）。
+    private(set) var idsByLength: [String]
+
+    /// `exact` 为空 = 只有内置表（叠加层第一次读库之前、或库里没有这张表时）。
+    init(exact: [String: Price] = [:]) {
+        self.exact = exact
+        self.idsByLength = Set(exact.keys).union(ModelPricing.table.keys)
+            .sorted { ($0.count, $0) < ($1.count, $1) }
+    }
 
     /// 读整张 model_pricing。prepare 失败（缺表等）返回 nil，调用方沿用旧快照、下轮再试。
     static func load(_ db: OpaquePointer) -> PricingTable? {
@@ -56,35 +64,33 @@ struct PricingTable {
             }
             exact[id] = Price(input: col(1), output: col(2), cacheRead: col(3), cacheCreation: col(4))
         }
-        var table = PricingTable()
-        table.exact = exact
-        table.idsByLength = exact.keys.sorted { $0.count < $1.count }   // 前缀匹配取最短命中,对齐 LENGTH ASC
-        return table
+        return PricingTable(exact: exact)
     }
 
+    /// 完整候选链：全部候选先精确匹配，都落空再对允许前缀的候选做前缀匹配（`model_id LIKE 'c-%'`，取最短）。
     func find(_ modelId: String) -> Price? {
         let candidates = ModelId.pricingCandidates(modelId)
         for c in candidates {
-            if let p = exact[c.id] { return p }
+            if let p = price(of: c.id) { return p }
         }
         for c in candidates where c.allowsPrefixMatch && ModelId.shouldTryPrefixMatch(c.id) {
-            // model_id LIKE 'c-%' ORDER BY LENGTH LIMIT 1(idsByLength 已按长度升序)
-            if let hit = idsByLength.first(where: { $0.hasPrefix(c.id + "-") }) {
-                return exact[hit]
-            }
+            if let hit = idsByLength.first(where: { $0.hasPrefix(c.id + "-") }) { return price(of: hit) }
         }
-        // db 没有该模型(上游 seed 尚未跟进新模型)→ 回落内置表。库里已有的定价
-        // 永远优先，所以用户在 cc-switch 改过的价不会被这里覆盖。
-        return ModelPricing.lookup(modelId).map(Price.init)
+        return nil
     }
 
-    /// 只做精确匹配的查价（对齐 find_direct_model_pricing_row）：候选不剥推理档 / tiered / thinking，
-    /// 也不做前缀匹配。库里查不到再回落内置表的精确匹配。同价推理档合并时用它取基础模型自己的价。
+    /// 只做精确匹配（对齐 find_direct_model_pricing_row）：候选不剥推理档 / tiered / thinking，也不做前缀匹配。
+    /// 同价推理档合并时用它取基础模型自己的价。
     func findDirect(_ modelId: String) -> Price? {
         for c in ModelId.directCandidates(modelId) {
-            if let p = exact[c] { return p }
+            if let p = price(of: c) { return p }
         }
-        return ModelPricing.lookupDirect(modelId).map(Price.init)
+        return nil
+    }
+
+    /// 同名时库里的行优先，库里没有再用内置表的。
+    private func price(of id: String) -> Price? {
+        exact[id] ?? ModelPricing.table[id].map(Price.init)
     }
 }
 
