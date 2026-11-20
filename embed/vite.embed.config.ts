@@ -24,6 +24,21 @@ function renameEmbedHtml(): Plugin {
   };
 }
 
+// 主窗口语言锁死英文（index-embed.html 与 usage-embed.tsx 两处），i18next 缺键时也回落英文：其余语言包
+// 打进单文件只是白占体积（v4.0.36 时 7 个包约 2.6 MB，产物的一半）。加载阶段把 en.json 以外的语言包换成空对象
+// （交出 JSON 文本 "{}"，Vite 的 JSON 插件照常转成模块），`@/i18n` 的导入不用改；上游以后加新语言也自动去掉。
+// The panel is English-only; load every locale except en.json as an empty object to halve the bundle.
+const NON_ENGLISH_LOCALE = /[\\/]src[\\/]i18n[\\/]locales[\\/](?!en\.json$)[^\\/]+\.json$/;
+function stripNonEnglishLocales(): Plugin {
+  return {
+    name: "strip-non-english-locales",
+    enforce: "pre",
+    load(id) {
+      return NON_ENGLISH_LOCALE.test(id) ? "{}" : null;
+    },
+  };
+}
+
 // 目标产物：原生 App 的 WKWebView 单文件面板。
 // scripts/build-embed.sh 通过 CC_USAGE_WEB_PANEL_OUT 指回 cc-usage 仓库的
 // Sources/App/web-panel；手动构建时缺省产出到 cc-switch 仓库根的 dist-embed/。
@@ -42,7 +57,7 @@ if (!["web-panel", "dist-embed"].includes(path.basename(OUT_DIR))) {
 export default defineConfig({
   // root 保持仓库根目录（默认），index-embed.html 在此处
   base: "./",
-  plugins: [react(), viteSingleFile(), renameEmbedHtml()],
+  plugins: [stripNonEnglishLocales(), react(), viteSingleFile(), renameEmbedHtml()],
   resolve: {
     // 顺序敏感：更具体的 @tauri-apps/api/xxx 必须排在裸 @tauri-apps/api 之前，
     // 否则 rollup-alias 的前缀匹配会把子路径也吞进裸包别名。
