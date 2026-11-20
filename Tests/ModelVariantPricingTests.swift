@@ -58,6 +58,16 @@ final class ModelVariantPricingTests: XCTestCase {
         }
     }
 
+    // 版本段不是点分数字时不剥 tiered——即使库里恰好有 `gemini-pro-flash`、`gemini-3..8-flash` 这样的行。
+    // 负责杀的变异体：Flash tiered 不校验版本段。
+    func testFlashTieredRequiresANumericVersion() throws {
+        try insertPrice("gemini-pro-flash", [5, 5, 0.5, 0])
+        try insertPrice("gemini-3..8-flash", [5, 5, 0.5, 0])
+        let table = try loadPricing()
+        XCTAssertNil(price(table, "gemini-pro-flash-tiered"))
+        XCTAssertNil(price(table, "gemini-3..8-flash-tiered"))
+    }
+
     // 基础 Flash 没有精确价时（内置表没有 gemini-3.1-flash），宁可不定价，也不能借前缀撞上的 `gemini-3.1-flash-lite`。
     // 负责杀的变异体：派生出来的基础模型允许前缀匹配（#9600 的 allow_prefix_match=false）。
     func testFlashTieredNeverBorrowsAPrefixMatch() {
@@ -109,6 +119,12 @@ final class ModelVariantPricingTests: XCTestCase {
         XCTAssertNotEqual(builtin("kimi-k2-thinking"), builtin("kimi-k2"))
         XCTAssertNil(builtin("claude-thinking"))
         XCTAssertNil(builtin("claude-opus-9-9-thinking"))
+        // 剥完只剩 `claude` 不算基础模型；基础名比 `claude-` 长的第三方 thinking 型号也不剥
+        //（kimi-k2 恰好 7 个字符，单靠它挡不住「去掉 claude- 开头的判断」）。
+        XCTAssertEqual(ModelId.pricingCandidates("claude-thinking").map(\.id), ["claude-thinking"])
+        XCTAssertEqual(ModelId.pricingCandidates("deepseek-reasoner-thinking").map(\.id), ["deepseek-reasoner-thinking"])
+        try insertPrice("acme-reasoner", [1, 2, 0.1, 0])
+        XCTAssertNil(price(try loadPricing(), "acme-reasoner-thinking"))
     }
 
     // Claude Desktop 接第三方模型时 id 是 `claude-<第三方模型>`，按第三方模型自己的价算。

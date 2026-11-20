@@ -79,7 +79,7 @@ final class ReasoningTiersTests: XCTestCase {
     }
 
     // 给 `-tiered` 单独定了差价：`-tiered` 自成一行，`-tiered-high` 只并到 `-tiered`。
-    // 负责杀的变异体：候选基础模型的先后反了（应先试剥掉 tiered 的，再试只剥档位的）。
+    // 负责杀的变异体：不比价直接合并（`-tiered-high` 会越过有差价的 `-tiered` 并到基础模型）/ 后缀不逐个验价。
     func testCustomTieredPriceKeepsTieredSeparate() throws {
         try Fixture.exec(dbPath, """
         INSERT INTO model_pricing(model_id, input_cost_per_million, output_cost_per_million,
@@ -92,6 +92,36 @@ final class ReasoningTiersTests: XCTestCase {
         XCTAssertEqual(suffixes(t, "gemini-4-hydrogen"), ["-minimal", "-low", "-medium", "-high", "-xhigh"])
     }
 
+    // `-tiered` 单独定的价和基础模型一样时，`-tiered-high` 直接并到基础模型：先试剥掉 tiered 的那个候选。
+    // 负责杀的变异体：候选基础模型的先后反了（会停在 `-tiered`）。
+    func testSamePricedTieredRowStillMergesIntoTheBase() throws {
+        try Fixture.exec(dbPath, """
+        INSERT INTO model_pricing(model_id, input_cost_per_million, output_cost_per_million,
+          cache_read_cost_per_million, cache_creation_cost_per_million)
+        VALUES ('gemini-4-hydrogen-tiered', '1.50', '7.50', '0.075', '0');
+        """)
+        let t = try table()
+        XCTAssertEqual(stat(t, "gemini-4-hydrogen-tiered-high"), "gemini-4-hydrogen")
+        XCTAssertEqual(stat(t, "gemini-4-hydrogen-tiered"), "gemini-4-hydrogen")
+    }
+
+    // 只有已知会出 tiered 变体的模型（Gemini 4 Hydrogen、各版本 Gemini Flash）才剥 `-tiered`：库里给
+    // `gemini-4-argon-tiered` 定了和 Argon 一模一样的价，也不合并、也不进 Argon 的筛选后缀。价格从内置表现取，
+    // Argon 介绍价到期改价后用例照样成立。
+    // 负责杀的变异体：任何 `-tiered` 都剥。
+    func testOnlyKnownTieredFamiliesAreMerged() throws {
+        let argon = try XCTUnwrap(ModelPricing.lookup("gemini-4-argon"))
+        try Fixture.exec(dbPath, """
+        INSERT INTO model_pricing(model_id, input_cost_per_million, output_cost_per_million,
+          cache_read_cost_per_million, cache_creation_cost_per_million)
+        VALUES ('gemini-4-argon-tiered', '\(argon.input)', '\(argon.output)', '\(argon.cacheRead)', '\(argon.cacheCreation)');
+        """)
+        let t = try table()
+        XCTAssertEqual(t.find("gemini-4-argon-tiered"), t.findDirect("gemini-4-argon"), "前提：两者同价")
+        XCTAssertEqual(stat(t, "gemini-4-argon-tiered"), "gemini-4-argon-tiered")
+        XCTAssertEqual(suffixes(t, "gemini-4-argon"), ["-minimal", "-low", "-medium", "-high", "-xhigh"])
+    }
+
     // 筛选基础模型时一并匹配的后缀；被并到别处的模型只做精确匹配。期望值 = v4.0.36 金标准。
     // 负责杀的变异体：自己会被合并的模型仍出后缀 / 不认识 tiered 的模型也加 tiered 后缀 / 后缀不逐个验价。
     func testFilterSuffixesMatchUpstream() throws {
@@ -102,6 +132,7 @@ final class ReasoningTiersTests: XCTestCase {
         XCTAssertEqual(suffixes(t, "gemini-4-hydrogen"), efforts + tiered)
         XCTAssertEqual(suffixes(t, "gpt-6.2-sol"), efforts)
         XCTAssertEqual(suffixes(t, "gemini-4-argon-high"), [])
+        XCTAssertEqual(suffixes(t, "gemini-3.8-flash-high"), [], "自己有精确价、但会并到 Flash 的档位")
         XCTAssertEqual(suffixes(t, "gemini-4-hydrogen-tiered"), [])
         XCTAssertEqual(suffixes(t, "no-such-model"), [])
     }
