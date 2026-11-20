@@ -33,7 +33,7 @@ extension UsageStore {
         let db = try openRO()
         defer { sqlite3_close(db) }
         let (detailWhere, detailBinds) = statsWhere(db, f)
-        let (rollupWhere, rollupBinds) = rollupStatsWhere(f, calendar)
+        let (rollupWhere, rollupBinds) = rollupStatsWhere(db, f, calendar)
         let sql = """
         SELECT provider_id, app_type, provider_name,
                SUM(request_count), SUM(total_tokens), SUM(total_cost), SUM(success_count),
@@ -119,13 +119,14 @@ extension UsageStore {
         return out
     }
 
-    /// 模型统计。对齐 get_model_stats（v4.0.12）：明细与整日 rollup UNION ALL 后按有效计价模型汇总，
-    /// total_tokens = 真实消耗，avg = total_cost / request_count，带成功率（v4 前端必填）与速度、首字。
+    /// 模型统计。对齐 get_model_stats（v4.0.36）：明细与整日 rollup UNION ALL 后按有效计价模型汇总，
+    /// total_tokens = 真实消耗，avg = total_cost / request_count，带成功率（v4 前端必填）与速度、首字；
+    /// 同价的推理档并到基础模型那一行（见 ModelStatsMerge / ReasoningTiers）。
     public func modelStats(_ f: LogQueryFilter, calendar: Calendar = .current) throws -> [ModelStatRow] {
         let db = try openRO()
         defer { sqlite3_close(db) }
         let (detailWhere, detailBinds) = statsWhere(db, f)
-        let (rollupWhere, rollupBinds) = rollupStatsWhere(f, calendar)
+        let (rollupWhere, rollupBinds) = rollupStatsWhere(db, f, calendar)
         let sql = """
         SELECT model, SUM(request_count), SUM(total_tokens), SUM(total_cost), SUM(success_count),
                SUM(speed_output), SUM(speed_gen_ms), SUM(est_output), SUM(est_ms)
@@ -161,53 +162,31 @@ extension UsageStore {
         var estimated = try firstTokenSamples(db, key: Self.effectiveModelL, from: medianFrom, where: detailWhere,
                                               binds: detailBinds, eligible: Self.estFirstTokenEligibleL)
         // 未入库增量按模型汇总：叠加行 pricing_model 为空，有效计价模型就是 model（与库内会话行同口径）
-        var overlay = OverlayStats.group(overlayLogRows(db, f)) { $0.model }
-        let hasOverlay = !overlay.isEmpty
+        let overlay = OverlayStats.group(overlayLogRows(db, f)) { $0.model }
         OverlayStats.mergeFirstTokens(of: overlay, into: &estimated)
 
         let stmt = try prepare(db, sql, detailBinds + rollupBinds)
         defer { sqlite3_finalize(stmt) }
-        var out: [ModelStatRow] = []
+        var totals: [String: ModelStatsMerge.DBTotals] = [:]
         while try stepRow(stmt, sql) {
-            let model = SQLite.text(stmt, 0)
-            let ov = overlay.removeValue(forKey: model) ?? OverlayStats.Group()
-            let requests = sqlite3_column_int64(stmt, 1) + ov.requests
-            let totalCost = sqlite3_column_double(stmt, 3) + ov.cost
-            var performance = Self.readPerformance(stmt, from: 5, exact: exact[model].map(OverlayStats.median),
-                                                   estimated: estimated[model].map(OverlayStats.median))
-            ov.addEstimatedSpeed(to: &performance)
-            out.append(ModelStatRow(
-                model: model,
-                requestCount: requests,
-                totalTokens: sqlite3_column_int64(stmt, 2) + ov.tokens,
-                totalCost: totalCost,
-                avgCostPerRequest: requests > 0 ? totalCost / Double(requests) : 0,
-                successRate: Self.successRate(sqlite3_column_int64(stmt, 4) + ov.successes, of: requests),
-                performance: performance
-            ))
+            totals[SQLite.text(stmt, 0)] = ModelStatsMerge.DBTotals(
+                requests: sqlite3_column_int64(stmt, 1), tokens: sqlite3_column_int64(stmt, 2),
+                cost: sqlite3_column_double(stmt, 3), successes: sqlite3_column_int64(stmt, 4),
+                speed: Self.readPerformance(stmt, from: 5, exact: nil, estimated: nil))
         }
-        // 只有叠加行的模型
-        for (model, ov) in overlay {
-            var performance = StatsPerformance()
-            performance.estFirstTokenMedianMs = estimated[model].map(OverlayStats.median)
-            ov.addEstimatedSpeed(to: &performance)
-            out.append(ModelStatRow(model: model, requestCount: ov.requests, totalTokens: ov.tokens,
-                                    totalCost: ov.cost,
-                                    avgCostPerRequest: ov.requests > 0 ? ov.cost / Double(ov.requests) : 0,
-                                    successRate: Self.successRate(ov.successes, of: ov.requests),
-                                    performance: performance))
-        }
-        if hasOverlay { out.sort { $0.totalCost > $1.totalCost } }
-        return out
+        // 同价推理档并到基础模型（上游 #8845）；首字中位数按并好的样本重新取，排序 = 成本降序、同成本按模型名
+        let statistics = statisticsModelResolver(db, models: Set(totals.keys).union(overlay.keys))
+        return ModelStatsMerge.rows(db: totals, overlay: overlay, exactSamples: exact,
+                                    estimatedSamples: estimated, statisticsModel: statistics)
     }
 
     // MARK: - 统计小工具
 
     /// rollups 侧 WHERE：整日边界 → app → provider → 模型（provider 筛选靠 p2 联表，两张统计都恒带）。
-    private func rollupStatsWhere(_ f: LogQueryFilter, _ cal: Calendar) -> (String, [SQLBind]) {
+    private func rollupStatsWhere(_ db: OpaquePointer, _ f: LogQueryFilter, _ cal: Calendar) -> (String, [SQLBind]) {
         let scope = UsageFilter(start: f.start, end: f.end, appType: f.appType,
                                 providerName: f.providerName, model: f.model)
-        let (conds, binds) = rollupConds(scope, Self.rollupDateBounds(f.start, f.end, cal))
+        let (conds, binds) = rollupConds(db, scope, Self.rollupDateBounds(f.start, f.end, cal))
         return (conds.isEmpty ? "" : "WHERE " + conds.joined(separator: " AND "), binds)
     }
 

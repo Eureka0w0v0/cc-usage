@@ -32,9 +32,10 @@ extension UsageStore {
         // 首条恒为跨源去重过滤，对齐 get_request_logs（usage_stats.rs:1554）。
         var conds: [String] = [effectiveUsageFilter(db)]
         var binds: [SQLBind] = []
-        if let at = f.appType { conds.append("\(Self.foldedAppL) = ?"); binds.append(.text(at)) }
-        if let pn = f.providerName { conds.append("\(Self.providerNameCoalesce) = ?"); binds.append(.text(pn)) }
-        if let m = f.model { conds.append("\(Self.effectiveModelL) = ?"); binds.append(.text(m)) }
+        let scope = UsageFilter(appType: f.appType, providerName: f.providerName, model: f.model)
+        let (scopeConds, scopeBinds) = scopeCondsL(scope, modelMatch(db, f.model))
+        conds += scopeConds
+        binds += scopeBinds
         if let sc = f.statusCode { conds.append("l.status_code = ?"); binds.append(.int(Int64(sc))) }
         if let s = f.start { conds.append("l.created_at >= ?"); binds.append(.int(s)) }
         if let e = f.end { conds.append("l.created_at <= ?"); binds.append(.int(e)) }

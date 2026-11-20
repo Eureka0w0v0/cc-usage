@@ -9,8 +9,10 @@ extension UsageStore {
     private func trendHourly(_ db: OpaquePointer, _ f: UsageFilter) throws -> [TrendBucket] {
         let start = f.start ?? 0, end = f.end ?? 0
         let bucketSeconds: Int64 = 3600
-        var sql = """
-        SELECT CAST((l.created_at - ?1) / ?3 AS INTEGER) AS bucket,
+        // app → provider → 模型三项筛选与其余查询同一套（模型含并进来的同价推理档）
+        let (scopeConds, scopeBinds) = scopeCondsL(f, modelMatch(db, f.model))
+        let sql = """
+        SELECT CAST((l.created_at - ?) / ? AS INTEGER) AS bucket,
                COALESCE(SUM(\(freshInput(db, "l"))),0),
                COALESCE(SUM(l.output_tokens),0),
                COALESCE(SUM(l.cache_creation_tokens),0),
@@ -18,21 +20,11 @@ extension UsageStore {
                COALESCE(SUM(\(costL(db))),0),
                COUNT(*)
         FROM proxy_request_logs l\(Self.providersJoinIf(f.providerName, log: "l", provider: "p"))
-        WHERE l.created_at >= ?1 AND l.created_at <= ?2 AND \(effectiveUsageFilter(db))
+        WHERE l.created_at >= ? AND l.created_at <= ? AND \(effectiveUsageFilter(db))\(scopeConds.map { " AND \($0)" }.joined())
+        GROUP BY bucket ORDER BY bucket
         """
-        if f.appType != nil { sql += " AND \(Self.foldedAppL) = ?4" }
-        if f.model != nil { sql += " AND \(Self.effectiveModelL) = ?5" }
-        if f.providerName != nil { sql += " AND \(Self.providerNameCoalesce) = ?6" }
-        sql += " GROUP BY bucket ORDER BY bucket"
-
-        let stmt = try prepare(db, sql)
+        let stmt = try prepare(db, sql, [.int(start), .int(bucketSeconds), .int(start), .int(end)] + scopeBinds)
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_int64(stmt, 1, start)
-        sqlite3_bind_int64(stmt, 2, end)
-        sqlite3_bind_int64(stmt, 3, bucketSeconds)
-        if let a = f.appType { sqlite3_bind_text(stmt, 4, a, -1, SQLITE_TRANSIENT_DEST) }
-        if let m = f.model { sqlite3_bind_text(stmt, 5, m, -1, SQLITE_TRANSIENT_DEST) }
-        if let pn = f.providerName { sqlite3_bind_text(stmt, 6, pn, -1, SQLITE_TRANSIENT_DEST) }
 
         let count = max(1, Int((end - start + bucketSeconds - 1) / bucketSeconds))
         var buckets = (0..<count).map { i in
@@ -104,7 +96,7 @@ extension UsageStore {
         }
 
         // --- rollups：按 r.date 分组，叠加到对应日（add，同一天不双算见边界对齐）---
-        let (rConds, rBinds) = rollupConds(f, Self.rollupDateBounds(startTs, endTs, cal))
+        let (rConds, rBinds) = rollupConds(db, f, Self.rollupDateBounds(startTs, endTs, cal))
         let rWhere = rConds.isEmpty ? "" : "WHERE " + rConds.joined(separator: " AND ")
         let rSQL = """
         SELECT r.date,

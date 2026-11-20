@@ -98,7 +98,7 @@ public final class UsageStore: @unchecked Sendable {
         if let s = f.start { rows = rows.filter { $0.createdAt >= s } }
         if let e = f.end { rows = rows.filter { $0.createdAt <= e } }
         if let pn = f.providerName { rows = rows.filter { $0.providerName == pn } }
-        if let m = f.model { rows = rows.filter { $0.model == m } }
+        if let match = modelMatch(db, f.model) { rows = rows.filter { match.matches($0.model) } }
         return rows
     }
 

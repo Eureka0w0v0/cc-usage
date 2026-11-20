@@ -13,8 +13,9 @@ extension UsageStore {
         defer { sqlite3_close(db) }
         let scope = UsageFilter(appType: f.appType, providerName: f.providerName, model: f.model)
         var days: [String] = []
+        let match = modelMatch(db, scope.model)
 
-        let (lc, lb) = scopeCondsL(scope)
+        let (lc, lb) = scopeCondsL(scope, match)
         let detailSQL = "SELECT MIN(l.created_at) FROM proxy_request_logs l"
             + Self.providersJoinIf(scope.providerName, log: "l", provider: "p")
             + (lc.isEmpty ? "" : " WHERE " + lc.joined(separator: " AND "))
@@ -24,7 +25,7 @@ extension UsageStore {
             days.append(Self.localDay(sqlite3_column_int64(ls, 0), calendar))
         }
 
-        let (rc, rb) = scopeCondsR(scope)
+        let (rc, rb) = scopeCondsR(scope, match)
         let rollupSQL = "SELECT MIN(r.date) FROM usage_daily_rollups r"
             + Self.providersJoinIf(scope.providerName, log: "r", provider: "p2")
             + (rc.isEmpty ? "" : " WHERE " + rc.joined(separator: " AND "))

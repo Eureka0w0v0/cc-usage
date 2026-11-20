@@ -33,7 +33,7 @@ extension UsageStore {
 
     /// rollups 部分：仅 usage_daily_rollups（fresh_input + 整日边界对齐）。
     func summaryRollupsOnly(_ db: OpaquePointer, _ f: UsageFilter, _ cal: Calendar) throws -> UsageSummary {
-        let (conds, binds) = rollupConds(f, Self.rollupDateBounds(f.start, f.end, cal))
+        let (conds, binds) = rollupConds(db, f, Self.rollupDateBounds(f.start, f.end, cal))
         let whereClause = conds.isEmpty ? "" : "WHERE " + conds.joined(separator: " AND ")
         let sql = """
         SELECT COALESCE(SUM(r.request_count),0),
@@ -81,7 +81,7 @@ extension UsageStore {
         // 绑定参数顺序 = 明细侧在前、rollup 侧在后（与 SQL 里两个子查询的先后一致）。
         var noApp = filter; noApp.appType = nil
         let (dConds, dBinds) = logConds(db, noApp)
-        let (rConds, rBinds) = rollupConds(noApp, Self.rollupDateBounds(filter.start, filter.end, cal))
+        let (rConds, rBinds) = rollupConds(db, noApp, Self.rollupDateBounds(filter.start, filter.end, cal))
         let binds = dBinds + rBinds
 
         let rWhere = rConds.isEmpty ? "" : "WHERE " + rConds.joined(separator: " AND ")
@@ -153,22 +153,23 @@ extension UsageStore {
         var binds: [SQLBind] = []
         if let s = f.start { conds.append("l.created_at >= ?"); binds.append(.int(s)) }
         if let e = f.end { conds.append("l.created_at <= ?"); binds.append(.int(e)) }
-        let (sc, sb) = scopeCondsL(f)
+        let (sc, sb) = scopeCondsL(f, modelMatch(db, f.model))
         return (conds + sc, binds + sb)
     }
 
-    /// 明细表的 app → provider → 模型三项筛选（不含时间窗与跨源去重）。
-    func scopeCondsL(_ f: UsageFilter) -> ([String], [SQLBind]) {
+    /// 明细表的 app → provider → 模型三项筛选（不含时间窗与跨源去重）。模型按 `match` 匹配（含并进来的推理档），
+    /// `match` 由 `modelMatch(db, f.model)` 解析，为 nil 时不筛模型。
+    func scopeCondsL(_ f: UsageFilter, _ match: ModelMatch?) -> ([String], [SQLBind]) {
         var conds: [String] = []
         var binds: [SQLBind] = []
         if let at = f.appType { conds.append("\(Self.foldedAppL) = ?"); binds.append(.text(at)) }
         if let pn = f.providerName { conds.append("\(Self.providerNameCoalesce) = ?"); binds.append(.text(pn)) }
-        if let m = f.model { conds.append("\(Self.effectiveModelL) = ?"); binds.append(.text(m)) }
+        if let (c, b) = match?.sql(Self.effectiveModelL) { conds.append(c); binds += b }
         return (conds, binds)
     }
 
     /// rollups 侧 WHERE 条件：整日边界（isEmpty → "1 = 0" 让该侧为空）→ app → provider → 模型。
-    func rollupConds(_ f: UsageFilter, _ b: RollupBounds) -> ([String], [SQLBind]) {
+    func rollupConds(_ db: OpaquePointer, _ f: UsageFilter, _ b: RollupBounds) -> ([String], [SQLBind]) {
         var conds: [String] = []
         var binds: [SQLBind] = []
         if b.isEmpty {
@@ -177,17 +178,17 @@ extension UsageStore {
             if let s = b.start { conds.append("r.date >= ?"); binds.append(.text(s)) }
             if let e = b.end { conds.append("r.date <= ?"); binds.append(.text(e)) }
         }
-        let (sc, sb) = scopeCondsR(f)
+        let (sc, sb) = scopeCondsR(f, modelMatch(db, f.model))
         return (conds + sc, binds + sb)
     }
 
-    /// rollups 表的 app → provider → 模型三项筛选（不含整日边界）。
-    func scopeCondsR(_ f: UsageFilter) -> ([String], [SQLBind]) {
+    /// rollups 表的 app → provider → 模型三项筛选（不含整日边界），模型匹配同 `scopeCondsL`。
+    func scopeCondsR(_ f: UsageFilter, _ match: ModelMatch?) -> ([String], [SQLBind]) {
         var conds: [String] = []
         var binds: [SQLBind] = []
         if let at = f.appType { conds.append("\(Self.foldedAppR) = ?"); binds.append(.text(at)) }
         if let pn = f.providerName { conds.append("\(Self.providerNameSQL(log: "r", provider: "p2")) = ?"); binds.append(.text(pn)) }
-        if let m = f.model { conds.append("\(Self.effectiveModelR) = ?"); binds.append(.text(m)) }
+        if let (c, b) = match?.sql(Self.effectiveModelR) { conds.append(c); binds += b }
         return (conds, binds)
     }
 

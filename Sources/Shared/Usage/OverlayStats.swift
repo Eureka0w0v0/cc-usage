@@ -38,6 +38,19 @@ enum OverlayStats {
             performance.estSpeedOutputTokens += estOutputTokens
             performance.estSpeedDurationMs += estDurationMs
         }
+
+        /// 两组合成一组（模型统计把同价推理档并到基础模型时用）。身份字段保留先到的那组的。
+        mutating func merge(_ o: Group) {
+            if requests == 0 && providerId.isEmpty { (providerId, appType, providerName) = (o.providerId, o.appType, o.providerName) }
+            requests += o.requests
+            successes += o.successes
+            tokens += o.tokens
+            cost += o.cost
+            latencySum += o.latencySum
+            estOutputTokens += o.estOutputTokens
+            estDurationMs += o.estDurationMs
+            firstTokens += o.firstTokens
+        }
     }
 
     static func group(_ rows: [OverlayRow], by key: (OverlayRow) -> String) -> [String: Group] {

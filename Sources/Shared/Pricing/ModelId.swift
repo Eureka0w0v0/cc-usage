@@ -124,7 +124,7 @@ enum ModelId {
 
     /// 对齐 strip_known_model_namespace：id 中间出现 `claude-` 就从那里截（找到即返回，不再看厂商前缀）；
     /// 否则剥第一个命中的厂商前缀。
-    private static func stripNamespace(_ id: String) -> String? {
+    static func stripNamespace(_ id: String) -> String? {
         if let r = id.range(of: "claude-", options: .backwards), r.lowerBound != id.startIndex {
             return String(id[r.lowerBound...])
         }
