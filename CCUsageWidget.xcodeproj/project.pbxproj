@@ -253,6 +253,7 @@
 		E2AC2B1C3B492FBCB26333AD /* JSONLScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371F4942735540069DA54CBF /* JSONLScan.swift */; };
 		E2E9DAEB5495118F2F38383F /* DirListCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC51416C9BC4ED6869BC931 /* DirListCache.swift */; };
 		E34D5CCE71FDDE308668470A /* brand-minimax.png in Resources */ = {isa = PBXBuildFile; fileRef = E50FA82869360DF5BE4941CF /* brand-minimax.png */; };
+		E5088ECD8ED3BB3FDDCB3A49 /* ModelStatsMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A9BB3640A659AC13B5A9BC /* ModelStatsMergeTests.swift */; };
 		E672F78F837DD077EA20B645 /* QuotaWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC6250907BF253C5B8ABBD1 /* QuotaWarning.swift */; };
 		E73264967292A2593561CBCA /* ClaudePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAB5CF8868DC08111CC916BF /* ClaudePlan.swift */; };
 		E75D0371223269AF9101AF6E /* HydrogenOrchestratorPricingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFCA9BD39723C9E97462CDF6 /* HydrogenOrchestratorPricingTests.swift */; };
@@ -335,6 +336,7 @@
 		1204682563F4D4F55197E096 /* MBAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBAppTests.swift; sourceTree = "<group>"; };
 		144A1EE4C00CF2D9BAD7C510 /* MenuBarChipMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarChipMigration.swift; sourceTree = "<group>"; };
 		14E50F14C41D531700D19262 /* TrendAxis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendAxis.swift; sourceTree = "<group>"; };
+		16A9BB3640A659AC13B5A9BC /* ModelStatsMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelStatsMergeTests.swift; sourceTree = "<group>"; };
 		17951B3A25E85EFEC5D2E63B /* AntigravityQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityQuota.swift; sourceTree = "<group>"; };
 		1C5562EEAF2958AE3D6E9EDE /* ClaudeQuotaParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeQuotaParsing.swift; sourceTree = "<group>"; };
 		205E593B8BA7C6E8FFA9B329 /* SQLiteSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteSupport.swift; sourceTree = "<group>"; };
@@ -588,6 +590,7 @@
 				8242EFD378C649C24203FAB1 /* MenuBarQuotaTests.swift */,
 				D1B329187C6B1B870A6A8E90 /* MenuBarStripTests.swift */,
 				A732DE83182CAE332428846B /* ModelPricingFallbackTests.swift */,
+				16A9BB3640A659AC13B5A9BC /* ModelStatsMergeTests.swift */,
 				90C64BD2F04C1E2D2FADA9B1 /* ModelVariantPricingTests.swift */,
 				5E8E9E18A677821DEA1BD190 /* NiceScaleTests.swift */,
 				4FD962A14316054D9A982BE4 /* OmpOverlayTests.swift */,
@@ -1135,6 +1138,7 @@
 				650857606C35C15BE09E0DA1 /* ModelPricing.swift in Sources */,
 				1EB76A1AAF9DEB820C81DC05 /* ModelPricingFallbackTests.swift in Sources */,
 				AC2028BF71A8D3E94D3E178F /* ModelStatsMerge.swift in Sources */,
+				E5088ECD8ED3BB3FDDCB3A49 /* ModelStatsMergeTests.swift in Sources */,
 				886072B2937AF05E9954C0E3 /* ModelVariantPricingTests.swift in Sources */,
 				5D55CF948CF7DE7D49E732E1 /* NiceScale.swift in Sources */,
 				28B4E4426A12A6D943DE79E0 /* NiceScaleTests.swift in Sources */,

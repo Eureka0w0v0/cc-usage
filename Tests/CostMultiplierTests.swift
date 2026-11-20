@@ -67,6 +67,8 @@ final class CostMultiplierTests: XCTestCase {
         let rows: [(id: String, multiplier: String, expected: Double)] = [
             ("free", "0", 0), ("free-dotted", "0.0", 0), ("half", "0.5", full / 2),
             ("garbled", "abc", full), ("empty", "", full), ("one", "1.0", full),
+            // Swift 的 Double("1e3") 能解析出 1000，SQL 的 GLOB 规则不认：两处必须都按 1 倍
+            ("scientific", "1e3", full),
         ]
         for (i, r) in rows.enumerated() { try insert(r.id, multiplier: r.multiplier, at: t + Int64(i) * 600) }
 
