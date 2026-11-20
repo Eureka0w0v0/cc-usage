@@ -173,7 +173,7 @@ final class PanelModel: ObservableObject {
             object: nil, queue: .main) { _ in raiseCeiling() }
     }
 
-    /// 立即强制取一次官方额度（绕过 5 分钟节流），用于用户在菜单栏勾选「额度」码片时的即时反馈。
+    /// 立即强制取一次官方额度（不受 5 分钟间隔限制；限流暂停期间仍只给上次的数），用于用户在菜单栏勾选「额度」码片时的即时反馈。
     func refreshQuotaNow() {
         Task { [weak self] in
             let tiers = await QuotaService.forceTiersForBridge()
@@ -260,8 +260,8 @@ final class PanelModel: ObservableObject {
                 }
                 self.reloadWidgetsThrottled()
                 // 官方额度：仅当有额度码片开启时才查（默认关 → 不读凭据、不联网）。
-                // 走 QuotaCache（5 分钟节流 + stale-if-error），与 embed 的 get_quota 共享同一份
-                // 缓存；限流(429)/失败时保留上次值，不会把接口打爆。独立 Task：网络耗时不阻塞下轮 reload。
+                // 走 QuotaCache（查询闸门 + stale-if-error + 落盘），与 embed 的 get_quota 共享同一份
+                // 缓存；失败时保留上次值，限流(429)时按 Retry-After 暂停。独立 Task：网络耗时不阻塞下轮 reload。
                 if self.mbAnyQuotaOn {
                     Task { [weak self] in
                         let tiers = await QuotaService.fetchTiersForBridge()

@@ -33,95 +33,148 @@ import os
 enum QuotaStatus: Error, Equatable, Sendable {
     case noCredential     // Keychain / 文件都读不到凭据
     case expired          // token 过期或鉴权失败(401/403)
+    case rateLimited(retryAfter: TimeInterval?)   // HTTP 429；retryAfter = 服务端要求再等的秒数（没给为 nil）
     case failed(String)   // 网络 / 解析等其它错误
 }
 
-// MARK: - 进程内共享额度缓存（照搬 cc-switch 的读取策略）
+// MARK: - 进程内共享额度缓存
 
-/// 把 cc-switch 的额度读取/缓存机制搬到 widget。
+/// 额度缓存的落盘读写：App 用 UserDefaults，测试注入内存版。
+struct QuotaSnapshotStore: Sendable {
+    var load: @Sendable () -> QuotaSnapshot?
+    var save: @Sendable (QuotaSnapshot) -> Void
+
+    static let userDefaultsKey = "quota.claude.snapshot"
+    private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "quota")
+
+    static let userDefaults = QuotaSnapshotStore(
+        load: {
+            guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else { return nil }
+            do {
+                return try QuotaSnapshot.decode(data)
+            } catch {
+                log.error("额度快照读不出来，当作没有：\(error.localizedDescription, privacy: .public)")
+                return nil
+            }
+        },
+        save: { snapshot in
+            do {
+                UserDefaults.standard.set(try snapshot.encoded(), forKey: userDefaultsKey)
+            } catch {
+                log.error("额度快照存不下：\(error.localizedDescription, privacy: .public)")
+            }
+        })
+}
+
+/// 把 cc-switch 的额度读取/缓存机制搬到 widget，并补上限流退避与落盘。
 ///
 /// cc-switch 侧：查询结果写入内存 `UsageCache`（**不落盘**，进程重启即空），由
 /// react-query 以 `REFETCH_INTERVAL = 5 分钟` 的 staleTime/refetchInterval 为闸门决定
 /// 是否真的再打官方接口；系统托盘只读这份内存快照、从不自己发请求
 /// （见 cc-switch `src-tauri/src/services/usage_cache.rs` + `src/lib/query/subscription.ts`）。
 ///
-/// widget 侧：同样用「一份进程内共享缓存 + 5 分钟节流窗口」。原生额度定时器（若启用）与
-/// embed 的 `get_quota` 桥接两条读取路径都经过这里，合计 **≤1 次 / 5min** 命中
-/// `api.anthropic.com/api/oauth/usage` → 从根上杜绝 429。闸门以「上次发起查询的时刻」为准
-/// （成功或失败都推进），因此 429 后会自动退避 5 分钟再试；失败/429/无凭据一律保留上次成功
-/// 数据（stale-if-error），不把徽标空成 "—"。
+/// widget 侧：一份进程内共享缓存 + 查询闸门（QuotaThrottle）。原生额度定时器（若启用）与 embed 的 `get_quota`
+/// 桥接两条读取路径都经过这里，平时合计 **≤1 次 / 5min** 命中 `api.anthropic.com/api/oauth/usage`。
+/// 与上游不同的两点（2026-11-20）：
+/// - 被限流（429）后按 `Retry-After` 暂停（没给先停 30 分钟），暂停期间手动刷新也不打——上游照旧每 5 分钟打，
+///   限流期间只会把限流拖长，同账号的 Claude Code 状态栏也跟着拿不到数；
+/// - 上次成功的额度和闸门状态落盘（QuotaSnapshot），重启后先显示上次的数、暂停期间不会一启动就再打。
+/// 失败/429/无凭据一律保留上次成功数据（stale-if-error）；过了重置时刻的档不再显示。
 actor QuotaCache {
-    static let shared = QuotaCache()
+    static let shared = QuotaCache(store: .userDefaults)
 
-    /// 两次真正打官方接口的最小间隔，对齐 cc-switch `REFETCH_INTERVAL = 5 * 60 * 1000ms`。
-    static let minInterval: TimeInterval = 5 * 60
-
-    private var tiers: [QuotaTier] = []   // 上次成功数据；失败不清空 → stale-if-error
-    private var lastAttempt: Date?        // 上次发起查询的时刻（节流闸门）
+    private var tiers: [QuotaTier]          // 上次成功数据；失败不清空 → stale-if-error
+    private var throttle: QuotaThrottle
     /// 在途查询（并发去重 + 首屏等待）：启动时菜单栏先发起查询、面板 1–2s 后跟着读，
     /// 若只看节流闸门会拿到「窗口内但缓存还空」的空数组 → 徽标 "—" 干等 20s。
     /// 挂上在途 Task 后，后来者直接 await 同一次网络请求，首屏即真值。
-    private var inflight: Task<[QuotaTier], Never>?
+    private var inflight: Task<Result<[QuotaTier], QuotaStatus>, Never>?
+    private let store: QuotaSnapshotStore
+    private let now: @Sendable () -> Date
 
-    private var throttled: Bool {
-        guard let lastAttempt else { return false }
-        return Date().timeIntervalSince(lastAttempt) < Self.minInterval
+    init(store: QuotaSnapshotStore, now: @escaping @Sendable () -> Date = { Date() }) {
+        self.store = store
+        self.now = now
+        let snapshot = store.load()
+        tiers = snapshot?.tiers ?? []
+        throttle = QuotaThrottle(lastAttempt: snapshot?.lastAttempt, blockedUntil: snapshot?.blockedUntil)
     }
 
-    /// 发起一次真实查询并挂为在途：成功回填缓存，失败保留旧值（stale-if-error）。
-    private func launch(_ fetch: @Sendable @escaping () async -> [QuotaTier]?) async -> [QuotaTier] {
-        lastAttempt = Date()
-        let task = Task<[QuotaTier], Never> { await fetch() ?? [] }
+    /// 现在能显示的额度（过了重置时刻的档丢掉）。
+    private var current: [QuotaTier] { QuotaSnapshot.live(tiers, now: now()) }
+
+    private func persist() {
+        store.save(QuotaSnapshot(tiers: tiers, lastAttempt: throttle.lastAttempt, blockedUntil: throttle.blockedUntil))
+    }
+
+    /// 发起一次真实查询并挂为在途。查询前先记下时刻并落盘：查询中途退出、重启后也不会立刻再打。
+    private func launch(_ fetch: @Sendable @escaping () async -> Result<[QuotaTier], QuotaStatus>) async -> [QuotaTier] {
+        throttle.recordAttempt(at: now())
+        persist()
+        let task = Task<Result<[QuotaTier], QuotaStatus>, Never> { await fetch() }
         inflight = task
         let result = await task.value
         inflight = nil
-        if !result.isEmpty { tiers = result }
-        return tiers
+        apply(result)
+        return current
     }
 
-    /// 缓存优先取额度（`get_quota` 桥接用）：
+    /// 成功（非空）→ 回填并落盘；429 → 按 Retry-After 暂停并落盘；其它失败 / 空结果 → 保留上次成功数据。
+    private func apply(_ result: Result<[QuotaTier], QuotaStatus>) {
+        switch result {
+        case .success(let fresh) where !fresh.isEmpty:
+            tiers = fresh
+        case .failure(.rateLimited(let retryAfter)):
+            throttle.recordRateLimited(at: now(), retryAfter: retryAfter)
+        default:
+            return
+        }
+        persist()
+    }
+
+    /// 缓存优先取额度（`get_quota` 桥接与菜单栏定时刷新用）：
     /// - 有查询在途 → await 同一次请求（首屏拿真值，不再撞「窗口内但缓存空」）。
-    /// - 节流窗口内 → 直接返回上次快照，**绝不打官方接口**。
-    /// - 窗口外 → 先推进闸门（失败也退避 5min），再执行 `fetch`；成功则回填缓存。
-    /// - `fetch` 返回 nil/空（失败/429/无凭据）→ 保留上次成功数据。
-    func read(fetch: @Sendable @escaping () async -> [QuotaTier]?) async -> [QuotaTier] {
+    /// - 闸门不放行（5 分钟内、或限流暂停中）→ 直接返回上次快照，**绝不打官方接口**。
+    /// - 否则发起查询；失败/429/无凭据 → 保留上次成功数据。
+    func read(fetch: @Sendable @escaping () async -> Result<[QuotaTier], QuotaStatus>) async -> [QuotaTier] {
         if let inflight { return await joinInflight(inflight) }
-        if throttled { return tiers }
+        guard throttle.mayFetch(now: now(), force: false) else { return current }
         return await launch(fetch)
     }
 
     /// 搭车在途请求时同样享受「失败保留上次成功数据」：`inflight.value` 是 **原始**
-    /// 结果（失败/429/无凭据 → `[]`），直接返回会让搭车方把额度徽标刷成空，而发起方
-    /// 却拿着完好的缓存——同一次刷新里两边不一致。这里复刻 `launch` 的回落规则。
+    /// 结果，失败时直接返回会让搭车方把额度徽标刷成空，而发起方却拿着完好的缓存——同一次刷新里两边不一致。
     /// 不写成「await 后读 self.tiers」是因为发起方回填 `tiers` 与本方恢复执行同为
-    /// actor 上的独立任务，先后顺序无保证；改判空回落则与顺序无关。
-    private func joinInflight(_ task: Task<[QuotaTier], Never>) async -> [QuotaTier] {
-        let result = await task.value
-        return result.isEmpty ? tiers : result
+    /// actor 上的独立任务，先后顺序无保证；改按结果判断则与顺序无关。
+    private func joinInflight(_ task: Task<Result<[QuotaTier], QuotaStatus>, Never>) async -> [QuotaTier] {
+        if case .success(let fresh) = await task.value, !fresh.isEmpty {
+            return QuotaSnapshot.live(fresh, now: now())
+        }
+        return current
     }
 
-    /// 强制取一次（**忽略节流**），用于用户手动动作（如在菜单栏勾选「额度」码片）：
-    /// 即便还在 5 分钟窗口内、或上次是空结果，也立即打一次官方接口拿最新值并回填共享缓存。
-    /// 已有在途请求时复用它（在途即最新，无需再发一发）。
-    /// 仅供低频用户交互调用（不放进定时器），故不会造成限流。
-    func forceRefresh(fetch: @Sendable @escaping () async -> [QuotaTier]?) async -> [QuotaTier] {
+    /// 强制取一次，用于用户手动动作（如在菜单栏勾选「额度」码片）：不受 5 分钟间隔限制，
+    /// 但限流暂停期间照样不打（返回上次快照）。已有在途请求时复用它。
+    /// 仅供低频用户交互调用（不放进定时器）。
+    func forceRefresh(fetch: @Sendable @escaping () async -> Result<[QuotaTier], QuotaStatus>) async -> [QuotaTier] {
         if let inflight { return await joinInflight(inflight) }
+        guard throttle.mayFetch(now: now(), force: true) else { return current }
         return await launch(fetch)
     }
 }
 
 // MARK: - 额度查询入口（菜单栏 PanelModel 与 embed 桥接 get_quota 共用）
 
-/// 纯静态命名空间：两条读取路径都经同一份 `QuotaCache`（5 分钟节流 + 在途去重 +
-/// stale-if-error）——这正是「菜单栏与面板的额度数字永远一致」的机制所在。
-/// 读不到凭据 / 请求失败一律返回上次成功值（首次失败为空数组，前端徽标显示 "—"）。
+/// 纯静态命名空间：两条读取路径都经同一份 `QuotaCache`（查询闸门 + 在途去重 +
+/// stale-if-error + 落盘）——这正是「菜单栏与面板的额度数字永远一致」的机制所在。
+/// 读不到凭据 / 请求失败一律返回上次成功值（从没成功过时为空数组，前端徽标显示 "—"）。
 enum QuotaService {
     /// 缓存优先取额度（定时刷新用）：节流窗口内只读共享缓存，绝不打官方接口。
     static func fetchTiersForBridge() async -> [QuotaTier] {
         await QuotaCache.shared.read { await ClaudeQuotaFetch().run() }
     }
 
-    /// 强制取一次（忽略 5 分钟节流）：仅供低频用户交互（勾选额度码片）调用。
+    /// 强制取一次（不受 5 分钟间隔限制，限流暂停期间除外）：仅供低频用户交互（勾选额度码片）调用。
     static func forceTiersForBridge() async -> [QuotaTier] {
         await QuotaCache.shared.forceRefresh { await ClaudeQuotaFetch().run() }
     }
@@ -136,17 +189,20 @@ struct ClaudeQuotaFetch: Sendable {
 
     private static let logger = Logger(subsystem: "com.ganxing.ccusage", category: "quota")
 
-    /// 经 QuotaCache 节流，最多 5 分钟一次，不用再去重。
+    /// 经 QuotaCache 的闸门，最多 5 分钟一次（限流时更少），不用再去重。
     private static func log(_ status: QuotaStatus) {
         switch status {
         case .noCredential: logger.info("没有 Claude 登录，额度不可用")
         case .expired: logger.error("Claude 额度查询失败：令牌过期或鉴权失败")
+        case .rateLimited(let retryAfter):
+            let wait = retryAfter.map { "服务端要求等 \(Int($0)) 秒" } ?? "没给 Retry-After，先停 30 分钟"
+            logger.error("Claude 额度查询失败：API 限流 (HTTP 429)，\(wait, privacy: .public)")
         case .failed(let reason): logger.error("Claude 额度查询失败：\(reason, privacy: .public)")
         }
     }
 
-    /// 失败/无凭据返回 nil（由 QuotaCache 保留上次成功值），原因经 report 记下。
-    func run() async -> [QuotaTier]? {
+    /// 失败原因经 report 记下，再原样交给 QuotaCache（429 要按 Retry-After 暂停，其它失败保留上次成功值）。
+    func run() async -> Result<[QuotaTier], QuotaStatus> {
         // 读凭据、读 Claude Code 配置都是阻塞操作（spawn security / 读文件），放后台线程
         let (credResult, displayName) = await Task.detached(priority: .utility) { [readCredential, planDisplayName] in
             (readCredential(), planDisplayName())
@@ -157,7 +213,7 @@ struct ClaudeQuotaFetch: Sendable {
             cred = value
         case .failure(let status):
             report(status)
-            return nil
+            return .failure(status)
         }
 
         switch await query(cred.accessToken) {
@@ -165,10 +221,10 @@ struct ClaudeQuotaFetch: Sendable {
             let plan = ClaudePlan.label(displayName: displayName, subscriptionType: cred.subscriptionType,
                                         rateLimitTier: cred.rateLimitTier)
             for i in tiers.indices { tiers[i].planLabel = plan }
-            return tiers
+            return .success(tiers)
         case .failure(let status):
             report(status)
-            return nil
+            return .failure(status)
         }
     }
 }
@@ -278,16 +334,25 @@ enum ClaudeUsageAPI {
         guard let http = resp as? HTTPURLResponse else {
             return .failure(.failed("无 HTTP 响应"))
         }
-        if http.statusCode == 401 || http.statusCode == 403 {
+        return interpret(status: http.statusCode, retryAfter: http.value(forHTTPHeaderField: "Retry-After"),
+                         body: data, now: Date())
+    }
+
+    /// HTTP 响应 → 额度或失败原因（纯函数，可测）。401/403 是令牌问题；429 带上服务端要求再等的秒数，
+    /// QuotaCache 据此暂停查询；其它非 2xx 和解析失败都记原因、保留上次的数。
+    static func interpret(status: Int, retryAfter: String?, body: Data, now: Date) -> Result<[QuotaTier], QuotaStatus> {
+        if status == 401 || status == 403 {
             return .failure(.expired)
         }
-        guard (200..<300).contains(http.statusCode) else {
-            return .failure(.failed("API 错误 (HTTP \(http.statusCode))"))
+        if status == 429 {
+            return .failure(.rateLimited(retryAfter: RetryAfter.seconds(retryAfter, now: now)))
         }
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard (200..<300).contains(status) else {
+            return .failure(.failed("API 错误 (HTTP \(status))"))
+        }
+        guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
             return .failure(.failed("解析 API 响应失败"))
         }
-
         return .success(ClaudeQuotaParser.parse(root))
     }
 }

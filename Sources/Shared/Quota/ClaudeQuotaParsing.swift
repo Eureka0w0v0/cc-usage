@@ -11,8 +11,8 @@ import Foundation
 
 // MARK: - 数据模型
 
-/// 单个限流窗口（对齐 cc-switch QuotaTier）
-public struct QuotaTier: Identifiable, Sendable, Equatable {
+/// 单个限流窗口（对齐 cc-switch QuotaTier）。Codable：上次成功的额度要落盘（见 QuotaSnapshot）。
+public struct QuotaTier: Identifiable, Sendable, Equatable, Codable {
     /// 窗口标识：five_hour / seven_day / seven_day_fable / seven_day_opus / seven_day_sonnet …
     public let name: String
     /// 已用百分比 0–100
