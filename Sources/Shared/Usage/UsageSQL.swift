@@ -129,7 +129,13 @@ extension UsageStore {
     /// Codex 会话日志记的是客户端填的模型别名，代理行的 model 是路由映射后的上游模型，两边对不上；
     /// 会话行是 Codex（app_type 和来源都是）时，代理行的 request_model 等于会话行的模型也算同一笔。
     /// request_model 为空或 `unknown` 不放宽——没有可用的别名时不能扩大这条启发式的范围。缺列同样省掉。
+    ///
+    /// 模型比对（上游 v4.0.38 #9249，session_proxy_model_match_sql）：两边先剥网关 / 命名空间前缀（strippedModelPrefix），
+    /// 剥完是空串的不算相等；`unknown` 先去空白再认；request_model 别名分支同样剥前缀。
     static func effectiveUsageFilterL(hasSemantics: Bool, hasRequestModel: Bool) -> String {
+        let proxyModel = strippedModelPrefix("proxy_dedup.model")
+        let sessionModel = strippedModelPrefix("l.model")
+        let requestModel = strippedModelPrefix("proxy_dedup.request_model")
         let legacyCodexProxy = hasSemantics ? """
 
                                 OR (proxy_dedup.cache_creation_tokens=0
@@ -140,9 +146,10 @@ extension UsageStore {
 
                                 OR (l.app_type='codex'
                                     AND COALESCE(l.data_source,'proxy')='codex_session'
-                                    AND NULLIF(TRIM(proxy_dedup.request_model),'') IS NOT NULL
-                                    AND LOWER(TRIM(proxy_dedup.request_model))<>'unknown'
-                                    AND LOWER(TRIM(proxy_dedup.request_model))=LOWER(TRIM(l.model)))
+                                    AND NULLIF(\(requestModel),'') IS NOT NULL
+                                    AND LOWER(\(requestModel))<>'unknown'
+                                    AND NULLIF(\(sessionModel),'') IS NOT NULL
+                                    AND LOWER(\(requestModel))=LOWER(\(sessionModel)))
             """ : ""
         return """
         NOT (COALESCE(l.data_source,'proxy') IN ('session_log','codex_session','gemini_session','opencode_session')
@@ -157,8 +164,17 @@ extension UsageStore {
                                 OR (l.cache_creation_tokens=0
                                     AND COALESCE(l.data_source,'proxy') IN ('codex_session','gemini_session','opencode_session'))\(legacyCodexProxy))
                            AND proxy_dedup.created_at BETWEEN l.created_at-\(dedupWindowSeconds) AND l.created_at+\(dedupWindowSeconds)
-                           AND (LOWER(proxy_dedup.model)=LOWER(l.model)
-                                OR LOWER(proxy_dedup.model)='unknown' OR LOWER(l.model)='unknown'\(codexRequestModelAlias))))
+                           AND ((NULLIF(\(proxyModel),'') IS NOT NULL AND NULLIF(\(sessionModel),'') IS NOT NULL
+                                 AND LOWER(\(proxyModel))=LOWER(\(sessionModel)))
+                                OR LOWER(TRIM(proxy_dedup.model))='unknown' OR LOWER(TRIM(l.model))='unknown'\(codexRequestModelAlias))))
         """
+    }
+
+    /// 去掉模型名里最后一个 `/` 及其之前的部分（`cpa/antigravity/gemini-3.8-flash-high` → `gemini-3.8-flash-high`），
+    /// 照搬上游 strip_model_prefix_sql：Codex 会话日志导入时剥了网关前缀（normalize_codex_model 取最后一个 `/` 之后），
+    /// 代理行没剥。做法：去掉所有 `/` 得到「名字里出现过的字符」，RTRIM 掉这些字符剩下的就是前缀（到最后一个 `/` 为止），
+    /// 再把前缀替换成空。没有 `/` 时前缀为空串，SQLite 的 REPLACE 遇到空串模式原样返回。
+    static func strippedModelPrefix(_ expr: String) -> String {
+        "REPLACE(TRIM(\(expr)), RTRIM(TRIM(\(expr)), REPLACE(TRIM(\(expr)), '/', '')), '')"
     }
 }

@@ -225,6 +225,64 @@ final class CrossSourceDedupTests: XCTestCase {
         XCTAssertEqual(try requestCount(around: t + 3 * day), 2, "来源是 codex_session 但 app 不是 codex，也不放宽")
     }
 
+    // MARK: - 网关前缀（上游 v4.0.38 #9249）
+
+    /// 代理行记的模型带网关 / 命名空间前缀（`antigravity/gemini-3.8-flash-high`），Codex 会话日志导入时把前缀剥了，
+    /// 两边字面对不上，同一笔请求算两次。比较前两边都去掉最后一个 `/` 及其之前的部分。
+    /// 向量照搬上游 test_matching_proxy_log_matches_codex_prefix_model / test_effective_filter_dedups_codex_prefix_model。
+    private func insertPrefixPair(_ tag: String, proxyModel: String, requestModel: String?,
+                                  sessionModel: String = "gemini-3.8-flash-high", at t: Int64) throws {
+        try Fixture.insertLog(dbPath, id: "proxy-\(tag)", app: "codex", model: proxyModel,
+                              input: 2_341, output: 228, cacheRead: 116_000, cacheCreation: 0, createdAt: t,
+                              dataSource: "proxy", providerId: "provider-cpa", requestModel: requestModel)
+        try Fixture.insertLog(dbPath, id: "session-\(tag)", app: "codex", model: sessionModel,
+                              input: 2_341, output: 228, cacheRead: 116_000, cacheCreation: 0, createdAt: t + 1,
+                              dataSource: "codex_session", providerId: "_codex_session")
+    }
+
+    /// 杀变异体：比较前不剥前缀（单级那对不去重）/ 只剥第一段（多级那对不去重）/ 剥完不比模型（不同模型那对被误去重）。
+    func testGatewayPrefixIsStrippedBeforeMatching() throws {
+        let t = Fixture.ts(2026, 11, 21, 12)
+        let day: Int64 = 86_400
+        try insertPrefixPair("single", proxyModel: "antigravity/gemini-3.8-flash-high",
+                             requestModel: "antigravity/gemini-3.8-flash-high", at: t)
+        try insertPrefixPair("multi", proxyModel: "cpa/antigravity/gemini-3.8-flash-high",
+                             requestModel: "cpa/antigravity/gemini-3.8-flash-high", at: t + day)
+        try insertPrefixPair("other", proxyModel: "antigravity/gemini-3.8-flash-high",
+                             requestModel: "antigravity/gemini-3.8-flash-high", sessionModel: "gemini-2.5-pro",
+                             at: t + 2 * day)
+
+        XCTAssertEqual(try requestCount(around: t), 1, "剥掉 antigravity/ 后是同一个模型")
+        XCTAssertEqual(try requestCount(around: t + day), 1, "多级前缀剥到最后一个 / 之后")
+        XCTAssertEqual(try requestCount(around: t + 2 * day), 2, "模型名不同不误伤")
+        let page = try store.requestLogs(LogQueryFilter(start: t - 1200, end: t + 1200), page: 0, pageSize: 20)
+        XCTAssertEqual(page.rows.map(\.requestId), ["proxy-single"], "保留代理行，剔除会话行")
+    }
+
+    /// 代理行的 model 被路由改写了，只能靠 request_model 别名分支认出来：这一支同样先剥前缀。
+    /// 上游这组用例里还有多级前缀和 `cpa/unknown` 两个向量：前者和上一个用例杀的是同一个变异体（剥前缀只有一个函数），
+    /// 后者拦的情形已经被 unknown 分支放行，去掉 `<> 'unknown'` 结果不变（同 testAliasBranchIgnoresMissingOrPlaceholderRequestModel），
+    /// 照本文件的约定不重复加。
+    /// 杀变异体：别名分支不剥前缀。
+    func testRequestModelAliasIsStrippedToo() throws {
+        let t = Fixture.ts(2026, 11, 21, 12)
+        try insertPrefixPair("alias", proxyModel: "upstream-routed-model",
+                             requestModel: "antigravity/gemini-3.8-flash-high", at: t)
+        XCTAssertEqual(try requestCount(around: t), 1, "请求模型剥掉前缀后就是会话行的模型")
+    }
+
+    /// 剥完是空串的两边不算相等；`unknown` 先去空白再认（两条都随 #9249 改）。
+    /// 杀变异体：剥完不判空（`gw/` 对空白模型被误去重）/ unknown 判断不去空白（` unknown ` 那对不去重）。
+    func testEmptyAfterStrippingNeverMatchesAndUnknownIsTrimmed() throws {
+        let t = Fixture.ts(2026, 11, 21, 12)
+        let day: Int64 = 86_400
+        try insertPrefixPair("empty", proxyModel: "gw/", requestModel: nil, sessionModel: " ", at: t)
+        try insertPrefixPair("unknown", proxyModel: " unknown ", requestModel: nil, at: t + day)
+
+        XCTAssertEqual(try requestCount(around: t), 2, "剥完两边都是空串，不是同一个模型")
+        XCTAssertEqual(try requestCount(around: t + day), 1, "代理行模型是 unknown（带空白）照旧放宽")
+    }
+
     /// 旧库没有 request_model 列：过滤器里照写这一列会在 prepare 阶段失败，所有读路径一起挂。
     /// 杀变异体：不看 schema、恒带别名分支。
     func testAliasBranchIsOmittedWhenRequestModelColumnIsMissing() throws {
