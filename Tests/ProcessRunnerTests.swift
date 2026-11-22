@@ -63,4 +63,21 @@ final class ProcessRunnerTests: XCTestCase {
         XCTAssertEqual(String(decoding: out.stdout, as: UTF8.self), "done")
         XCTAssertLessThan(Date().timeIntervalSince(start), limit)
     }
+
+    /// 给了环境就只用它（`claude -p /usage` 靠这个把宿主会话的变量挡在外面），给了工作目录就在那里跑。
+    /// 负责杀的变异体：环境参数没生效（继承了本进程的整份环境）/ 工作目录参数没生效。
+    func testGivenEnvironmentAndDirectoryAreUsed() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ccusage-cwd-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let out = try XCTUnwrap(ProcessRunner.run(shell, ["-c", #"printf '%s|%s|%s' "$FOO" "${HOME-unset}" "$(basename "$(pwd)")""#],
+                                                  environment: ["FOO": "bar"], currentDirectory: dir, timeout: 10))
+        XCTAssertEqual(String(decoding: out.stdout, as: UTF8.self), "bar|unset|\(dir.lastPathComponent)")
+    }
+
+    /// 不给就继承本进程的（钥匙串那条 `security` 一直这么跑）。负责杀的变异体：不给环境时子进程拿到空环境。
+    func testEnvironmentIsInheritedByDefault() throws {
+        let out = try XCTUnwrap(sh(#"printf '%s' "$HOME""#))
+        XCTAssertEqual(String(decoding: out.stdout, as: UTF8.self), ProcessInfo.processInfo.environment["HOME"])
+    }
 }

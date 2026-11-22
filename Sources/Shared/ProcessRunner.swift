@@ -15,10 +15,14 @@ enum ProcessRunner {
     private static let drainGrace: TimeInterval = 2
 
     /// 跑到退出，返回退出码和标准输出；起不来或超时（进程已杀掉）返回 nil。stdin 是空设备，stderr 丢弃。
-    static func run(_ executable: URL, _ arguments: [String], timeout: TimeInterval) -> Output? {
+    /// `environment` / `currentDirectory` 为 nil 时继承本进程的。
+    static func run(_ executable: URL, _ arguments: [String], environment: [String: String]? = nil,
+                    currentDirectory: URL? = nil, timeout: TimeInterval) -> Output? {
         let proc = Process()
         proc.executableURL = executable
         proc.arguments = arguments
+        if let environment { proc.environment = environment }
+        if let currentDirectory { proc.currentDirectoryURL = currentDirectory }
         let out = Pipe()
         proc.standardOutput = out
         // stderr 接空设备：不读的管道一旦写满，子进程会卡在 write 上
