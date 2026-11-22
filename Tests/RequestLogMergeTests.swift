@@ -5,7 +5,7 @@ final class RequestLogMergeTests: XCTestCase {
     private func row(_ id: String, _ createdAt: Int64) -> RequestLogRow {
         RequestLogRow(requestId: id, providerId: "p", providerName: "p", appType: "claude", model: "m",
                       costMultiplier: "1", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-                      inputCostUsd: "0", outputCostUsd: "0", cacheReadCostUsd: "0", cacheCreationCostUsd: "0",
+                      freshInputTokens: 0, inputCostUsd: "0", outputCostUsd: "0", cacheReadCostUsd: "0", cacheCreationCostUsd: "0",
                       totalCostUsd: "0", isStreaming: true, latencyMs: 0, statusCode: 200, createdAt: createdAt)
     }
 

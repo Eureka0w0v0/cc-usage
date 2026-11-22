@@ -7,7 +7,7 @@ private enum RequestLogCol: Int32 {
          inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens,
          inputCost, outputCost, cacheReadCost, cacheCreationCost, totalCost,
          isStreaming, latencyMs, firstTokenMs, durationMs, statusCode, errorMessage, createdAt, dataSource,
-         billableInput
+         billableInput, freshInput
 }
 
 /// requestLogSelect 一行的按名取列（列序由 RequestLogCol 与投影共同约定）。
@@ -123,7 +123,8 @@ extension UsageStore {
                l.input_cost_usd, l.output_cost_usd, l.cache_read_cost_usd, l.cache_creation_cost_usd, l.total_cost_usd,
                l.is_streaming, l.latency_ms, l.first_token_ms, l.duration_ms,
                l.status_code, l.error_message, l.created_at, l.data_source,
-               \(ModelPricing.billableInputSQL("l", hasSemantics: hasSemantics(db))) AS billable_input
+               \(ModelPricing.billableInputSQL("l", hasSemantics: hasSemantics(db))) AS billable_input,
+               (\(freshInput(db, "l"))) AS fresh_input_tokens
         FROM proxy_request_logs l
         \(Self.providersJoinL)
         """
@@ -147,6 +148,7 @@ extension UsageStore {
             outputTokens: col.int(.outputTokens),
             cacheReadTokens: col.int(.cacheReadTokens),
             cacheCreationTokens: col.int(.cacheCreationTokens),
+            freshInputTokens: col.int(.freshInput),
             inputCostUsd: costs.input,
             outputCostUsd: costs.output,
             cacheReadCostUsd: costs.cacheRead,
@@ -196,6 +198,7 @@ extension UsageStore {
             costMultiplier: "1.0",
             inputTokens: r.input, outputTokens: r.output,
             cacheReadTokens: r.cacheRead, cacheCreationTokens: r.cacheCreation,
+            freshInputTokens: r.input,   // 叠加行的 input 本来就是新增输入（见 OverlayRow.realTotalTokens）
             inputCostUsd: Fmt.usd6(r.inputCost), outputCostUsd: Fmt.usd6(r.outputCost),
             cacheReadCostUsd: Fmt.usd6(r.cacheReadCost), cacheCreationCostUsd: Fmt.usd6(r.cacheCreationCost),
             totalCostUsd: Fmt.usd6(r.totalCost),

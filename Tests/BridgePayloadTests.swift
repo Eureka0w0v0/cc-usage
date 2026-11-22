@@ -9,7 +9,7 @@ final class BridgePayloadTests: XCTestCase {
                         durationMs: Int64? = nil, errorMessage: String? = nil, dataSource: String? = nil) -> RequestLogRow {
         RequestLogRow(requestId: "r", providerId: "p", providerName: "P", appType: "claude", model: "m",
                       requestModel: requestModel, pricingModel: pricingModel, costMultiplier: "1",
-                      inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheCreationTokens: 4,
+                      inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheCreationTokens: 4, freshInputTokens: 9,
                       inputCostUsd: "0.1", outputCostUsd: "0.2", cacheReadCostUsd: "0.3", cacheCreationCostUsd: "0.4",
                       totalCostUsd: "1.0", isStreaming: true, latencyMs: 5, firstTokenMs: firstTokenMs,
                       durationMs: durationMs, statusCode: 200, errorMessage: errorMessage, createdAt: 6,
@@ -18,7 +18,7 @@ final class BridgePayloadTests: XCTestCase {
 
     private static let requestLogRequired: Set<String> = [
         "requestId", "providerId", "providerName", "appType", "model", "costMultiplier",
-        "inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens",
+        "inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens", "freshInputTokens",
         "inputCostUsd", "outputCostUsd", "cacheReadCostUsd", "cacheCreationCostUsd", "totalCostUsd",
         "isStreaming", "latencyMs", "statusCode", "createdAt",
     ]
@@ -27,8 +27,12 @@ final class BridgePayloadTests: XCTestCase {
         "firstTokenMedianMs", "estFirstTokenMedianMs",
     ]
 
+    /// freshInputTokens 必填（上游 v4.0.38 起前端直接读它，缺了新鲜输入一列算出 NaN）。
+    /// 负责杀的变异体：没写进字典 / 写错了值。
     func testRequestLogKeysWithoutOptionalFields() {
-        XCTAssertEqual(keys(BridgePayload.requestLog(logRow())), Self.requestLogRequired)
+        let log = BridgePayload.requestLog(logRow())
+        XCTAssertEqual(keys(log), Self.requestLogRequired)
+        XCTAssertEqual(log["freshInputTokens"] as? Int64, 9)
     }
 
     /// 可空字段只在有值时写（对齐 serde skip_serializing_if）；空串等于没有。

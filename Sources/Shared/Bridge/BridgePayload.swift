@@ -43,6 +43,7 @@ enum BridgePayload {
             "outputTokens": r.outputTokens,
             "cacheReadTokens": r.cacheReadTokens,
             "cacheCreationTokens": r.cacheCreationTokens,
+            "freshInputTokens": r.freshInputTokens,
             "inputCostUsd": r.inputCostUsd,
             "outputCostUsd": r.outputCostUsd,
             "cacheReadCostUsd": r.cacheReadCostUsd,

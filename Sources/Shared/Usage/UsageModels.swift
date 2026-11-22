@@ -106,6 +106,9 @@ public struct RequestLogRow: Sendable, Equatable {
     public var outputTokens: Int64
     public var cacheReadTokens: Int64
     public var cacheCreationTokens: Int64
+    /// 新增输入：input 去掉其中已含的缓存部分（Codex 等的 input 含缓存读写），与汇总同一口径（freshInput）。
+    /// 上游 v4.0.38（#8191）起由后端给、前端直接读，不再自己减。
+    public var freshInputTokens: Int64
     public var inputCostUsd: String
     public var outputCostUsd: String
     public var cacheReadCostUsd: String

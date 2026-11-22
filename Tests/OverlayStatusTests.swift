@@ -42,4 +42,14 @@ final class OverlayStatusTests: XCTestCase {
         XCTAssertEqual(UsageStore.overlayRequestLogRow(row("b")).requestModel, "m")
         XCTAssertNil(UsageStore.overlayRequestLogRow(row("b")).errorMessage)
     }
+
+    /// 叠加行的 input 本来就是新增输入（JSONL 里缓存单列，见 OverlayRow.realTotalTokens），freshInputTokens 原样给。
+    /// 负责杀的变异体：叠加行再减一次缓存 / 给 0。
+    func testOverlayFreshInputIsItsInput() {
+        var r = row("a")
+        r.input = 120
+        r.cacheRead = 50
+        r.cacheCreation = 30
+        XCTAssertEqual(UsageStore.overlayRequestLogRow(r).freshInputTokens, 120)
+    }
 }

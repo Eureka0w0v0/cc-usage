@@ -61,6 +61,24 @@ final class RequestDetailTests: XCTestCase {
         XCTAssertEqual(detail.dataSource, "session_log")
     }
 
+    /// 新增输入（freshInputTokens，上游 v4.0.38 #8191）：后端按汇总同一口径（fresh_input_sql）算好给前端。Codex 的 input
+    /// 含缓存读写，前端以前只减缓存读取，缓存写入被算成新增输入，和汇总对不上。
+    /// 向量照搬上游 test_request_logs_report_fresh_input_like_the_summary。
+    /// 杀变异体：不按 input_token_semantics 分口径（legacy / total 两行一样）/ 列表或详情的取列错位 / 和汇总不是同一个表达式。
+    func testFreshInputFollowsTheSummary() throws {
+        for (id, app, semantics) in [("codex-legacy", "codex", Int64(0)), ("codex-total", "codex", 1), ("claude", "claude", 0)] {
+            try Fixture.insertLog(dbPath, id: id, app: app, model: "test-model", input: 1000, output: 50,
+                                  cacheRead: 300, cacheCreation: 600, cost: 0.01, createdAt: 1_790_000_000,
+                                  dataSource: "proxy", providerId: "p1", semantics: semantics)
+        }
+        let rows = try store.requestLogs(LogQueryFilter(), page: 0, pageSize: 20).rows
+        let fresh = Dictionary(uniqueKeysWithValues: rows.map { ($0.requestId, $0.freshInputTokens) })
+        XCTAssertEqual(fresh, ["codex-legacy": 700, "codex-total": 100, "claude": 1000])
+        let summary = try store.rangeSummaryLogsOnly(UsageFilter(start: 1_789_990_000, end: 1_790_010_000))
+        XCTAssertEqual(fresh.values.reduce(0, +), summary.input, "各行之和等于汇总的输入")
+        XCTAssertEqual(try store.requestDetail("codex-total")?.freshInputTokens, 100)
+    }
+
     /// 不存在的 id → nil（前端据此显示 Request not found，而不是报错）。
     func testUnknownRequestIsNil() throws {
         XCTAssertNil(try store.requestDetail("session:nope"))
