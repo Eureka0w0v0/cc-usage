@@ -272,15 +272,20 @@ final class CrossSourceDedupTests: XCTestCase {
     }
 
     /// 剥完是空串的两边不算相等；`unknown` 先去空白再认（两条都随 #9249 改）。
-    /// 杀变异体：剥完不判空（`gw/` 对空白模型被误去重）/ unknown 判断不去空白（` unknown ` 那对不去重）。
+    /// 别名分支里会话侧的判空（`NULLIF(会话模型,'') IS NOT NULL`）照上游保留，但会话模型剥完是空串时
+    /// `LOWER(请求模型) = ''` 本来就不成立，去掉它结果不变，是等价变异体。
+    /// 杀变异体：剥完不判空（`gw/` 对空白模型被误去重）/ 代理侧、会话侧的 unknown 判断不去空白（带空白那两对不去重）。
     func testEmptyAfterStrippingNeverMatchesAndUnknownIsTrimmed() throws {
         let t = Fixture.ts(2026, 11, 21, 12)
         let day: Int64 = 86_400
         try insertPrefixPair("empty", proxyModel: "gw/", requestModel: nil, sessionModel: " ", at: t)
         try insertPrefixPair("unknown", proxyModel: " unknown ", requestModel: nil, at: t + day)
+        try insertPrefixPair("unknown-session", proxyModel: "gpt-5.6-sol", requestModel: nil, sessionModel: " Unknown ",
+                             at: t + 2 * day)
 
         XCTAssertEqual(try requestCount(around: t), 2, "剥完两边都是空串，不是同一个模型")
         XCTAssertEqual(try requestCount(around: t + day), 1, "代理行模型是 unknown（带空白）照旧放宽")
+        XCTAssertEqual(try requestCount(around: t + 2 * day), 1, "会话行模型是 unknown（带空白、大小写不同）照旧放宽")
     }
 
     /// 旧库没有 request_model 列：过滤器里照写这一列会在 prepare 阶段失败，所有读路径一起挂。
