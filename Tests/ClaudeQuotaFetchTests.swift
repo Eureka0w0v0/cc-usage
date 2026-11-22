@@ -12,11 +12,15 @@ final class ClaudeQuotaFetchTests: XCTestCase {
     private let log = Log()
     private let credential = ClaudeCredential(accessToken: "t", subscriptionType: "max", rateLimitTier: nil)
 
+    /// 令牌过期后的恢复路径在 ClaudeLoginRecoveryTests 里测；这里给一个读不到 Claude Code 配置的，它什么也不跑。
+    private let recovery = ClaudeLoginRecovery(store: RejectedTokenStore(load: { nil }, save: { _ in }),
+                                               readProfile: { nil }, runUsage: { .notInstalled })
+
     private func fetch(credential: Result<ClaudeCredential, QuotaStatus>,
                        query: Result<[QuotaTier], QuotaStatus> = .success([])) -> ClaudeQuotaFetch {
         let log = log
         return ClaudeQuotaFetch(readCredential: { credential }, planDisplayName: { "Ultra" }, query: { _ in query },
-                                report: { log.add($0) })
+                                report: { log.add($0) }, recovery: recovery)
     }
 
     func testSuccessAttachesThePlanAndReportsNothing() async {

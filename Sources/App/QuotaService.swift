@@ -171,21 +171,24 @@ actor QuotaCache {
 enum QuotaService {
     /// 缓存优先取额度（定时刷新用）：节流窗口内只读共享缓存，绝不打官方接口。
     static func fetchTiersForBridge() async -> [QuotaTier] {
-        await QuotaCache.shared.read { await ClaudeQuotaFetch().run() }
+        await QuotaCache.shared.read { await ClaudeQuotaFetch(recovery: .shared).run() }
     }
 
     /// 强制取一次（不受 5 分钟间隔限制，限流暂停期间除外）：仅供低频用户交互（勾选额度码片）调用。
     static func forceTiersForBridge() async -> [QuotaTier] {
-        await QuotaCache.shared.forceRefresh { await ClaudeQuotaFetch().run() }
+        await QuotaCache.shared.forceRefresh { await ClaudeQuotaFetch(recovery: .shared).run() }
     }
 }
 
-/// 一次真实查询：读凭据 → 调官方 /api/oauth/usage → 给每个 tier 附上套餐标签。两头可注入，失败路径能测。
+/// 一次真实查询：读凭据 → 调官方 /api/oauth/usage（令牌被拒就请 Claude Code 刷新、用它缓存的额度）→ 给每个 tier
+/// 附上套餐标签。几头都可注入，失败路径能测。
 struct ClaudeQuotaFetch: Sendable {
     var readCredential: @Sendable () -> Result<ClaudeCredential, QuotaStatus> = { ClaudeCredentialReader.read() }
     var planDisplayName: @Sendable () -> String? = { ClaudeConfigReader.planDisplayName() }
     var query: @Sendable (String) async -> Result<[QuotaTier], QuotaStatus> = { await ClaudeUsageAPI.query(token: $0) }
     var report: @Sendable (QuotaStatus) -> Void = { ClaudeQuotaFetch.log($0) }
+    /// 令牌被拒以后请 Claude Code 刷新（ClaudeLoginRecovery）。没有默认值：测试必须换成假的，免得真去跑 claude。
+    let recovery: ClaudeLoginRecovery
 
     private static let logger = Logger(subsystem: "com.ganxing.ccusage", category: "quota")
 
@@ -216,7 +219,7 @@ struct ClaudeQuotaFetch: Sendable {
             return .failure(status)
         }
 
-        switch await query(cred.accessToken) {
+        switch await queryOrRecover(cred.accessToken) {
         case .success(var tiers):
             let plan = ClaudePlan.label(displayName: displayName, subscriptionType: cred.subscriptionType,
                                         rateLimitTier: cred.rateLimitTier)
@@ -226,6 +229,19 @@ struct ClaudeQuotaFetch: Sendable {
             report(status)
             return .failure(status)
         }
+    }
+
+    /// 直接查官方接口；令牌被拒（这次 401/403，或这份令牌以前就被拒过、不再查）就请 Claude Code 刷新，用它缓存的额度。
+    /// 限流、网络错误原样交回：429 要按 Retry-After 暂停，网络抖一下不能把令牌记成被拒的。
+    private func queryOrRecover(_ token: String) async -> Result<[QuotaTier], QuotaStatus> {
+        let fingerprint = TokenFingerprint.of(token)
+        if await !recovery.isRejected(fingerprint) {
+            let direct = await query(token)
+            guard case .failure(.expired) = direct else { return direct }
+            await recovery.reject(fingerprint)
+        }
+        guard let tiers = await recovery.recover() else { return .failure(.expired) }
+        return .success(tiers)
     }
 }
 
@@ -276,30 +292,36 @@ enum ClaudeCredentialReader {
 
 // MARK: - Claude Code 全局配置里的套餐显示名
 
-/// 读 Claude Code 缓存的套餐显示名（`oauthAccount.planDisplayName`，来自 `/api/oauth/profile`），见 ClaudePlan。
-/// 文件位置同 Claude Code 2.1.316：旧版 `~/.claude/.config.json` 非空就用它，否则 `~/.claude.json`。
+/// Claude Code 的全局配置：套餐显示名（`oauthAccount.planDisplayName`，来自 `/api/oauth/profile`，见 ClaudePlan）、
+/// 当前登录账号和它缓存的额度（见 ClaudeUsageCache）都在这里。
+/// 文件位置同 Claude Code 2.1.316（上游 Slot::global_config 同理）：旧版 `~/.claude/.config.json` 非空就用它，否则 `~/.claude.json`。
 /// CLAUDE_CONFIG_DIR 只对终端里起的 Claude Code 生效；本应用从访达启动，和钥匙串只查默认条目一样只看默认位置。
-/// 读不到（没装 Claude Code、API key 登录）返回 nil，套餐名回落到按凭据推断。
 enum ClaudeConfigReader {
     private static let log = Logger(subsystem: "com.ganxing.ccusage", category: "quota")
 
-    static func planDisplayName() -> String? {
+    /// 全局配置的内容。不存在（没装 Claude Code、API key 登录）返回 nil，属正常情况只记 debug；读不了记错误。
+    static func profileData() -> Data? {
         let home = NSHomeDirectory() as NSString
         let legacy = home.appendingPathComponent(".claude/.config.json")
         let path = fileSize(legacy) > 0 ? legacy : home.appendingPathComponent(".claude.json")
         guard FileManager.default.fileExists(atPath: path) else {
-            log.debug("没有 Claude Code 全局配置，套餐名按凭据推断")
+            log.debug("没有 Claude Code 全局配置")
             return nil
         }
         do {
-            let data = try Data(contentsOf: URL(fileURLWithPath: path))
-            let name = ClaudePlan.displayName(fromClaudeConfig: data)
-            if name == nil { log.debug("Claude Code 配置里没有 planDisplayName，套餐名按凭据推断") }
-            return name
+            return try Data(contentsOf: URL(fileURLWithPath: path))
         } catch {
             log.error("读取 Claude Code 全局配置失败：\(error.localizedDescription, privacy: .public)")
             return nil
         }
+    }
+
+    /// 读不到返回 nil，套餐名回落到按凭据推断。
+    static func planDisplayName() -> String? {
+        guard let data = profileData() else { return nil }
+        let name = ClaudePlan.displayName(fromClaudeConfig: data)
+        if name == nil { log.debug("Claude Code 配置里没有 planDisplayName，套餐名按凭据推断") }
+        return name
     }
 
     /// 文件大小；不存在或读不到属性都按 0（旧版配置文件绝大多数人没有，属正常情况，不记日志）。
