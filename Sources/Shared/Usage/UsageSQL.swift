@@ -91,19 +91,23 @@ extension UsageStore {
     /// 估算速度的耗时门槛（SPEED_ESTIMATE_MIN_DURATION_MS）：不到 1 秒多半是起点取晚了。
     static let speedEstimateMinDurationMs: Int64 = 1000
     private static let dataSourceL = "COALESCE(l.data_source,'proxy')"
-    /// 精确速度：路由记的、有首字、输出够长、生成窗口（耗时 − 首字）够长。
-    static let speedEligibleL = "\(dataSourceL) = 'proxy' AND l.first_token_ms IS NOT NULL"
+    /// 计时精确的来源（上游 exact_timing_source_sql）：路由服务（proxy），以及从原生 conversations 库读首字和流式时长的
+    /// Antigravity 会话（agy_session，上游 v4.0.38 #9788）。其余会话日志的耗时是导入时按日志时间戳估的。
+    private static let exactTimingSourceL = "\(dataSourceL) IN ('proxy','agy_session')"
+    private static let estimatedTimingSourceL = "\(dataSourceL) NOT IN ('proxy','agy_session')"
+    /// 精确速度：计时精确、有首字、输出够长、生成窗口（耗时 − 首字）够长。
+    static let speedEligibleL = "\(exactTimingSourceL) AND l.first_token_ms IS NOT NULL"
         + " AND l.output_tokens >= \(speedMinOutputTokens)"
         + " AND l.latency_ms - l.first_token_ms >= \(speedMinGenerationMs)"
-    /// 估算速度：会话日志导入、输出够长、估算耗时够长；按整段耗时算，不减推出来的首字。
-    static let speedEstimateEligibleL = "\(dataSourceL) <> 'proxy'"
+    /// 估算速度：按时间戳估耗时的会话日志、输出够长、估算耗时够长；按整段耗时算，不减推出来的首字。
+    static let speedEstimateEligibleL = "\(estimatedTimingSourceL)"
         + " AND l.output_tokens >= \(speedEstimateMinOutputTokens)"
         + " AND l.latency_ms >= \(speedEstimateMinDurationMs)"
-    /// 精确首字：路由记的、成功、有首字计时（流式请求）。
-    static let firstTokenEligibleL = "\(dataSourceL) = 'proxy' AND l.first_token_ms IS NOT NULL"
+    /// 精确首字：计时精确、成功、有首字计时（流式请求）。
+    static let firstTokenEligibleL = "\(exactTimingSourceL) AND l.first_token_ms IS NOT NULL"
         + " AND l.status_code >= 200 AND l.status_code < 300"
-    /// 估算首字：会话日志导入、导入时按时间戳推出了首字的行。
-    static let estFirstTokenEligibleL = "\(dataSourceL) <> 'proxy' AND l.first_token_ms IS NOT NULL"
+    /// 估算首字：按时间戳估耗时的会话日志里、导入时推出了首字的行。
+    static let estFirstTokenEligibleL = "\(estimatedTimingSourceL) AND l.first_token_ms IS NOT NULL"
     /// 明细子查询里的四个速度累计列，列序固定：精确输出、精确生成窗口、估算输出、估算耗时。
     static let speedSumsL = """
         COALESCE(SUM(CASE WHEN \(speedEligibleL) THEN l.output_tokens ELSE 0 END), 0) AS speed_output,

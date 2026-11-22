@@ -132,17 +132,17 @@ public struct RequestLogPage: Sendable {
 /// 统计表「速度 / 首字」两列的原料（对齐 usage_stats.rs v4.0.12 ProviderStats / ModelStats 的六个字段）。
 /// 速度 = 输出之和 ÷ 时长之和，前端自己除；精确和估算两组口径不同，分开累计，界面上没有精确值时才用估算值、带 ≈。
 public struct StatsPerformance: Sendable, Equatable {
-    /// 精确速度分子：路由记的、有首字、输出 ≥ 100、生成窗口 ≥ 100ms 的明细行的输出之和。
+    /// 精确速度分子：计时精确（路由、Antigravity 会话）、有首字、输出 ≥ 100、生成窗口 ≥ 100ms 的明细行的输出之和。
     public var speedOutputTokens: Int64 = 0
     /// 精确速度分母：同一批行的（耗时 − 首字）之和，毫秒。
     public var speedGenerationMs: Int64 = 0
-    /// 估算速度分子：会话日志导入、输出 ≥ 200、耗时 ≥ 1s 的明细行的输出之和。
+    /// 估算速度分子：按时间戳估耗时的会话日志、输出 ≥ 200、耗时 ≥ 1s 的明细行的输出之和。
     public var estSpeedOutputTokens: Int64 = 0
     /// 估算速度分母：同一批行的耗时（含首字等待）之和，毫秒。
     public var estSpeedDurationMs: Int64 = 0
-    /// 首字中位数：路由记的成功行；没有这样的行为 nil。
+    /// 首字中位数：计时精确的成功行；没有这样的行为 nil。
     public var firstTokenMedianMs: Int64?
-    /// 估算首字中位数：会话日志导入、按时间戳推出了首字的行。
+    /// 估算首字中位数：按时间戳估耗时的会话日志里推出了首字的行。
     public var estFirstTokenMedianMs: Int64?
 
     public init() {}

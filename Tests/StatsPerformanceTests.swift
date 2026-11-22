@@ -69,6 +69,46 @@ final class StatsPerformanceTests: XCTestCase {
         }
     }
 
+    /// Antigravity（agy_session）的首字和流式时长是从它原生的 conversations 库读的，和路由一样精确（上游 v4.0.38 #9788）：
+    /// 速度扣掉首字、按精确门槛筛，首字进精确中位数，不落进估算口径；其余会话日志照旧估算。
+    /// 向量照搬上游 test_agy_session_uses_exact_speed_and_first_token_stats。
+    /// 杀变异体：精确速度 / 精确首字不认 agy_session（两组都空）/ 估算速度 / 估算首字不排除它（混进估算口径）。
+    func testAntigravitySessionsUseExactTiming() throws {
+        func agy(_ id: String, output: Int64, latency: Int64, first: Int64?) throws {
+            nextInput += 1
+            try Fixture.insertLog(dbPath, id: id, app: "agy", model: "gemini-4-neon", input: nextInput, output: output,
+                                  createdAt: t, dataSource: "agy_session", providerId: "_agy_session",
+                                  latencyMs: latency, firstTokenMs: first)
+        }
+        try agy("agy-long", output: 2_900, latency: 69_000, first: 43_000)
+        try agy("agy-mid", output: 150, latency: 38_000, first: 36_500)
+        try agy("agy-short", output: 90, latency: 6_000, first: 6_000)      // 输出 < 100
+        try agy("agy-burst", output: 300, latency: 5_050, first: 5_000)     // 生成窗口 50ms
+        try agy("agy-untimed", output: 1_000, latency: 0, first: nil)       // 没有计时
+        nextInput += 1
+        try Fixture.insertLog(dbPath, id: "codex-est", app: "codex", model: "gpt-5.4", input: nextInput, output: 500,
+                              createdAt: t, dataSource: "codex_session", providerId: "_codex_session",
+                              latencyMs: 10_000, firstTokenMs: 3_300)
+
+        let providers = try store.providerStats(window)
+        let agyPerf = try XCTUnwrap(providers.first { $0.providerId == "_agy_session" }).performance
+        let modelPerf = try XCTUnwrap(store.modelStats(window).first { $0.model == "gemini-4-neon" }).performance
+        for perf in [agyPerf, modelPerf] {
+            XCTAssertEqual(perf.speedOutputTokens, 3_050)
+            XCTAssertEqual(perf.speedGenerationMs, 27_500)
+            XCTAssertEqual(perf.firstTokenMedianMs, 21_250, "有首字的 4 条取中间两个的平均")
+            XCTAssertEqual(perf.estSpeedOutputTokens, 0)
+            XCTAssertEqual(perf.estSpeedDurationMs, 0)
+            XCTAssertNil(perf.estFirstTokenMedianMs)
+        }
+        let codexPerf = try XCTUnwrap(providers.first { $0.providerId == "_codex_session" }).performance
+        XCTAssertEqual(codexPerf.speedOutputTokens, 0)
+        XCTAssertNil(codexPerf.firstTokenMedianMs)
+        XCTAssertEqual(codexPerf.estSpeedOutputTokens, 500)
+        XCTAssertEqual(codexPerf.estSpeedDurationMs, 10_000)
+        XCTAssertEqual(codexPerf.estFirstTokenMedianMs, 3_300)
+    }
+
     // MARK: - 首字中位数
 
     /// 精确首字取路由的成功行，估算首字取会话日志导入、推出了首字的行；按 (供应商, 应用) 分开取中位数，
