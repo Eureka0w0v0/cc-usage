@@ -29,7 +29,7 @@ public enum ModelPricing {
         Row(input: i, output: o, cacheRead: cr, cacheCreation: cw)
     }
 
-    /// 对齐 cc-switch seed_model_pricing 的 243 条内置定价（同步至 v4.0.36）。
+    /// 对齐 cc-switch seed_model_pricing 的 243 条内置定价（同步至 v4.0.38）。
     /// 由 scripts/sync-pricing.sh 生成，勿手改；新模型先放下面的 `localExtras`。
     static let upstream: [String: Row] = [
         "claude-fable-5-2": R(8, 40, 0.2, 10),  // Claude Fable 5.2
